@@ -255,8 +255,8 @@ fn factorial(n: i32) -> i32 {
     return n * factorial(n - 1);
 }
 
-const eval fn range(n: i32) -> std::vector::<i32> {
-    let v: std::vector::<i32>;
+const eval fn range(n: i32) -> list::<i32> {
+    let v: list::<i32>;
 
     for (let i: i32 = 0; i < n; i++) {
         v.push_back(i);
@@ -297,7 +297,7 @@ class Fish requires <T> if Bar in T, T derives Fuzz {
 
 // Function to print elements of a vector
 // TODO: implement range-based for loop
-fn print_vector(v: std::vector::<i32>) -> void {
+fn print_vector(v: list::<i32>) -> void {
     for i in range(v.size()) {
         print(f"Vector element {i}: {v[i]}");
     }
@@ -356,7 +356,7 @@ fn main() -> i32 {
     print(f"Factorial: {fact}");
 
     // Working with a C++ vector
-    let numbers: std::vector::<i32> = [1, 2, 3, 4];
+    let numbers: list::<i32> = [1, 2, 3, 4];
     numbers.push_back(10);
     numbers.push_back(20);
     numbers.push_back(30);

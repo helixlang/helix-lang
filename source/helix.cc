@@ -305,7 +305,6 @@ class CXIRCompiler {
         compile_flags += "\"" + source_file.string() + "\" -o \"" + (path / out).string() + "\"";
 
         auto compile_result = exec("c++ " + compile_flags + " 2>&1");
-
         if (compile_result.return_code != 0) {
             std::vector<std::string> lines;
             std::istringstream       stream(compile_result.output);
@@ -435,7 +434,7 @@ class CompilationUnit {
             log<LogLevel::Debug>(json_visitor.json.to_string());
         }
 
-        if (error::HAS_ERRORED || parsed_args.lsp_mode) {
+        if (error::HAS_ERRORED) {
             LSP_MODE = parsed_args.lsp_mode;
             return 0;
         }
@@ -459,6 +458,11 @@ class CompilationUnit {
                               out_file,
                               parsed_args.build_mode == __CONTROLLER_CLI_N::CLIArgs::MODE::DEBUG_,
                               parsed_args.verbose);
+
+        if (error::HAS_ERRORED || parsed_args.lsp_mode) {
+            LSP_MODE = parsed_args.lsp_mode;
+            return 0;
+        }
 
         log_time(start, parsed_args.verbose, std::chrono::high_resolution_clock::now());
         return 0;
@@ -529,9 +533,16 @@ int main(int argc, char **argv) {
     }
 
     if (LSP_MODE && error::HAS_ERRORED) {
+        std::vector<neo::json> errors;
+
         for (const auto &err : error::ERRORS) {
-            print(err.to_json());
+            errors.push_back(err.to_json());
         }
+
+        neo::json error_json;
+        error_json.add("errors", errors);
+
+        print(error_json);
 
         return 1;  // soft error
     }

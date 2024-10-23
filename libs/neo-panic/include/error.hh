@@ -48,32 +48,29 @@ struct _internal_error {
 
     _internal_error() = default;
 
-    [[nodiscard]] string to_json() const {
-        string json;
+    TO_NEO_JSON_IMPL {
+        neo::json json(error_type == "code" ? "code_error" : "compiler_error");
 
-        json += "{";
-        json += R"("color_mode": ")" + neo::json::escape(color_mode) + "\", ";
-        json += R"("error_type": ")" + neo::json::escape(error_type) + "\", ";
-        json += R"("level": ")" + neo::json::escape(level) + "\", ";
-        json += R"("file": ")" + neo::json::escape(file) + "\", ";
-        json += R"("msg": ")" + neo::json::escape(msg) + "\", ";
-        json += R"("fix": ")" + neo::json::escape(fix) + "\", ";
-        json += R"("display": ")" + neo::json::escape(display) + "\", ";
-        json += R"("line": )" + std::to_string(line) + ", ";
-        json += R"("col": )" + std::to_string(col) + ", ";
-        json += R"("offset": )" + std::to_string(offset) + ", ";
-        json += R"("quick_fix": [)";
+        json.add("color_mode", neo::json::escape(color_mode))
+            .add("error_type", neo::json::escape(error_type))
+            .add("level", neo::json::escape(level))
+            .add("file", neo::json::escape(file))
+            .add("msg", neo::json::escape(msg))
+            .add("fix", neo::json::escape(fix))
+            .add("display", neo::json::escape(display))
+            .add("line", std::to_string(line))
+            .add("col", std::to_string(col))
+            .add("offset", std::to_string(offset));
 
-        for (size_t i = 0; i < quick_fix.size(); ++i) {
-            json += R"({"fix": ")" + neo::json::escape(quick_fix[i].first) + R"(", "loc": )" +
-                    std::to_string(quick_fix[i].second) + "}";
-            if (i < quick_fix.size() - 1) {
-                json += ", ";
-            }
+        std::vector<neo::json> fix_arr;
+        for (const auto &[fix, pos] : quick_fix) {
+            neo::json fix_json;
+            fix_json.add("fix", neo::json::escape(fix));
+            fix_json.add("pos", std::to_string(pos));
+            fix_arr.push_back(fix_json);
         }
 
-        json += "]";
-        return json += "}";
+        json.add("quick_fixes", fix_arr);
     }
 };
 
@@ -91,7 +88,7 @@ enum Level {
     WARN,   ///< Warn, the compiler can move on to code gen. and produce a binary
     ERR,    ///< Error, but compiler can continue parsing
     FATAL,  ///< Fatal error all other proceeding errors omitted
-    NONE,    ///< No level
+    NONE,   ///< No level
 };
 
 struct Errors {
@@ -106,9 +103,9 @@ struct CodeError {
     bool              mark_pof = true;
     string_vec        fix_fmt_args;
     string_vec        err_fmt_args;
-    fix_pair_vec      opt_fixes;     //< fixes that show in the code to fix
+    fix_pair_vec      opt_fixes;      //< fixes that show in the code to fix
     Level             level  = NONE;  //< optional level to overload the one specifed in the error
-    size_t            indent = 0;    //< optional indent to allow to error categorizing
+    size_t            indent = 0;     //< optional indent to allow to error categorizing
 
     ~CodeError() = default;
 };

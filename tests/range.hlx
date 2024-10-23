@@ -34,61 +34,35 @@
 
 ffi "c++" import "cstdio";
 
-class Range requires <T> {
-    priv let start: T;
-    priv let _end: T;
+interface Incrementable {
+    op ++ fn inc(self) -> Self;
+}
 
-    class Iterator {
-        priv let current: T;
-
-        fn Iterator(self, current: T) {
-            self.current = current;
-        }
-
-        op * fn deref(self, a: int) -> T {
-            return self.current;
-        }
-
-        op ++ fn inc(self) -> Iterator {
-            ++(self.current);
-            return self;
-        }
-
-        // Comparison operators
-        op != fn ne(self, other: Iterator) -> bool {
-            return self.current != other.current;
-        }
-    }
-
-    fn Range(self, start: T, _end: T) {
-        self.start = start;
-        self._end = _end;
-    }
-
-    fn begin(self) -> Iterator {
-        return Iterator(self.start);
-    }
-
-    fn end(self) -> Iterator {
-        return Iterator(self._end);
-    }
-
-    fn size(self) -> size_t {
-        return self._end - self.start;
+fn range(start: T, end: T, step: T = 1) -> yield T requires <T> if Incrementable in T {
+    while start < end {
+        yield start;
+        
+        start += step;
     }
 }
 
-fn range(start: T, end: T) -> Range<T> requires <T> {
-    return Range(start, end);
+fn range(end: T) -> yield T requires <T> if Incrementable in T {
+    let start: T = 0;
+    while start < end {
+        yield start;
+        ++start;
+    }
 }
 
 fn main() -> int {
-    for i in range(0, 10) {
-        printf("%d\n", i);
+    let iter = range(0, 10);
+    
+    for i: int in iter {
+        print(f"{i}");
     }
 
     for i in range('a', 'z') {
-        printf("%c\n", i);
+        print(f"{i}");
     }
 
     return 0;

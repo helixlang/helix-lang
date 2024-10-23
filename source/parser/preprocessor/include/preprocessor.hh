@@ -20,35 +20,98 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "parser/preprocessor/include/dependency_tree.hh"
 #include "token/include/Token.hh"
+#include "token/include/private/Token_generate.hh"
+
+/* best way to parse all the things we need to keep track of
+
+- if module / inline module is found
+    - we need now start keeping track of braces and namespaces
+    - after we reach a missmatch in the number of braces compared to the number of namespaces, we continue counting but mark the index where the namespace ended
+
+
+
+*/
+
+struct Module {
+    __TOKEN_N::Token name;
+    size_t index;
+};
 
 namespace parser::preprocessor {
 using QualifiedName      = __TOKEN_N::TokenList;
 using IncludeDirectories = std::list<std::filesystem::path>;
 using OptToken           = std::optional<__TOKEN_N::Token>;
+using MacroParamList = std::map<__TOKEN_N::Token,  __TOKEN_N::TokenList>;
 
-struct DefineStatement {
-    using ParamList = std::map<__TOKEN_N::Token,
-                               __TOKEN_N::TokenList>;  // alias for parameter list with default args
+struct MacroSymbol {
+    // alias for parameter list with default args map<identifier, default arg>
 
-    ParamList            params;  // parameters and default arguments
+    MacroParamList            params;  // parameters and default arguments
     __TOKEN_N::TokenList body;    // body of the macro
-    QualifiedName        loc;     // namespace location
-    __TOKEN_N::Token     name;    // name of the macro
+    QualifiedName        loc;     // namespace location something like `namespace::namespace::macro!` or (`macro!` with an an alias to '::macro!`)
 
-    static bool is_valid(const QualifiedName &loc, const __TOKEN_N::Token &invocation);
+    MacroSymbol() = default;
+    MacroSymbol(MacroSymbol &&)                 = default;
+    MacroSymbol(const MacroSymbol &)            = default;
+    MacroSymbol &operator=(const MacroSymbol &) = delete;
+    MacroSymbol &operator=(MacroSymbol &&)      = delete;
+
+    ~MacroSymbol() = default;
+
+    MacroSymbol(MacroParamList params, __TOKEN_N::TokenList body, QualifiedName loc)
+        : params(std::move(params)), body(std::move(body)), loc(std::move(loc)) {}
+
+    bool operator==(const MacroSymbol &other) const {
+        return params == other.params && body == other.body && loc == other.loc;
+    }
+
+    bool operator!=(const MacroSymbol &other) const { return !(*this == other); }
+
+    size_t number_of_params() const { return params.size(); }
+    bool has_default_args() const {
+        for (const auto &[_, default_arg] : params) {
+            if (default_arg.size() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
-using DefineDefinitions = std::vector<DefineStatement>;
+using MacroSymbolPtr = std::shared_ptr<MacroSymbol>;
+using MacroInvokeLoc = std::pair<QualifiedName, __TOKEN_N::Token>;
+
+class MacroMap {
+  public:
+    using MacroMap_t = std::map<__TOKEN_N::Token, MacroSymbolPtr>;
+
+  private:
+    MacroMap_t macros;
+
+  public:
+    MacroMap() = default;
+    MacroMap(MacroMap &&)                 = default;
+    MacroMap(const MacroMap &)            = default;
+    MacroMap &operator=(const MacroMap &) = delete;
+    MacroMap &operator=(MacroMap &&)      = delete;
+
+    ~MacroMap() = default;
+
+    void add_macro(const __TOKEN_N::Token &name, MacroSymbolPtr macro, MacroParamList params = {});
+    void remove_macro(const __TOKEN_N::Token &name, size_t num_params = 0);
+};
+
 
 class Preprocessor {
   public:
     using AllowedABIOptions = std::array<string, __TOKEN_ABI_N::reserved.size()>;
 
-    DefineDefinitions  defines;       // list of defined macros
+    MacroMap           pp_macros;     // preprocessor macros
     AllowedABIOptions  allowed_abi;   // allowed ABI options
     IncludeDirectories include_dirs;  // directories for module inclusion
 

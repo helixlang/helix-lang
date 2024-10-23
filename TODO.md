@@ -18,7 +18,8 @@
 - [ ] Convert gcc errors into the helix error msg format.
 - [ ] Convert msvc errors into the helix error msg format.
 - [ ] Fix ast error messages, where the message tells a fix to also add a quick fix to the error
-- [ ] Add support for global scopes in the parser
+- [x] Add support for global scopes in the parser
+- [ ] Add panic unwinding support
 
 # Completed:
 ### Parser:

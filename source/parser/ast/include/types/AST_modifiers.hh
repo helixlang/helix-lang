@@ -571,7 +571,7 @@ __AST_BEGIN {
             modifiers.erase(modifiers.begin() + index);
         }
 
-        [[nodiscard]] bool contains(const token::tokens &token_kind) {
+        [[nodiscard]] bool contains(const token::tokens &token_kind) const {
             return std::ranges::any_of(modifiers, [&](const auto &modifier) {
                 if (std::holds_alternative<StorageSpecifier>(modifier)) {
                     return std::get<StorageSpecifier>(modifier).marker.token_kind() == token_kind;
