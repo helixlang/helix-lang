@@ -129,6 +129,8 @@ __TOKEN_BEGIN {
     u32 Token::line_number() const { return line; }
 
     u32 Token::column_number() const { return column; }
+    
+    u32 &Token::get_column_number() const { return column; }
 
     u32 Token::length() const { return len; }
 

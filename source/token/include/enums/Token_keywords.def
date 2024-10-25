@@ -13,7 +13,7 @@
 #ifndef __KEYWORDS_DEF__
 #define __KEYWORDS_DEF__
 
-#define KEYWORD_TOKENS_COUNT 51
+#define KEYWORD_TOKENS_COUNT 50
 
 /// Key: Val
 /// M  : Modifier
@@ -30,7 +30,6 @@
     /* S */ GENERATE(KEYWORD_ELSE, "else")             \
     /* S */ GENERATE(KEYWORD_UNLESS, "unless")         \
     /*---- P ----*/ GENERATE(KEYWORD_MACRO, "macro")   \
-    /*---- P ----*/ GENERATE(KEYWORD_DEFINE, "define") \
     /* D */ GENERATE(KEYWORD_FUNCTION, "fn")           \
     /* D */ GENERATE(KEYWORD_OPERATOR, "op")           \
     /* M */ GENERATE(KEYWORD_INLINE, "inline")         \

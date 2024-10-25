@@ -31,8 +31,8 @@ __TOKEN_BEGIN {
     */
     struct Token {
       private:
-        u32                 line{};     ///< line number where the token is located
-        u32                 column{};   ///< column number where the token starts
+        mutable u32         line{};     ///< line number where the token is located
+        mutable u32         column{};   ///< column number where the token starts
         u32                 len{};      ///< length of the token
         u32                 _offset{};  ///< offset from the beginning of the file
         tokens              kind{};     ///< kind of the token
@@ -47,6 +47,7 @@ __TOKEN_BEGIN {
               std::string_view   value,
               const std::string &filename,
               std::string_view   token_kind = "");
+
         Token(const Token &other);
         Token &operator=(const Token &other);
         Token(Token &&other) noexcept;
@@ -60,6 +61,7 @@ __TOKEN_BEGIN {
         /* ====-------------------------- getters ---------------------------==== */
         u32                        line_number() const;
         u32                        column_number() const;
+        u32                       &get_column_number() const;
         u32                        length() const;
         u32                        offset() const;
         tokens                     token_kind() const;
@@ -93,7 +95,7 @@ __TOKEN_BEGIN {
 
         void set_file_name(const std::string &file_name);
         void set_value(const std::string &other);
-        
+
         enum class OffsetType {
             Line,
             Colum,
