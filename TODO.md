@@ -20,6 +20,7 @@
 - [ ] Fix ast error messages, where the message tells a fix to also add a quick fix to the error
 - [x] Add support for global scopes in the parser
 - [ ] Add panic unwinding support
+- [ ] Parse and add extend support for generic specializations
 
 # Completed:
 ### Parser:

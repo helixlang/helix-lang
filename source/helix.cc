@@ -41,7 +41,7 @@
 #include "controller/include/Controller.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "lexer/include/lexer.hh"
-#include "parser/preprocessor/include/preprocessor.hh"
+#include "parser/preprocessor/include/PreProcessor.hh"
 
 enum class LogLevel { Debug, Info, Warning, Error };
 inline bool NO_LOGS  = false;

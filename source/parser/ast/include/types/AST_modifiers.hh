@@ -133,12 +133,14 @@ __AST_BEGIN {
             Module,  ///< 'module'
             Ffi,     ///< 'ffi'
             Unsafe,  ///< 'unsafe'
+            Static,  ///< 'static'
         };
 
         static bool is_type_qualifier(const __TOKEN_N::Token &tok) {
             return tok == __TOKEN_N::KEYWORD_CONST || tok == __TOKEN_N::KEYWORD_MODULE ||
                    tok == __TOKEN_N::KEYWORD_YIELD || tok == __TOKEN_N::KEYWORD_ASYNC ||
-                   tok == __TOKEN_N::KEYWORD_FFI || tok == __TOKEN_N::KEYWORD_UNSAFE;
+                   tok == __TOKEN_N::KEYWORD_FFI || tok == __TOKEN_N::KEYWORD_UNSAFE ||
+                   tok == __TOKEN_N::KEYWORD_STATIC;
         }
 
         explicit TypeSpecifier(__TOKEN_N::Token marker)
@@ -161,6 +163,9 @@ __AST_BEGIN {
                     break;
                 case __TOKEN_N::KEYWORD_UNSAFE:
                     type = Specifier::Unsafe;
+                    break;
+                case __TOKEN_N::KEYWORD_STATIC:
+                    type = Specifier::Static;
                     break;
                 default:
                     throw std::runtime_error("Invalid type specifier");
@@ -391,7 +396,8 @@ __AST_BEGIN {
               __TOKEN_N::KEYWORD_YIELD,
               __TOKEN_N::KEYWORD_ASYNC,
               __TOKEN_N::KEYWORD_FFI,
-              __TOKEN_N::KEYWORD_UNSAFE}},
+              __TOKEN_N::KEYWORD_UNSAFE,
+              __TOKEN_N::KEYWORD_STATIC}},
             {ExpectedModifier::AccessSpec,
              {__TOKEN_N::KEYWORD_PUBLIC,
               __TOKEN_N::KEYWORD_PRIVATE,
@@ -502,7 +508,7 @@ __AST_BEGIN {
         }
 
         template <typename T>
-        [[nodiscard]] std::vector<T> get() {
+        [[nodiscard]] std::vector<T> get() const {
             std::vector<T> result;
 
             for (const auto &modifier : modifiers) {
