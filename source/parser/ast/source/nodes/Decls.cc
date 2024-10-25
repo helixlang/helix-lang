@@ -411,12 +411,13 @@ AST_NODE_IMPL_VISITOR(Jsonify, StructDecl) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Declaration, ConstDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) { /* TODO - MAYBE REMOVE */
+AST_NODE_IMPL(Declaration,
+              ConstDecl,
+              const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) { /* TODO - MAYBE REMOVE */
     IS_NOT_EMPTY;
     // ConstDecl := Modifiers 'const' Modifiers VarDecl* ';'
 
     NodeT<ConstDecl> node = make_node<ConstDecl>(true);
-
 
     // ignore const modifer
     if (modifiers != nullptr) {
@@ -441,13 +442,13 @@ AST_NODE_IMPL(Declaration, ConstDecl, const std::shared_ptr<__TOKEN_N::TokenList
 
     while
         CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) {
-            ParseResult<VarDecl> var = parse<VarDecl>(true, true); // force type and value
+            ParseResult<VarDecl> var = parse<VarDecl>(true, true);  // force type and value
             RETURN_IF_ERROR(var);
 
             // if no value is provided type is required
             if ((var.value()->value == nullptr) && (var.value()->var->type == nullptr)) {
-                return std::unexpected(
-                    PARSE_ERROR(var.value()->var->path->name, "expected a type or value for const"));
+                return std::unexpected(PARSE_ERROR(var.value()->var->path->name,
+                                                   "expected a type or value for const"));
             }
 
             node->vars.emplace_back(var.value());
@@ -761,7 +762,7 @@ AST_NODE_IMPL(Declaration, FuncDecl, const std::shared_ptr<__TOKEN_N::TokenList>
     // E.TypeExpr)? (S.Suite | ';' | '=' ('default' | 'delete'))
 
     // one rule to follow is we cant have keyword arguments after positional arguments
-    bool has_keyword = false;
+    bool has_keyword    = false;
     bool found_requires = false;
 
     NodeT<FuncDecl> node = make_node<FuncDecl>(true);
@@ -834,12 +835,12 @@ AST_NODE_IMPL(Declaration, FuncDecl, const std::shared_ptr<__TOKEN_N::TokenList>
         RETURN_IF_ERROR(returns);
 
         node->returns = returns.value();
-    
+
         if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_REQUIRES)) {
             if (found_requires) {
                 return std::unexpected(PARSE_ERROR(CURRENT_TOK, "duplicate requires clause"));
             }
-            
+
             ParseResult<RequiresDecl> generics = parse<RequiresDecl>();
             RETURN_IF_ERROR(generics);
 
@@ -967,7 +968,8 @@ AST_NODE_IMPL(Declaration, LetDecl, const std::shared_ptr<__TOKEN_N::TokenList> 
 
     if (modifiers != nullptr) {
         for (auto &tok : *modifiers) {
-            if (!node->vis.find_add(tok.current().get())) {
+            if (!(node->vis.find_add(tok.current().get()) ||
+                  node->modifiers.find_add(tok.current().get()))) {
                 return std::unexpected(
                     PARSE_ERROR(tok.current().get(), "invalid modifier for let"));
             }
@@ -1043,22 +1045,21 @@ AST_NODE_IMPL(Declaration, OpDecl, const std::shared_ptr<__TOKEN_N::TokenList> &
             iter.advance();  // skip modifier
         }
     }
-    
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_OPERATOR);
 
-    // TODO: Find a better way to do this... 
-    while (iter.advance().get().token_kind() != token::KEYWORD_FUNCTION)    {
-        node->op.push_back(CURRENT_TOK); // skip token and push it
+    // TODO: Find a better way to do this...
+    while (iter.advance().get().token_kind() != token::KEYWORD_FUNCTION) {
+        node->op.push_back(CURRENT_TOK);  // skip token and push it
     }
     ParseResult<FuncDecl> fn = parse<FuncDecl>();
-    
+
     RETURN_IF_ERROR(fn);
 
     // NodeT<FuncDecl> fn_node = make_node<FuncDecl>();
 
     node->func.swap(fn.value());
-    
+
     return node;
 }
 
@@ -1133,9 +1134,11 @@ AST_BASE_IMPL(Declaration, parse) {
 
     if (tok.token_kind() == __TOKEN_N::IDENTIFIER) {
         if (modifiers != nullptr) {
-            for (std::iter_difference_t<__TOKEN_N::TokenList> i = 0; i < static_cast<std::iter_difference_t<__TOKEN_N::TokenList>>(modifiers->size()); i++) {
+            for (std::iter_difference_t<__TOKEN_N::TokenList> i = 0;
+                 i < static_cast<std::iter_difference_t<__TOKEN_N::TokenList>>(modifiers->size());
+                 i++) {
                 if (modifiers->at(i).token_kind() == __TOKEN_N::KEYWORD_CONST) {
-                    //remove the const modifier from the list
+                    // remove the const modifier from the list
                     modifiers->erase(modifiers->cbegin() + i);
                     return parse<ConstDecl>(modifiers);
                 }

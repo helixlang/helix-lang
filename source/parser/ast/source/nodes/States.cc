@@ -188,6 +188,7 @@ symbols from the imports are available when needed for resolution.
 #include <unordered_set>
 #include <vector>
 
+#include "neo-panic/include/error.hh"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/nodes/AST_expressions.hh"
@@ -392,6 +393,27 @@ AST_NODE_IMPL(Statement, ForPyStatementCore, bool skip_start) {
     ParseResult<NamedVarSpecifierList> vars = parse<NamedVarSpecifierList>(false);
     RETURN_IF_ERROR(vars);
 
+    // if there structured binding unpacking, then the vars should be untyped
+    if (vars.value()->vars.size() > 1) {
+        for (const auto &var : vars.value()->vars) {
+            if (var->type != nullptr) {
+                error::Panic(error::CodeError{
+                    .pof      = const_cast<__TOKEN_N::Token *>(&var->path->name),
+                    .err_code = 0.0001,
+                    .mark_pof = true,
+                    .fix_fmt_args{},
+                    .err_fmt_args{
+                        GET_DEBUG_INFO +
+                        "do not specify a type for unpacking loop vars, type info is ignored here"},
+                    .opt_fixes{},
+                    .level = error::WARN,
+                });
+
+                var->type = nullptr; // remove the type
+            }
+        }
+    }
+
     node->vars = vars.value();
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_IN);
@@ -452,8 +474,8 @@ AST_NODE_IMPL(Statement, ForCStatementCore, bool skip_start) {
     }
 
     if (CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_SEMICOLON)) {
-        auto* decl_parser = new Declaration(iter);
-        ParseResult<> init = decl_parser->parse();
+        auto         *decl_parser = new Declaration(iter);
+        ParseResult<> init        = decl_parser->parse();
         delete decl_parser;
         RETURN_IF_ERROR(init);
 

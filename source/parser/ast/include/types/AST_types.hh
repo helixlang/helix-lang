@@ -35,6 +35,8 @@
 #include <memory>
 #include <vector>
 
+
+
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/types/AST_parse_error.hh"
 #include "token/include/Token.hh"
@@ -59,6 +61,11 @@ __AST_BEGIN {
     /// NodeV is a vector of NodeT
     template <typename T = __AST_NODE::Node>
     using NodeV = std::vector<NodeT<T>>;
+
+    template <typename T, typename U>
+    inline std::shared_ptr<T> convert_t(const NodeT<U> &ptr) {
+        return std::static_pointer_cast<T>(ptr);
+    }
 
     /// make_node is a helper function to create a new node with perfect forwarding
     /// @tparam T is the type of the node

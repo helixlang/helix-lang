@@ -299,6 +299,7 @@ AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-com
                     RETURN_IF_ERROR(gen_expr);
 
                     expr = parse<FunctionCallExpr>(expr, gen_expr.value());
+                    RETURN_IF_ERROR(expr);
                 } else {
                     expr = parse<ScopePathExpr>(expr);
                     RETURN_IF_ERROR(expr);
@@ -393,12 +394,12 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
 
     IS_NOT_NULL_RESULT(str_concat) {
         if (str_concat.value()->getNodeType() != nodes::LiteralExpr ||
-            std::static_pointer_cast<LiteralExpr>(str_concat.value())->type !=
+            convert_t<LiteralExpr>(str_concat.value())->type !=
                 LiteralExpr::LiteralType::String) {
             return std::unexpected(PARSE_ERROR(tok, "expected a string literal"));
         }
 
-        NodeT<LiteralExpr> str = std::static_pointer_cast<LiteralExpr>(str_concat.value());
+        NodeT<LiteralExpr> str = convert_t<LiteralExpr>(str_concat.value());
 
         if (tok.token_kind() != __TOKEN_N::LITERAL_STRING) {
             return std::unexpected(PARSE_ERROR(tok, "expected a string literal"));
@@ -417,6 +418,9 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
             break;
         case __TOKEN_N::LITERAL_STRING:
             type = LiteralExpr::LiteralType::String;
+            if (tok.value().length() > 0 && (tok.value()[0] == 'f' && tok.value()[1] == '"')) {
+                tok.get_column_number() -= 1;  // minus 1 to account for the "f" in the string
+            }
             break;
         case __TOKEN_N::LITERAL_CHAR:
             type = LiteralExpr::LiteralType::Char;
@@ -457,7 +461,7 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
                 case '{':
                     if (!prev_is_backslash) {
                         if (open_braces == 0) {
-                            start = ++pos;
+                            start = pos + 1;
                         }
 
                         open_braces++;
@@ -509,7 +513,7 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
                 formatted_string.substr(f_string_elements[i].first, f_string_elements[i].second),
                 tok.file_name(),
                 tok.line_number(),
-                tok.column_number() + original_copy[i].first - 1,
+                tok.column_number() + original_copy[i].first,
                 tok.offset() + original_copy[i].first);
 
             // remove the section of formatted_string
@@ -615,7 +619,7 @@ AST_NODE_IMPL(Expression, BinaryExpr, ParseResult<> lhs, int min_precedence) {
         lhs = make_node<BinaryExpr>(lhs.value(), rhs.value(), op);
     }
 
-    return std::static_pointer_cast<BinaryExpr>(lhs.value());
+    return convert_t<BinaryExpr>(lhs.value());
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, BinaryExpr) {
@@ -641,7 +645,7 @@ AST_NODE_IMPL(Expression, UnaryExpr, ParseResult<> lhs, bool in_type) {
         RETURN_IF_ERROR(rhs);
 
         if (rhs.value()->getNodeType() == nodes::UnaryExpr) {
-            NodeT<UnaryExpr> rhs_unary = std::static_pointer_cast<UnaryExpr>(rhs.value());
+            NodeT<UnaryExpr> rhs_unary = convert_t<UnaryExpr>(rhs.value());
             rhs_unary->in_type         = in_type;
 
             return make_node<UnaryExpr>(rhs_unary, op, UnaryExpr::PosType::PreFix, in_type);
@@ -728,13 +732,13 @@ AST_NODE_IMPL(Expression, ArgumentExpr) {
     NodeT<> lhs_node = lhs.value();
 
     if (lhs_node->getNodeType() == nodes::BinaryExpr) {
-        NodeT<BinaryExpr> bin_expr = std::static_pointer_cast<BinaryExpr>(lhs_node);
+        NodeT<BinaryExpr> bin_expr = convert_t<BinaryExpr>(lhs_node);
 
         if (bin_expr->lhs->getNodeType() == nodes::IdentExpr &&
             bin_expr->op.token_kind() == __TOKEN_N::OPERATOR_ASSIGN) {
 
             NodeT<NamedArgumentExpr> kwarg = make_node<NamedArgumentExpr>(
-                std::static_pointer_cast<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
+                convert_t<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
 
             result       = make_node<ArgumentExpr>(kwarg);
             result->type = ArgumentExpr::ArgumentType::Keyword;
@@ -816,7 +820,7 @@ AST_NODE_IMPL(Expression, GenericInvokeExpr) {
         return make_node<GenericInvokeExpr>(nullptr);
     }
 
-    ParseResult<Type> first = parse<Type>();
+    ParseResult<> first = parse_primary();
     RETURN_IF_ERROR(first);
 
     NodeT<GenericInvokeExpr> generics = make_node<GenericInvokeExpr>(first.value());
@@ -825,7 +829,7 @@ AST_NODE_IMPL(Expression, GenericInvokeExpr) {
         CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA) {
             iter.advance();  // skip ','
 
-            ParseResult<Type> arg = parse<Type>();
+            ParseResult<> arg = parse_primary();
             RETURN_IF_ERROR(arg);
 
             generics->args.push_back(arg.value());
@@ -873,7 +877,7 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
         goto LINE902_PARSE_SCOPE_PATH_EXPR;
     } else {
         IS_NULL_RESULT(lhs) {
-            if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE)) { // global scope access
+            if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE)) {  // global scope access
                 path               = make_node<ScopePathExpr>(false);
                 path->global_scope = true;
 
@@ -887,7 +891,7 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
             RETURN_IF_ERROR(lhs);
 
             if (lhs.value()->getNodeType() == nodes::PathExpr) {
-                NodeT<PathExpr> path = std::static_pointer_cast<PathExpr>(lhs.value());
+                NodeT<PathExpr> path = convert_t<PathExpr>(lhs.value());
 
                 if (path->type != PathExpr::PathType::Identifier) {
                     return std::unexpected(
@@ -898,7 +902,7 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
                     PARSE_ERROR_MSG("expected an identifier, but found nothing"));
             }
 
-            first = std::static_pointer_cast<IdentExpr>(lhs.value());
+            first = convert_t<IdentExpr>(lhs.value());
         }
     }
 
@@ -1070,10 +1074,25 @@ AST_NODE_IMPL(Expression,
     path = parse<PathExpr>(lhs.value());
     RETURN_IF_ERROR(path);
 
-    ParseResult<ArgumentListExpr> args = parse<ArgumentListExpr>();
-    RETURN_IF_ERROR(args);
+    ParseResult<> initializer;
 
-    return make_node<FunctionCallExpr>(path.value(), args.value(), generic_invoke);
+    // either a Argument List or a Object Initializer
+    switch (CURRENT_TOK.token_kind()) {
+        case __TOKEN_N::PUNCTUATION_OPEN_PAREN:
+            initializer = parse<ArgumentListExpr>();
+            break;
+
+        case __TOKEN_N::PUNCTUATION_OPEN_BRACE:
+            initializer = parse<ObjInitExpr>(false, path);
+            break;
+
+        default:
+            return std::unexpected(
+                PARSE_ERROR_MSG("expected '(' or '{' after the previous token"));
+    }
+    RETURN_IF_ERROR(initializer);
+
+    return make_node<FunctionCallExpr>(path.value(), initializer.value(), generic_invoke);
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, FunctionCallExpr) {

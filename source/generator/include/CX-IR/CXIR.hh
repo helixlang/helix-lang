@@ -210,7 +210,7 @@ __CXIR_CODEGEN_BEGIN {
     class CXIR : public __AST_VISITOR::Visitor {
       private:
         std::vector<std::unique_ptr<CX_Token>> tokens;
-        
+
       public:
         CXIR()                        = default;
         CXIR(const CXIR &)            = default;
@@ -242,10 +242,10 @@ __CXIR_CODEGEN_BEGIN {
             for (u64 i = 0; i < tokens.size(); ++i) {
                 // normalize so there arent multiple #line
                 if (tokens[i]->get_value()[0] == '#') {
-                    cxir +=  "\n" + tokens[i]->get_value() + " " + tokens[i+1]->get_value() + "\n";
+                    cxir += "\n" + tokens[i]->get_value() + " " + tokens[i + 1]->get_value() + "\n";
                     ++i;
                 } else if (tokens[i]->get_value() == ";") {
-                    cxir +=  " " + tokens[i]->get_value() + "\n";
+                    cxir += " " + tokens[i]->get_value() + "\n";
                 } else if (tokens[i]->get_line() == 0 || tokens[i]->get_line() == current_line_no) {
                     cxir += " " + tokens[i]->get_value() + " ";
                 } else {
@@ -343,8 +343,14 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::InstOfExpr &node) override;
         void visit(const parser ::ast ::node ::AsyncThreading &node) override;
         void visit(const parser ::ast ::node ::Type &node) override;
-        void visit(const parser ::ast ::node ::NamedVarSpecifier &node) override;
-        void visit(const parser ::ast ::node ::NamedVarSpecifierList &node) override;
+        void visit(const parser ::ast ::node ::NamedVarSpecifier &node, bool omit_t);
+        void visit(const parser ::ast ::node ::NamedVarSpecifier &node) override {
+            visit(node, false);
+        }
+        void visit(const parser ::ast ::node ::NamedVarSpecifierList &node, bool omit_t);
+        void visit(const parser ::ast ::node ::NamedVarSpecifierList &node) override {
+            visit(node, false);
+        }
         void visit(const parser ::ast ::node ::ForPyStatementCore &node) override;
         void visit(const parser ::ast ::node ::ForCStatementCore &node) override;
         void visit(const parser ::ast ::node ::ForState &node) override;
@@ -386,7 +392,8 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::FuncDecl &node, bool no_return_t);
         void visit(const parser ::ast ::node ::VarDecl &node) override;
         void visit(const parser ::ast ::node ::FFIDecl &node) override;
-        void visit(const parser ::ast ::node ::LetDecl &node) override;
+        void visit(const parser ::ast ::node ::LetDecl &node) override { visit(node, false); };
+        void visit(const parser ::ast ::node ::LetDecl &node, bool is_in_statement);
         void visit(const parser ::ast ::node ::OpDecl &node) override;
         void visit(const parser ::ast ::node ::OpDecl &node, bool remove_self) {};
         void visit(const parser ::ast ::node ::Program &node) override;

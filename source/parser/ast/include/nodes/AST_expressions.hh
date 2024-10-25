@@ -37,8 +37,8 @@ __AST_NODE_BEGIN {
 
         __TOKEN_N::Token value;
         LiteralType      type;
-        bool contains_format_args = false;
-        NodeV<> format_args;
+        bool             contains_format_args = false;
+        NodeV<>          format_args;
     };
 
     class BinaryExpr final : public Node {  // := E op E
@@ -158,7 +158,7 @@ __AST_NODE_BEGIN {
 
         NodeV<IdentExpr> path;
         NodeT<>          access;
-        bool global_scope = false;
+        bool             global_scope = false;
     };
 
     class DotPathExpr final : public Node {  // := E '.' E
@@ -223,14 +223,14 @@ __AST_NODE_BEGIN {
         BASE_CORE_METHODS(FunctionCallExpr);
 
         FunctionCallExpr(NodeT<PathExpr>          path,
-                         NodeT<ArgumentListExpr>  args,
+                         NodeT<>                  args,
                          NodeT<GenericInvokeExpr> generic = nullptr)
             : path(std::move(path))
             , args(std::move(args))
             , generic(std::move(generic)) {}
 
         NodeT<PathExpr>          path;
-        NodeT<ArgumentListExpr>  args;
+        NodeT<>                  args;
         NodeT<GenericInvokeExpr> generic;
     };
 
@@ -332,7 +332,7 @@ __AST_NODE_BEGIN {
             : value(std::move(value))
             , type(std::move(type)) {}
 
-        NodeT<> value;
+        NodeT<>     value;
         NodeT<Type> type;
     };
 
@@ -354,7 +354,6 @@ __AST_NODE_BEGIN {
         InstanceType op;
     };
 
-    /* DEPRECATED */
     class Type final : public Node {  // := IdentExpr
         BASE_CORE_METHODS(Type);
 

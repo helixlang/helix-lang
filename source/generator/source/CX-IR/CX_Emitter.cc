@@ -108,7 +108,7 @@ CX_VISIT_IMPL(LiteralExpr) {
     ADD_TOKEN_AS_TOKEN(CXX_CORE_LITERAL, node.value);
 }
 
-CX_VISIT_IMPL(LetDecl) {
+CX_VISIT_IMPL_VA(LetDecl, bool is_in_statement) {
 
     // for (int i =0; i<node.modifiers.get<parser::ast::TypeSpecifier>().size(); ++i) {
 
@@ -116,7 +116,21 @@ CX_VISIT_IMPL(LetDecl) {
 
     // }
 
-    ADD_ALL_NODE_PARAMS(vars);
+    // insert all the modifiers at the start
+    auto mods = node.modifiers.get<parser::ast::FunctionSpecifier>();
+
+    for (const auto &mod : mods) {
+        if (mod.type == parser::ast::FunctionSpecifier::Specifier::Static) {
+            ADD_TOKEN_AS_TOKEN(CXX_STATIC, mod.marker);
+        }
+    }
+
+    for (const auto &param : node.vars) {
+        param->accept(*this);
+        if (is_in_statement) {
+            ADD_TOKEN(CXX_SEMICOLON);
+        }
+    };
 }
 
 CX_VISIT_IMPL(BinaryExpr) {
@@ -285,11 +299,39 @@ CX_VISIT_IMPL(FunctionCallExpr) {
     // generic
     // args
 
+    if (node.path->get_back_name().value() == "__inline_cpp") {
+        if (node.args->getNodeType() != parser::ast::node::nodes::ArgumentListExpr ||
+            std::static_pointer_cast<parser::ast::node::ArgumentListExpr>(node.args)->args.size() !=
+                1) {
+            auto bad_tok = node.path->get_back_name();
+            CODEGEN_ERROR(bad_tok, "__inline_cpp requires exactly one argument");
+        }
+
+        auto arg = std::static_pointer_cast<parser::ast::node::ArgumentListExpr>(node.args)->args[0];
+        if (arg->getNodeType() != parser::ast::node::nodes::ArgumentExpr || std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value->getNodeType() != parser::ast::node::nodes::LiteralExpr) {
+            auto bad_tok = node.path->get_back_name();
+            CODEGEN_ERROR(bad_tok, "__inline_cpp requires a string literal argument");
+        }
+
+        auto arg_ptr = std::static_pointer_cast<parser::ast::node::LiteralExpr>(std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value);
+        if (arg_ptr->contains_format_args) {
+            auto bad_tok = node.path->get_back_name();
+            CODEGEN_ERROR(bad_tok, "__inline_cpp does not support format arguments");
+        }
+        
+        auto arg_str = arg_ptr->value;
+        arg_str.get_value() = arg_str.value().substr(1, arg_str.value().size() - 2); // remove quotes
+        ADD_TOKEN_AS_TOKEN(CXX_INLINE_CODE, arg_str);
+
+        return;
+    }
+
     ADD_NODE_PARAM(path);
 
     if (node.generic) {
         ADD_NODE_PARAM(generic);
     };
+
     ADD_NODE_PARAM(args);
 }
 
@@ -419,33 +461,57 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
     ADD_NODE_PARAM(generics);
 }
 
-CX_VISIT_IMPL(NamedVarSpecifier) {
+CX_VISIT_IMPL_VA(NamedVarSpecifier, bool omit_t) {
     // (type | auto) name
 
-    if (node.type) {
-        ADD_NODE_PARAM(type);
-    } else {
-        ADD_TOKEN(CXX_AUTO);
+    if (!omit_t) {
+        if (node.type) {
+            ADD_NODE_PARAM(type);
+        } else {
+            ADD_TOKEN(CXX_AUTO);
+        }
     }
 
     ADD_NODE_PARAM(path);
 }
 
-CX_VISIT_IMPL(NamedVarSpecifierList) { COMMA_SEP(vars); }
+CX_VISIT_IMPL_VA(NamedVarSpecifierList, bool omit_t) {
+    if (!node.vars.empty()) {
+        if (node.vars[0] != nullptr) {
+            visit(*node.vars[0], omit_t);
+        }
+        for (size_t i = 1; i < node.vars.size(); ++i) {
+            ADD_TOKEN(CXX_COMMA);
+            if (node.vars[i] != nullptr) {
+                visit(*node.vars[i], omit_t);
+            }
+        }
+    };
+}
 
 CX_VISIT_IMPL(ForPyStatementCore) {
     // := NamedVarSpecifier 'in 'expr' Suite
 
     ADD_TOKEN(CXX_LPAREN);
+    // auto &[a, b]
 
-    ADD_NODE_PARAM(vars);
+    if (node.vars->vars.size() > 1) {
+        ADD_TOKEN(CXX_AUTO);
+        ADD_TOKEN(CXX_AMPERSAND);
+        ADD_TOKEN(CXX_LBRACKET);
+
+        if (node.vars != nullptr) {
+            visit(*node.vars, true);
+        }
+
+        ADD_TOKEN(CXX_RBRACKET);
+    } else {
+        ADD_NODE_PARAM(vars);
+    }
 
     ADD_TOKEN(CXX_COLON);
-
     ADD_NODE_PARAM(range);
-
     ADD_TOKEN(CXX_RPAREN);
-
     ADD_NODE_PARAM(body);
 }
 
@@ -595,7 +661,21 @@ CX_VISIT_IMPL(BreakState) {
 
 CX_VISIT_IMPL(BlockState) {
     // -> (statement ';')*
-    SEP_TRAILING(body, ADD_TOKEN(CXX_SEMICOLON););
+    if (!node.body.empty()) {
+        for (const auto &i : node.body) {
+            if (i != nullptr) {
+                if (i->getNodeType() == parser::ast::node::nodes::LetDecl) {
+                    parser::ast::NodeT<parser::ast::node::LetDecl> node =
+                        std::static_pointer_cast<parser::ast::node::LetDecl>(i);
+                    visit(*node, true);
+                } else {
+                    i->accept(*this);
+                }
+            }
+
+            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_SEMICOLON));
+        }
+    }
 }
 
 CX_VISIT_IMPL(SuiteState) {
@@ -1207,28 +1287,27 @@ CX_VISIT_IMPL(Program) {
 ///*--- Helix ---*
 
 // auto c++ includes for the core of the language
-#include <set>
-#include <map>
-#include <tuple>
 #include <array>
-#include <limits>
-#include <string>
-#include <vector>
-#include <memory>
-#include <cstdint>
-#include <variant>
-#include <sstream>
-#include <utility>
 #include <concepts>
-#include <optional>
-#include <iostream>
-#include <stdexcept>
 #include <coroutine>
+#include <cstdint>
+#include <iostream>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #ifdef __GNUG__
-    #include <cxxabi.h>
-    #include <memory>
+#include <cxxabi.h>
 #endif
 
 /// language primitive types
@@ -1236,38 +1315,40 @@ CX_VISIT_IMPL(Program) {
 /// ensure cross-platform compatibility for 128-bit and 256-bit types.
 /// gcc/clang support these types, but MSVC may not. We can conditionally include them.
 
-using u8   = unsigned char;
-using i8   = signed char;
-using u16  = unsigned short;
-using i16  = signed short;
-using u32  = unsigned int;
-using i32  = signed int;
-using u64  = unsigned long long;
-using i64  = signed long long;
+namespace libcxx = std;
+
+using u8  = unsigned char;
+using i8  = signed char;
+using u16 = unsigned short;
+using i16 = signed short;
+using u32 = unsigned int;
+using i32 = signed int;
+using u64 = unsigned long long;
+using i64 = signed long long;
 
 #if !defined(_MSC_VER)
-    using u128 = __uint128_t;
-    using i128 = __int128_t;
+using u128 = __uint128_t;
+using i128 = __int128_t;
 #endif
 
 using f32 = float;
 using f64 = double;
 using f80 = long double;
 
-using usize = std::size_t;
-using isize = std::ptrdiff_t;
+using usize = ::libcxx::size_t;
+using isize = ::libcxx::ptrdiff_t;
 
-using byte = std::byte;
-using string = std::string;
+using byte   = ::libcxx::byte;
+using string = ::libcxx::string;
 
-template <typename ...Args>
-using tuple = std::tuple<Args...>;
-template <typename ...Args>
-using list = std::vector<Args...>;
-template <typename ...Args>
-using set = std::set<Args...>;
-template <typename ...Args>
-using map = std::map<Args...>;
+template <typename... Args>
+using tuple = ::libcxx::tuple<Args...>;
+template <typename... Args>
+using list = ::libcxx::vector<Args...>;
+template <typename... Args>
+using set = ::libcxx::set<Args...>;
+template <typename... Args>
+using map = ::libcxx::map<Args...>;
 
 #if __cplusplus < 202002L
 static_assert(false, "helix requires c++20 or higher");
@@ -1289,7 +1370,7 @@ namespace __internal_interfaces {
     ///
     template <typename T>
     concept ToString = requires(T a) {
-        { a.to_string() } -> ::std::convertible_to<::string>;
+        { a.to_string() } -> ::libcxx::convertible_to<::string>;
     };
 
     /// \include belongs to the helix standard library.
@@ -1298,8 +1379,8 @@ namespace __internal_interfaces {
     /// This concept checks if a type has an ostream operator
     ///
     template <typename T>
-    concept OStream = requires(::std::ostream &os, T a) {
-        { os << a } -> ::std::convertible_to<::std::ostream &>;
+    concept OStream = requires(::libcxx::ostream &os, T a) {
+        { os << a } -> ::libcxx::convertible_to<::libcxx::ostream &>;
     };
 
     /// \include belongs to the helix standard library.
@@ -1325,21 +1406,21 @@ constexpr ::string any_to_string(Expr &&arg) {
     if constexpr (__internal_interfaces::ToString<Expr>) {
         return arg.to_string();
     } else if constexpr (__internal_interfaces::OStream<Expr>) {
-        ::std::stringstream ss;
+        ::libcxx::stringstream ss;
         ss << arg;
         return ss.str();
-    } else if constexpr (::std::is_arithmetic_v<Expr>) {
-        return ::std::to_string(arg);
+    } else if constexpr (::libcxx::is_arithmetic_v<Expr>) {
+        return ::libcxx::to_string(arg);
     } else {
-        ::std::stringstream ss;
-    
+        ::libcxx::stringstream ss;
+
 #       ifdef __GNUG__
-            int status;
+            int   status;
             char *realname = abi::__cxa_demangle(typeid(arg).name(), 0, 0, &status);
-            ss << "[" << realname << " at 0x" << ::std::hex << &arg << "]";
+            ss << "[" << realname << " at 0x" << ::libcxx::hex << &arg << "]";
             free(realname);
 #       else
-            ss << "[" << typeid(arg).name() << " at 0x" << ::std::hex << &arg << "]";
+            ss << "[" << typeid(arg).name() << " at 0x" << ::libcxx::hex << &arg << "]";
 #       endif
 
         return ss.str();
@@ -1360,23 +1441,24 @@ constexpr ::string any_to_string(Expr &&arg) {
 /// f"hi: {some_expr() + 12}"    -> format_string("hi: \{\}", some_expr() + 12)
 ///
 template <typename... Expr>
-constexpr  ::string format_string( ::string base, Expr &&...args) {
-    const ::std::array< ::string, sizeof...(args)> exprs_as_string = {
-        any_to_string(::std::forward<Expr>(args))...};
+constexpr ::string format_string(::string base, Expr &&...args) {
+    const ::libcxx::array<::string, sizeof...(args)> exprs_as_string = {
+        any_to_string(::libcxx::forward<Expr>(args))...};
     size_t pos = 0;
 
-#pragma unroll
-    for (auto &&arg : exprs_as_string) {
-        pos = base.find("\\{\\}", pos);
+#   pragma unroll
+        for (auto &&arg : exprs_as_string) {
+            pos = base.find("\\{\\}", pos);
 
-        if (pos == ::string::npos) [[unlikely]] {
-            throw ::std::runtime_error(
-                "error: [f-stirng engine]: format argument count mismatch, this should not happen, please open a issue on github");
+            if (pos == ::string::npos) [[unlikely]] {
+                throw ::libcxx::runtime_error(
+                    "error: [f-stirng engine]: format argument count mismatch, this should not "
+                    "happen, please open a issue on github");
+            }
+
+            base.replace(pos, 4, arg);
+            pos += arg.size();
         }
-
-        base.replace(pos, 4, arg);
-        pos += arg.size();
-    }
 
     return base;
 }
@@ -1392,15 +1474,15 @@ class endl {
     ~endl()                       = default;
 
     explicit endl(::string end)
-        : end_l(::std::move(end)) {}
-    
+        : end_l(::libcxx::move(end)) {}
+
     explicit endl(const char *end)
         : end_l(end) {}
-    
+
     explicit endl(const char end)
         : end_l(::string(1, end)) {}
-    
-    friend ::std::ostream &operator<<(::std::ostream &oss, const endl &end) {
+
+    friend ::libcxx::ostream &operator<<(::libcxx::ostream &oss, const endl &end) {
         oss << end.end_l;
         return oss;
     }
@@ -1409,99 +1491,115 @@ class endl {
     ::string end_l = "\n";
 };
 
-template <::std::movable T>
+template <::libcxx::movable T>
 class generator {
   public:
     struct promise_type {
+        static ::libcxx::suspend_always initial_suspend() noexcept { return {}; }
+        static ::libcxx::suspend_always final_suspend() noexcept { return {}; }
         generator<T> get_return_object() { return generator{Handle::from_promise(*this)}; }
-        static ::std::suspend_always initial_suspend() noexcept { return {}; }
-        static ::std::suspend_always final_suspend() noexcept { return {}; }
-        ::std::suspend_always        yield_value(T value) noexcept {
-            current_value = ::std::move(value);
+
+        ::libcxx::suspend_always yield_value(T value) noexcept {
+            current_value = ::libcxx::move(value);
             return {};
         }
-        // Disallow co_await in generator coroutines.
-        void await_transform() = delete;
-        [[noreturn]]
-        static void unhandled_exception() {
-            throw;
-        }
 
-        ::std::optional<T> current_value;
+        void                     await_transform() = delete;
+        [[noreturn]] static void unhandled_exception() { throw; }
+
+        ::libcxx::optional<T> current_value;
     };
 
-    using Handle = ::std::coroutine_handle<promise_type>;
+    using Handle = ::libcxx::coroutine_handle<promise_type>;
 
-    explicit generator(const Handle coroutine)
-        : m_coroutine{coroutine} {}
-
-    generator() = default;
-    ~generator() {
-        if (m_coroutine)
-            m_coroutine.destroy();
-    }
-
+    generator()                             = default;
     generator(const generator &)            = delete;
     generator &operator=(const generator &) = delete;
+    explicit generator(const Handle coroutine)
+        : m_coroutine{coroutine} {}
 
     generator(generator &&other) noexcept
         : m_coroutine{other.m_coroutine} {
         other.m_coroutine = {};
     }
+
     generator &operator=(generator &&other) noexcept {
         if (this != &other) {
-            if (m_coroutine)
+            if (m_coroutine) {
                 m_coroutine.destroy();
+            }
+
             m_coroutine       = other.m_coroutine;
             other.m_coroutine = {};
         }
         return *this;
     }
 
-    // Range-based for loop support.
+    ~generator() {
+        if (m_coroutine) {
+            m_coroutine.destroy();
+        }
+    }
+
     class Iter {
       public:
         void     operator++() { m_coroutine.resume(); }
         const T &operator*() const { return *m_coroutine.promise().current_value; }
-        bool     operator==(::std::default_sentinel_t) const {
+        bool     operator==(::libcxx::default_sentinel_t /*unused*/) const {
             return !m_coroutine || m_coroutine.done();
         }
 
         explicit Iter(const Handle coroutine)
             : m_coroutine{coroutine} {}
 
+        size_t index() const { return m_coroutine.promise().index; }
+
       private:
         Handle m_coroutine;
     };
 
     Iter begin() {
-        if (m_coroutine)
+        if (m_coroutine) {
             m_coroutine.resume();
-        return Iter{m_coroutine};
+        }
+
+        if (m_iter == nullptr) {
+            m_iter = new Iter{m_coroutine};
+        }
+        
+        return *m_iter;
     }
 
-    ::std::default_sentinel_t end() { return {}; }
+    ::libcxx::default_sentinel_t end() { return {}; }
 
   private:
     Handle m_coroutine;
+    Iter  *m_iter = nullptr;
 };
 }  // namespace helix
+
+/// next function to advance a generator manually and return the current value
+template <::libcxx::movable T>
+inline T next(helix::generator<T> &gen) {
+    auto iter = gen.begin();
+    return *iter;
+}
 
 template <typename... Args>
 inline constexpr void print(Args &&...args) {
     if constexpr (sizeof...(args) == 0) {
-        ::std::cout << helix::endl('\n');
+        ::libcxx::cout << helix::endl('\n');
         return;
     };
-    
-    (::std::cout << ... << args);
-    
+
+    (::libcxx::cout << ... << args);
+
     if constexpr (sizeof...(args) > 0) {
-        if constexpr (!::std::is_same_v<::std::remove_cv_t<::std::remove_reference_t<
-                                          decltype(::std::get<sizeof...(args) - 1>(
-                                              ::std::tuple<Args...>(args...)))>>,
-                                      helix::endl>) {
-            ::std::cout << helix::endl('\n');
+        if constexpr (!::libcxx::is_same_v<::libcxx::remove_cv_t<::libcxx::remove_reference_t<
+                                            decltype(::libcxx::get<sizeof...(args) - 1>(
+                                                ::libcxx::tuple<Args...>(args...)))>>,
+                                        helix::endl>) {
+            ::libcxx::cout << helix::endl('\n');
         }
     }
 }
