@@ -19,7 +19,7 @@
 
 #include "token/include/Token.hh"
 
-#define IS_LITERAL                      \
+#define IS_LITERAL                          \
     {__TOKEN_N::LITERAL_STRING,             \
      __TOKEN_N::LITERAL_TRUE,               \
      __TOKEN_N::LITERAL_FALSE,              \
@@ -29,42 +29,53 @@
      __TOKEN_N::LITERAL_CHAR,               \
      __TOKEN_N::LITERAL_NULL}
 
-#define IS_IDENTIFIER                                                              \
-    {                                                                              \
-        __TOKEN_N::IDENTIFIER,       __TOKEN_N::PRIMITIVE_VOID,  __TOKEN_N::PRIMITIVE_BOOL,    \
-        __TOKEN_N::PRIMITIVE_BYTE,   __TOKEN_N::PRIMITIVE_CHAR,  __TOKEN_N::PRIMITIVE_I8,      \
-        __TOKEN_N::PRIMITIVE_U8,    __TOKEN_N::PRIMITIVE_I16,    __TOKEN_N::PRIMITIVE_U16,     \
-        __TOKEN_N::PRIMITIVE_I32,   __TOKEN_N::PRIMITIVE_U32,    __TOKEN_N::PRIMITIVE_F32,     \
-        __TOKEN_N::PRIMITIVE_I64,   __TOKEN_N::PRIMITIVE_U64,    __TOKEN_N::PRIMITIVE_F64,     \
-        __TOKEN_N::PRIMITIVE_I128,  __TOKEN_N::PRIMITIVE_U128,   \
+#define IS_IDENTIFIER              \
+    {                              \
+        __TOKEN_N::IDENTIFIER,     \
+        __TOKEN_N::PRIMITIVE_VOID, \
+        __TOKEN_N::PRIMITIVE_BOOL, \
+        __TOKEN_N::PRIMITIVE_BYTE, \
+        __TOKEN_N::PRIMITIVE_CHAR, \
+        __TOKEN_N::PRIMITIVE_I8,   \
+        __TOKEN_N::PRIMITIVE_U8,   \
+        __TOKEN_N::PRIMITIVE_I16,  \
+        __TOKEN_N::PRIMITIVE_U16,  \
+        __TOKEN_N::PRIMITIVE_I32,  \
+        __TOKEN_N::PRIMITIVE_U32,  \
+        __TOKEN_N::PRIMITIVE_F32,  \
+        __TOKEN_N::PRIMITIVE_I64,  \
+        __TOKEN_N::PRIMITIVE_U64,  \
+        __TOKEN_N::PRIMITIVE_F64,  \
+        __TOKEN_N::PRIMITIVE_I128, \
+        __TOKEN_N::PRIMITIVE_U128, \
     }
 
-#define IS_KEYWORD                                                                \
-    {__TOKEN_N::KEYWORD_IF,        __TOKEN_N::KEYWORD_ELSE,      __TOKEN_N::KEYWORD_UNLESS,   \
-     __TOKEN_N::KEYWORD_SPAWN,     __TOKEN_N::KEYWORD_AWAIT,     __TOKEN_N::KEYWORD_THREAD,   \
-     __TOKEN_N::KEYWORD_MACRO,     __TOKEN_N::KEYWORD_DEFINE,    __TOKEN_N::KEYWORD_FUNCTION, \
-     __TOKEN_N::KEYWORD_OPERATOR,  __TOKEN_N::KEYWORD_INLINE,    __TOKEN_N::KEYWORD_RETURN,   \
-     __TOKEN_N::KEYWORD_ENCLOSING, __TOKEN_N::KEYWORD_ASYNC,     __TOKEN_N::KEYWORD_FOR,      \
-     __TOKEN_N::KEYWORD_WHILE,     __TOKEN_N::KEYWORD_BREAK,     __TOKEN_N::KEYWORD_CONTINUE, \
-     __TOKEN_N::KEYWORD_CASE,      __TOKEN_N::KEYWORD_MATCH,     __TOKEN_N::KEYWORD_SWITCH,   \
-     __TOKEN_N::KEYWORD_DEFAULT,   __TOKEN_N::KEYWORD_ENUM,      __TOKEN_N::KEYWORD_TYPE,     \
-     __TOKEN_N::KEYWORD_CLASS,     __TOKEN_N::KEYWORD_UNION,     __TOKEN_N::KEYWORD_STRUCT,   \
-     __TOKEN_N::KEYWORD_ABSTRACT,  __TOKEN_N::KEYWORD_INTERFACE, __TOKEN_N::KEYWORD_IS,       \
-     __TOKEN_N::KEYWORD_TRY,       __TOKEN_N::KEYWORD_PANIC,     __TOKEN_N::KEYWORD_CATCH,    \
-     __TOKEN_N::KEYWORD_FINALLY,   __TOKEN_N::KEYWORD_LET,       __TOKEN_N::KEYWORD_PRIVATE,  \
-     __TOKEN_N::KEYWORD_AUTO,      __TOKEN_N::KEYWORD_CONST,     __TOKEN_N::KEYWORD_GLOBAL,   \
-     __TOKEN_N::KEYWORD_FROM,      __TOKEN_N::KEYWORD_FFI,       __TOKEN_N::KEYWORD_IMPORT,   \
-     __TOKEN_N::KEYWORD_EXTERN,    __TOKEN_N::KEYWORD_YIELD,     __TOKEN_N::KEYWORD_AS,       \
-     __TOKEN_N::KEYWORD_DERIVES,   __TOKEN_N::KEYWORD_MODULE}
+#define IS_KEYWORD                                                                            \
+    {__TOKEN_N::KEYWORD_IF,        __TOKEN_N::KEYWORD_ELSE,     __TOKEN_N::KEYWORD_UNLESS,    \
+     __TOKEN_N::KEYWORD_SPAWN,     __TOKEN_N::KEYWORD_AWAIT,    __TOKEN_N::KEYWORD_THREAD,    \
+     __TOKEN_N::KEYWORD_MACRO,     __TOKEN_N::KEYWORD_FUNCTION, __TOKEN_N::KEYWORD_OPERATOR,  \
+     __TOKEN_N::KEYWORD_INLINE,    __TOKEN_N::KEYWORD_RETURN,   __TOKEN_N::KEYWORD_ENCLOSING, \
+     __TOKEN_N::KEYWORD_ASYNC,     __TOKEN_N::KEYWORD_FOR,      __TOKEN_N::KEYWORD_WHILE,     \
+     __TOKEN_N::KEYWORD_BREAK,     __TOKEN_N::KEYWORD_CONTINUE, __TOKEN_N::KEYWORD_CASE,      \
+     __TOKEN_N::KEYWORD_MATCH,     __TOKEN_N::KEYWORD_SWITCH,   __TOKEN_N::KEYWORD_DEFAULT,   \
+     __TOKEN_N::KEYWORD_ENUM,      __TOKEN_N::KEYWORD_TYPE,     __TOKEN_N::KEYWORD_CLASS,     \
+     __TOKEN_N::KEYWORD_UNION,     __TOKEN_N::KEYWORD_STRUCT,   __TOKEN_N::KEYWORD_ABSTRACT,  \
+     __TOKEN_N::KEYWORD_INTERFACE, __TOKEN_N::KEYWORD_IS,       __TOKEN_N::KEYWORD_TRY,       \
+     __TOKEN_N::KEYWORD_PANIC,     __TOKEN_N::KEYWORD_CATCH,    __TOKEN_N::KEYWORD_FINALLY,   \
+     __TOKEN_N::KEYWORD_LET,       __TOKEN_N::KEYWORD_PRIVATE,  __TOKEN_N::KEYWORD_AUTO,      \
+     __TOKEN_N::KEYWORD_CONST,     __TOKEN_N::KEYWORD_GLOBAL,   __TOKEN_N::KEYWORD_FROM,      \
+     __TOKEN_N::KEYWORD_FFI,       __TOKEN_N::KEYWORD_IMPORT,   __TOKEN_N::KEYWORD_EXTERN,    \
+     __TOKEN_N::KEYWORD_YIELD,     __TOKEN_N::KEYWORD_AS,       __TOKEN_N::KEYWORD_DERIVES,   \
+     __TOKEN_N::KEYWORD_MODULE}
 
-#define IS_DELIMITER           \
+#define IS_DELIMITER               \
     {__TOKEN_N::DELIMITER_TAB,     \
      __TOKEN_N::DELIMITER_NEWLINE, \
      __TOKEN_N::EOF_TOKEN,         \
      __TOKEN_N::DELIMITER_SPACE,   \
      __TOKEN_N::WHITESPACE}
 
-#define IS_UNARY_OPERATOR         \
+#define IS_UNARY_OPERATOR             \
     {__TOKEN_N::OPERATOR_ADD,         \
      __TOKEN_N::OPERATOR_SUB,         \
      __TOKEN_N::OPERATOR_BITWISE_NOT, \
@@ -79,7 +90,7 @@
      __TOKEN_N::OPERATOR_BITWISE_AND, \
      __TOKEN_N::OPERATOR_RANGE_INCLUSIVE}
 
-#define IS_OPERATOR                          \
+#define IS_OPERATOR                              \
     {__TOKEN_N::OPERATOR_ADD,                    \
      __TOKEN_N::OPERATOR_SUB,                    \
      __TOKEN_N::OPERATOR_MUL,                    \
@@ -139,7 +150,7 @@
      __TOKEN_N::PUNCTUATION_CLOSE_ANGLE,         \
      __TOKEN_N::OPERATOR_RANGE_INCLUSIVE}
 
-#define IS_BINARY_OPERATOR                   \
+#define IS_BINARY_OPERATOR                       \
     {__TOKEN_N::OPERATOR_ADD,                    \
      __TOKEN_N::OPERATOR_SUB,                    \
      __TOKEN_N::OPERATOR_MUL,                    \
@@ -189,7 +200,7 @@
      __TOKEN_N::PUNCTUATION_CLOSE_ANGLE,         \
      __TOKEN_N::OPERATOR_RANGE_INCLUSIVE}
 
-#define IS_PUNCTUATION                       \
+#define IS_PUNCTUATION                           \
     {__TOKEN_N::PUNCTUATION_OPEN_PAREN,          \
      __TOKEN_N::PUNCTUATION_CLOSE_PAREN,         \
      __TOKEN_N::PUNCTUATION_OPEN_BRACE,          \
@@ -205,7 +216,7 @@
      __TOKEN_N::PUNCTUATION_MULTI_LINE_COMMENT,  \
      __TOKEN_N::PUNCTUATION_ELLIPSIS}
 
-#define IS_PRIMITIVE                                                            \
+#define IS_PRIMITIVE                                                                        \
     {__TOKEN_N::PRIMITIVE_VOID,  __TOKEN_N::PRIMITIVE_BOOL,    __TOKEN_N::PRIMITIVE_BYTE,   \
      __TOKEN_N::PRIMITIVE_CHAR,  __TOKEN_N::PRIMITIVE_POINTER, __TOKEN_N::PRIMITIVE_I8,     \
      __TOKEN_N::PRIMITIVE_U8,    __TOKEN_N::PRIMITIVE_I16,     __TOKEN_N::PRIMITIVE_U16,    \

@@ -214,7 +214,8 @@
     GENERATE(CXX_RIGHT_SHIFT_ASSIGN,">>="               ) \
     GENERATE(CXX_AND_ASSIGN,        "&="                ) \
     GENERATE(CXX_OR_ASSIGN,         "|="                ) \
-    GENERATE(CXX_XOR_ASSIGN,        "^="                )
+    GENERATE(CXX_XOR_ASSIGN,        "^="                ) \
+    GENERATE(CXX_INLINE_CODE,       "/* inline code */" )
 
 
 
