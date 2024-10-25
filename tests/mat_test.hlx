@@ -1,0 +1,42 @@
+ffi "c++" import "iostream";
+ffi "c++" import "type_traits";
+ffi "c++" import "memory";
+
+/* ------------------------------------------- helper ------------------------------------------- */
+/// define a basic range method since c++ does not provide one and helix does not have a std (yet)
+interface Incrementable {
+    op ++ fn inc(self) -> Self;
+    op < fn lt(self, other: Self) -> bool;
+    op == fn eq(self, other: Self) -> bool;
+}
+
+fn range(start: T, end: T, step: T = 1) -> yield T requires <T> if Incrementable in T {
+    while start < end {
+        yield start;
+        start += step;
+    }
+}
+
+fn range(end: T) -> yield T requires <T> if Incrementable in T {
+    let start = T();
+
+    while start < end {
+        yield start;
+        ++start;
+    }
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+
+struct Factorial requires <N: i64> {
+    const factorial: i64 = N * (Factorial::<(N - 1)>()).factorial;
+};
+
+extend Factorial for *T, U requires <T: i64, U: i64> {
+    const factorial: i64 = 1;
+}
+
+fn main() -> i32 {
+    print(Factorial::<50>().factorial);
+    return 0;
+}
