@@ -1605,6 +1605,14 @@ inline constexpr void print(Args &&...args) {
 }
 
 #define _new(type, ...) new type(__VA_ARGS__)
+
+namespace libc {
+    template <typename T>
+    using va_array = T[];
+
+    template <typename T, size_t N>
+    using array = T[N];
+}
 )");
 
     for (const auto &child : node.children) {
