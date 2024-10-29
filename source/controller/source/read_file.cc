@@ -106,6 +106,17 @@ __CONTROLLER_FS_BEGIN {
         return path.value();
     }
 
+    fs_path normalize_path_no_check(std::string & filename) {
+        std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename, false);
+
+        if (!path.has_value()) {
+            error::Panic(error::CompilerError{2.1001, {}, std::vector<string>{filename}});
+            std::exit(1);
+        }
+
+        return path.value();
+    }
+
     std::string read_file(std::string & filename) {
         std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename);
         if (!path.has_value()) {

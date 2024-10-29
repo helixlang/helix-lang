@@ -17,7 +17,8 @@
 #include "controller/include/shared/file_system.hh"
 
 __CONTROLLER_FS_BEGIN {
-    std::optional<std::filesystem::path> resolve_path(const std::string &resolve) {
+    std::optional<std::filesystem::path> resolve_path(const std::string &resolve,
+                                                      const bool         must_exist) {
         std::filesystem::path path(resolve);
 
         if (!path.is_absolute()) {
@@ -35,12 +36,17 @@ __CONTROLLER_FS_BEGIN {
             return path;
         }
 
-        // Path does not exist
+        if (!must_exist) {
+            return path;
+        }
+
+        // if the file does not exist, and must_exist is true, return nullopt
         return std::nullopt;
     }
 
     std::optional<std::filesystem::path> resolve_path(const std::string &resolve,
-                                                      const std::string &base) {
+                                                      const std::string &base,
+                                                      const bool         must_exist) {
         std::filesystem::path base_path(base);
 
         if (!base_path.is_absolute()) {
@@ -61,6 +67,11 @@ __CONTROLLER_FS_BEGIN {
             return path;
         }
 
+        if (!must_exist) {
+            return path;
+        }
+
+        // if the file does not exist, and must_exist is true, return nullopt
         return std::nullopt;
     }
 }  // __CONTROLLER_FS_BEGIN

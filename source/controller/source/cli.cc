@@ -133,6 +133,9 @@ Thank you for using Helix!
         args::ValueFlagList<std::string> module_dirs(
             parser, "moddir", "Specify Helix modules directories", {'m'});
         args::Positional<std::string> input_file(parser, "file", "Specify input file path");
+        
+        /// any other flags after -- are treated as compiler flags
+        args::PositionalList<std::string> cxx_args(parser, "c++_flags", "Flags to pass into the C++ compiler");
 
         parser.LongSeparator(" ");
 
@@ -209,6 +212,7 @@ https://helix-lang.com/ for more information.
             this->emit_cst    = emit_cst;
             this->emit_ir     = emit_ir;
             this->emit_doc    = emit_doc;
+            
 
             if (verbose && quiet) {
                 std::cerr << colors::fg16::red << "Error:" << colors::reset
@@ -258,6 +262,7 @@ https://helix-lang.com/ for more information.
             this->library_dirs   = args::get(library_dirs);
             this->link_libraries = args::get(link_libraries);
             this->module_dirs    = args::get(module_dirs);
+            this->cxx_args       = args::get(cxx_args);
 
             this->get_all_flags += "flags: \n";
             this->get_all_flags +=

@@ -144,6 +144,8 @@ __CONTROLLER_CLI_BEGIN {
         std::vector<std::string> link_libraries;
         std::vector<std::string> module_dirs;
 
+        std::vector<std::string> cxx_args;
+
         explicit CLIArgs(int argc, char **argv, const std::string &version);
         std::string get_all_flags;
     };

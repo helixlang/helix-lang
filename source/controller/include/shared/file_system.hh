@@ -30,11 +30,13 @@ __CONTROLLER_FS_BEGIN {
 
     std::string                          get_cwd();
     fs_path                              normalize_path(std::string & filename);
-    std::optional<std::filesystem::path> resolve_path(const std::string &resolve);
+    fs_path                              normalize_path_no_check(std::string & filename);
     std::optional<std::filesystem::path> resolve_path(const std::string &resolve,
-                                                      const std::string &base);
-    std::string                          read_file(std::string & filename);
-    std::string                          read_file(const std::string &filename);
+                                                      const bool         must_exist = true);
+    std::optional<std::filesystem::path> resolve_path(
+        const std::string &resolve, const std::string &base, const bool must_exist = true);
+    std::string read_file(std::string & filename);
+    std::string read_file(const std::string &filename);
 
     std::optional<std::string> get_line(const std::string &filename, u64 line);
 
