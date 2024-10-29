@@ -10,14 +10,10 @@
 //                                                                                                //
 //====----------------------------------------------------------------------------------------====//
 
-#include "parser/preprocessor/include/preprocessor.hh"
+#ifndef __PREPROCESSOR_CONFIG_DEF__
+#define __PREPROCESSOR_CONFIG_DEF__
 
-#include <filesystem>
-#include <memory>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+#define __PREPROCESSOR_BEGIN namespace parser::preprocessor
+#define __PREPROCESSOR_N parser::preprocessor
 
-#include "neo-panic/include/error.hh"
-#include "token/include/Token.hh"
+#endif  // __PREPROCESSOR_CONFIG_DEF__
