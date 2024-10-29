@@ -1,349 +1,211 @@
-#ifndef __HELIX_TOOLING_HH__
-#define __HELIX_TOOLING_HH__
+#ifndef __TOOLING_H__
+#define __TOOLING_H__
 
-
-/// this cant be done in c++ since it needs really big changes to the internals of the
-/// helix compiler, so this will be done when the compiler is rewritten in helix itself
-
+#include <chrono>
 #include <filesystem>
-#include <memory>
-#include <neo-json/include/json.hh>
-#include <optional>
+#include <neo-panic/include/error.hh>
+#include <neo-pprint/include/hxpprint.hh>
+#include <numeric>
+#include <random>
 #include <string>
+#include <utility>
 
+#include "controller/include/Controller.hh"
 #include "controller/include/config/Controller_config.def"
-#include "controller/include/shared/file_system.hh"
-#include "llvm/Support/MemoryBuffer.h"
+#include "controller/include/shared/eflags.hh"
+#include "controller/include/shared/logger.hh"
+#include "generator/include/CX-IR/CXIR.hh"
+#include "token/include/private/Token_base.hh"
 
-/* The Vial file format is as described:
-- The file is a binary file
-- the file starts with a magic number and a version number
-- the file is divided into 3 main sections: the manifest, the data, and the symbol table
-- the manifest is a list of key-value pairs that describe the data
-- the data contains all the files that are part of the compilation unit
-- the symbol table contains all the symbols that are part of the compilation unit
-- having the data and the symbol table separate allows for caching and incremental compilation
-    @brief having a separate symbol table allows for the following:
-           each compile with an import to a vile would be parsed and instead of recompiling the vile
-           only the symbol table would be updated and after the first compile of the vile each
-           subsequent compile would only need to update the symbol table
+#define IS_UNIX                                                                                    \
+    (defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
+     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
+     defined(__MACH__))
 
+#define IS_WIN32 (defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64))
 
-| offset | size(B) | field                   | description                                         |
-|--------|---------|-------------------------|-----------------------------------------------------|
-| 0x00   | 8       | Magic Number            | `0x68656C69782D7669616C` ("helix-vial" in ASCII)    |
-| 0x08   | 2       | Vial Version            | Version of the Vial format                          |
-| 0x0A   | 2       | Compiler Version        | Version of the Helix compiler used to generate      |
-| 0x0C   | 4       | Manifest Offset         | Start of the manifest section (metadata in JSON)    |
-| 0x10   | 4       | Data Section Offset     | Start of the data (source code and compiled objects)|
-| 0x14   | 4       | Symbol Table Offset     | Start of the symbol table (functions, symbols)      |
-| 0x18   | 16      | Compilation Timestamp   | Unicode timestamp of the compilation                |
-| 0x28   | 4       | Document Section Offset | Start of the document section (user docs)           |
-| 0x2C   | 4       | Resource Section Offset | Start of the resources section (images, etc.)       |
-| 0x30   | 4       | Signature Offset?       | digital signature for verifying file integrity      |
-| 0x34   | 4       | Checksum                | Checksum (e.g., CRC32) of the entire file           |
-| 0x38   | 4       | Total File Size         | Total size of the Vial file in bytes                |
-| 0x3C   | 4       | Padding                 | padding for 8-byte alignment                        |
-*/
+namespace flag {
+namespace types {
+    enum class CompileFlags : u8 {
+        None    = 0,
+        Debug   = 1 << 0,
+        Verbose = 1 << 1,
+    };
 
-__CONTROLLER_TOOL_BEGIN {
-    class FileMemoryBuffer {
-      public:
-        using Path = std::filesystem::path;
+    enum class Compiler : u8 {
+        MSVC,
+        GCC,
+        Clang,
+        MingW,
+        Custom,
+    };
 
-        /// enum to represent the type of files handled by the buffer
-        ///
-        /// \enum FileLevel
-        /// \param User user files are files that should be compiled and included
-        /// \param Prelude prelude files are included in every compilation
-        /// \param Core core files are essential for the compilation unit
-        /// \param System system files are symbolized but not compiled
-        enum class FileLevel { User, Prelude, Core, System };
+    enum class ErrorType : u8 { NotFound, Error, Success };
+}  // namespace types
 
-        /// enum to represent the type of files handled by the buffer
-        ///
-        /// \enum FileType
-        /// \param Source source code
-        /// \param Header header files
-        /// \param Object object files
-        /// \param Vial vial libraries files
-        /// \param Dynamic dynamic libraries
-        /// \param AST the fastest way to add to the compile unit
-        enum class FileType { Source, Header, Object, Vial, Dynamic, AST };
+using CompileFlags = EFlags<flag::types::CompileFlags>;
+using Compiler     = EFlags<flag::types::Compiler>;
+using ErrorType    = EFlags<flag::types::ErrorType>;
+}  // namespace flag
 
-        /// constructor for creating a file memory buffer. this constructor initializes
-        /// a file memory buffer with a source, name, path relative to the current
-        /// working directory, and a file type. the buffer is marked as valid if the
-        /// source is not empty.
-        ///
-        /// \param src the source code or content to be held by the buffer.
-        /// \param name an optional name for the buffer, defaults to "internal".
-        /// \param rel_to the file path relative to which this buffer's path should be resolved.
-        ///        defaults to the current working directory.
-        /// \param file_type the type of file this buffer represents, defaults to FileLevel::User.
-        template <typename T>
-        explicit FileMemoryBuffer(T           src,
-                                  Path        rel_to     = __CONTROLLER_FS_N::get_cwd(),
-                                  std::string name       = "internal",
-                                  FileLevel   file_level = FileLevel::User,
-                                  FileType    file_type  = FileType::Source)
-            : source(std::move(src))
-            , name(std::move(name))
-            , rel_to(std::move(rel_to))
-            , file_level(file_level)
-            , file_type(file_type)
-            , is_valid(!source.empty()) {}
+inline bool LSP_MODE = false;
 
-        /// destructor for the file memory buffer. this destructor is used to clean up
-        /// the buffer's resources when it goes out of scope or is no longer needed.
-        ~FileMemoryBuffer() = default;
+/// CXIRCompiler compiler;
+/// compiler.compile_CXIR(CXXCompileAction::init(emitter, out, flags, cxx_args));
+/// NOTE: init returns a rvalue reference you can not assign it to a variable
+struct CXXCompileAction {
+    using Path = std::filesystem::path;
+    using Args = std::vector<std::string>;
+    using CXIR = generator::CXIR::CXIR;
 
-        /// deleted copy constructor to prevent copying of file memory buffers. this
-        /// is necessary to ensure that the buffer's contents are not duplicated or
-        /// modified unexpectedly.
-        ///
-        /// \param other the buffer to copy from.
-        FileMemoryBuffer(const FileMemoryBuffer &) = delete;
+    Path               working_dir;
+    Path               cc_source;
+    Path               cc_output;
+    Path               helix_src;
+    Args               cxx_args;
+    flag::CompileFlags flags;
+    std::string        cxx_compiler;
 
-        /// deleted copy assignment operator to force immutability of file memory
-        /// buffers. this prevents the buffer's contents from being modified or
-        /// replaced after initialization.
-        ///
-        /// \param other the buffer to copy from.
-        FileMemoryBuffer &operator=(const FileMemoryBuffer &) = delete;
+    static CXXCompileAction
+    init(CXIR &emitter, const Path &cc_out, flag::CompileFlags flags, Args cxx_args) {
+        std::error_code ec;
+        Path            cwd      = __CONTROLLER_FS_N::get_cwd();
+        Path            temp_dir = std::filesystem::temp_directory_path(ec);
 
-        /// move constructor to transfer ownership of a file memory buffer. this
-        /// constructor is used to move the contents of a buffer to another buffer,
-        /// typically when passing buffers to functions or returning them from
-        /// functions.
-        ///
-        /// \param other the buffer to move from.
-        FileMemoryBuffer(FileMemoryBuffer &&) noexcept = default;
-
-        /// move assignment operator to transfer ownership of a file memory buffer.
-        /// this operator is used to move the contents of a buffer to another buffer,
-        /// typically when passing buffers to functions or returning them from
-        /// functions.
-        ///
-        /// \param other the buffer to move from.
-        FileMemoryBuffer &operator=(FileMemoryBuffer &&) noexcept = default;
-
-        /// returns a reference to the source string. this provides direct access to
-        /// modify the source string held within the buffer, typically used when the
-        /// contents need to be updated or processed.
-        [[nodiscard]] std::string &get_source_ref() { return source; }
-
-        /// returns a reference to the buffer name. this provides access to the name
-        /// of the buffer which may be used for identification purposes, especially in
-        /// contexts where multiple buffers are managed or logged.
-        [[nodiscard]] std::string &get_name_ref() { return name; }
-
-        /// returns a reference to the relative path. this path is used to determine
-        /// the location of the file in relation to a base directory, commonly used for
-        /// resolving physical file paths from logical paths in complex projects.
-        [[nodiscard]] Path &get_rel_to_ref() { return rel_to; }
-
-        /// returns the file type as a constant reference. the file type indicates
-        /// the role of the file within the system, affecting how it is processed
-        /// and utilized within the compilation or execution environment.
-        [[nodiscard]] FileLevel get_file_level() const { return file_level; }
-
-        /// checks if the file buffer is valid. a buffer is considered valid if it
-        /// contains non-empty source content. this is critical for operations that
-        /// should only proceed with valid data.
-        [[nodiscard]] bool is_valid_file() const { return is_valid; }
-
-        /// checks if the file buffer is locked. a locked buffer cannot be modified,
-        /// ensuring that data remains consistent during operations that require
-        /// immutability.
-        [[nodiscard]] bool is_locked() const { return locked; }
-
-        /// locks the buffer to prevent modification. this is used to ensure that no
-        /// changes are made to the buffer's contents during operations that rely on
-        /// data stability, such as multi-threaded access or when performing
-        /// read-dependent operations.
-        void lock() { locked = true; }
-
-        /// unlocks the buffer to allow modification. this method re-enables the ability
-        /// to change the buffer's contents, typically called after a lock is no longer
-        /// necessary.
-        void unlock() { locked = false; }
-
-        /// returns the size of the buffer. the size is determined by the length of
-        /// the source string, representing the amount of data held in the buffer.
-        [[nodiscard]] size_t get_buffer_size() const { return source.size(); }
-
-        /// retrieves the buffer content as a string. this method provides a copy of
-        /// the buffer's contents, useful for operations that require a non-modifiable
-        /// version of the data.
-        [[nodiscard]] std::string get_buffer() const { return source; }
-
-        /// set the source of the buffer. this method allows replacing the current
-        /// source with a new one, provided the buffer is not locked. this is useful
-        /// for dynamic content updates where buffer content needs to be refreshed or
-        /// completely changed.
-        void set_source(const std::string &src) {
-            if (!locked) {
-                source   = src;
-                is_valid = !source.empty();
-            }
+        if (ec) {  /// use the current working directory
+            temp_dir = cwd;
         }
 
-      private:
-        std::string source;
-        std::string name;
-        Path        rel_to     = controller::file_system::get_cwd();
-        FileLevel   file_level = FileLevel::User;
-        FileType    file_type  = FileType::Source;
-        bool        is_valid   = false;
-        bool        locked     = false;
+        CXXCompileAction action = {
+            .working_dir = cwd,
+            .cc_source   = temp_dir / generate_file_name(),
+            .cc_output   = cc_out,
+            .helix_src   = emitter.get_file_name().value_or(cc_out),
+            .cxx_args    = std::move(cxx_args),
+            .flags       = flags,
+#if IS_UNIX
+            .cxx_compiler = "c++",
+#else
+            .cxx_compiler = "",  // find msvc using vswhere, if not found try `c++`
+#endif
+        };
+
+        std::ofstream file(action.cc_source);
+
+        if (!file) {
+            helix::log<LogLevel::Error>("error creating ", action.cc_source.generic_string(), " file");
+            return action;
+        }
+
+        file << emitter.to_CXIR();
+        file.close();
+
+        if (flags.contains(EFlags(flag::types::CompileFlags::Verbose))) {
+            helix::log<LogLevel::Debug>("CXXCompileAction initialized with:");
+            helix::log<LogLevel::Debug>("working_dir: ", action.working_dir.generic_string());
+            helix::log<LogLevel::Debug>("cc_source: ", action.cc_source.generic_string());
+            helix::log<LogLevel::Debug>("cc_output: ", action.cc_output.generic_string());
+            helix::log<LogLevel::Debug>("helix_src: ", action.helix_src.generic_string());
+            helix::log<LogLevel::Debug>("cxx_compiler: ", action.cxx_compiler);
+            helix::log<LogLevel::Debug>(
+                "cxx_args: ",
+                "[" +
+                    std::accumulate(action.cxx_args.begin(),
+                                    action.cxx_args.end(),
+                                    std::string(),
+                                    [](const std::string &a, const std::string &b) {
+                                        return a.empty() ? b : a + ", " + b;
+                                    }) +
+                    "]");
+        }
+
+        return action;
+    }
+
+    ~CXXCompileAction() {
+        if (std::filesystem::exists(cc_source)) {
+            std::filesystem::remove(cc_source);
+        }
+    }
+
+  private:
+    static std::string generate_file_name(size_t length = 6) {
+        const std::string chars = "QCDEGHINOPQRSAIUVYZabcefgjklnopqrsuvwyz012345789";
+        
+        std::random_device              rd;
+        std::mt19937                    gen(rd());
+        std::string                     name = "__";
+        std::uniform_int_distribution<> dist(0, chars.size() - 1);
+
+        name.reserve(length + name.size());
+
+        std::generate_n(std::back_inserter(name), length, [&]() { return chars[dist(gen)]; });
+
+        return name + ".helix-compiler.cxir";
+    }
+};
+
+class CXIRCompiler {
+  public:
+    struct ExecResult {
+        std::string output;
+        int         return_code{};
     };
 
-    class FileIOStram;
+    using CompileResult = std::pair<ExecResult, flag::ErrorType>;
 
-    // base classes
-    class DiagnosticHandler;
-    class InvocationManager;
-    class CompilationUnit;
-    class FileManager;
+    [[nodiscard]] static ExecResult exec(const std::string &cmd);
 
-    class FrontendProcessor {
-      public:
-        virtual ~FrontendProcessor() = default;
-        virtual void process()       = 0;
-    };
+    void compile_CXIR(CXXCompileAction &&action) const {
+#if IS_WIN32
+        // try compiling with msvc first
+        if (action.cxx_compiler.empty()) {
+            if (CXIR_MSVC(action).second == flag::types::ErrorType::NotFound) {
+                // try compiling with clang
+                action.cxx_compiler = "c++";
+                CXIR_CXX(action);
+            }
 
-    class BackendProcessor {
-      public:
-        virtual ~BackendProcessor() = default;
-        virtual void generate()     = 0;
-    };
+            return;
+        } else {
+            CXIR_CXX(action);
+        }
+#else
+        CXIR_CXX(action);
+#endif
+    }
 
-    // diagnostic handlers
-    class PrettyDiagnosticHandler;
-    class SimpleDiagnosticHandler;
-    class JsonDiagnosticHandler;
+  private:
+    /// (pof, msg, file)
+    using ErrorPOFNormalized = std::tuple<token::Token, std::string, std::string>;
 
-    // frontend processors
-    class LexicalProcessor : public FrontendProcessor {
-      public:
-        LexicalProcessor(FileManager &file_manager, const std::string &input_file);
-        ~LexicalProcessor() override = default;
+    [[nodiscard]] static ErrorPOFNormalized parse_clang_err(std::string clang_out);
+    [[nodiscard]] static ErrorPOFNormalized parse_gcc_err(std::string gcc_out);
+    [[nodiscard]] static ErrorPOFNormalized parse_msvc_err(std::string msvc_out);
 
-        LexicalProcessor(const LexicalProcessor &)                = default;
-        LexicalProcessor &operator=(const LexicalProcessor &)     = default;
-        LexicalProcessor(LexicalProcessor &&) noexcept            = default;
-        LexicalProcessor &operator=(LexicalProcessor &&) noexcept = default;
+    [[nodiscard]] CompileResult CXIR_MSVC(CXXCompileAction action) const;
 
-        void process() override;
-    };
-    class PreProcessor : public FrontendProcessor {
-      public:
-        PreProcessor(FileManager &file_manager, const std::string &input_file);
-        ~PreProcessor() override = default;
+    [[nodiscard]] CompileResult CXIR_CXX(CXXCompileAction action) const;
+};
 
-        PreProcessor(const PreProcessor &)                = default;
-        PreProcessor &operator=(const PreProcessor &)     = default;
-        PreProcessor(PreProcessor &&) noexcept            = default;
-        PreProcessor &operator=(PreProcessor &&) noexcept = default;
+class CompilationUnit {
+  public:
+    int compile(int argc, char **argv);
 
-        void process() override;
-    };
-    class ASTProcessor : public FrontendProcessor {
-      public:
-        ASTProcessor(FileManager &file_manager, const std::string &input_file);
-        ~ASTProcessor() override = default;
+  private:
+    CXIRCompiler compiler;
 
-        ASTProcessor(const ASTProcessor &)                = default;
-        ASTProcessor &operator=(const ASTProcessor &)     = default;
-        ASTProcessor(ASTProcessor &&) noexcept            = default;
-        ASTProcessor &operator=(ASTProcessor &&) noexcept = default;
+    static void remove_comments(__TOKEN_N::TokenList &tokens);
 
-        void process() override;
-    };
-    class CXXProcessor;  // converts a clang C++ SymbolTable to a Helix by-directional
-                         // SymbolTable
-    class SemanticProcessor;
-    class VialProcessor;  // generates a Vial file from a Helix file
+    static void emit_cxir(const generator::CXIR::CXIR &emitter, bool verbose);
 
-    // backend processors
-    class CXIRGenerator;
-    class LLVMGenerator;
-    class ObjectGenerator;
+    static std::filesystem::path
+    determine_output_file(const __CONTROLLER_CLI_N::CLIArgs &parsed_args,
+                          const std::filesystem::path       &in_file_path);
 
-    class ExecutableGenerator : public BackendProcessor {
-      public:
-        ExecutableGenerator(CXIRGenerator &cxir_gen, const std::string &output_file);
-        ~ExecutableGenerator() override = default;
+    static void log_time(const std::chrono::high_resolution_clock::time_point &start,
+                         bool                                                  verbose,
+                         const std::chrono::high_resolution_clock::time_point &end);
+};
 
-        ExecutableGenerator(const ExecutableGenerator &)                = default;
-        ExecutableGenerator &operator=(const ExecutableGenerator &)     = default;
-        ExecutableGenerator(ExecutableGenerator &&) noexcept            = default;
-        ExecutableGenerator &operator=(ExecutableGenerator &&) noexcept = default;
-
-        void generate() override;
-    };
-
-    class CompilationUnit {
-      public:
-        /**
-         * @brief the main constructor for a compilation unit. takes the command-line
-         *        arguments and gets the whole thing going.
-         * @param argc number of command-line arguments
-         * @param argv array of argument strings
-         */
-        CompilationUnit(int argc, const char **argv);
-
-        explicit CompilationUnit(InvocationManager &invocation);
-
-        template <std::size_t N>
-        explicit CompilationUnit(std::array<const char *, N> &argv)
-            : CompilationUnit(argv.size(), argv.data()) {}
-
-        template <std::size_t N>
-        explicit CompilationUnit(std::array<std::string, N> &argv)
-            : CompilationUnit(argv.size(), argv.data()) {}
-
-        ~CompilationUnit();
-
-        CompilationUnit(const CompilationUnit &)            = delete;
-        CompilationUnit &operator=(const CompilationUnit &) = delete;
-
-        CompilationUnit(CompilationUnit &&) noexcept            = default;
-        CompilationUnit &operator=(CompilationUnit &&) noexcept = default;
-
-        [[nodiscard]] bool initialize();
-        [[nodiscard]] bool process();
-        void               finalize();
-
-        void set_frontend_processor(std::unique_ptr<FrontendProcessor> frontend);
-        void set_backend_processor(std::unique_ptr<BackendProcessor> backend);
-
-        void set_diagnostic_handler(std::unique_ptr<DiagnosticHandler> handler);
-        void report_diagnostics() const;
-
-        [[nodiscard]] FileManager       &get_file_manager_ref();
-        [[nodiscard]] InvocationManager &get_invocation_manager_ref();
-
-        [[nodiscard]] bool has_errors() const;
-        void               clear_errors();
-        void               log_status() const;
-        void               emit_errors() const;
-
-      private:
-        [[nodiscard]] bool validate_inputs() const;
-        void               setup_environment();
-
-        void release_resources();
-
-        std::unique_ptr<InvocationManager> invocation;
-        std::unique_ptr<DiagnosticHandler> diagnostic_handler;
-        std::unique_ptr<FileManager>       file_manager;
-        std::unique_ptr<FrontendProcessor> frontend_processor;
-        std::unique_ptr<BackendProcessor>  backend_processor;
-
-        bool hasErrors_;
-    };
-}
-
-#endif  // __HELIX_TOOLING_HH__
+#endif  // __TOOLING_H__
