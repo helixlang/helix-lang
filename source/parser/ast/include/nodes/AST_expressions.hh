@@ -151,6 +151,7 @@ __AST_NODE_BEGIN {
     };
 
     class ScopePathExpr final : public Node {  // := E '::' E
+        /// TODO: add support for generics
         BASE_CORE_METHODS(ScopePathExpr);
 
         explicit ScopePathExpr(NodeT<IdentExpr> first) { path.emplace_back(std::move(first)); }
@@ -202,12 +203,21 @@ __AST_NODE_BEGIN {
         // -- Helper Functions -- //
 
         [[nodiscard]] token::Token get_back_name() const {
+            if (path == nullptr) {
+                throw std::runtime_error("invalid path, possible memory corruption");
+            }
+
             switch (type) {
-                case PathType::Scope:
-                    return std::static_pointer_cast<parser::ast::node::ScopePathExpr>(path)
-                        ->path.back()
-                        ->name;
+                case PathType::Scope: {
+                    NodeT<ScopePathExpr> scope = std::static_pointer_cast<ScopePathExpr>(path);
+                    if (scope->path.empty()) {  // this is a global scope
+                        return token::Token(
+                            token::tokens::IDENTIFIER, "__/helix$$internal/__", "__global__");
+                    }
+
+                    return scope->path.back()->name;
                     break;
+                }
                 case PathType::Identifier:
                     return std::static_pointer_cast<parser::ast::node::IdentExpr>(path)->name;
                     break;

@@ -10,14 +10,18 @@ interface Incrementable {
     op == fn eq(self, other: Self) -> bool;
 }
 
-fn range(start: T, end: T, step: T = 1) -> yield T requires <T> if Incrementable in T {
+fn range(start: T, end: T, step: T = 1) -> yield T
+  requires <T> if Incrementable in T {
+
     while start < end {
         yield start;
         start += step;
     }
 }
 
-fn range(end: T) -> yield T requires <T> if Incrementable in T {
+fn range(end: T) -> yield T
+  requires <T> if Incrementable in T {
+
     let start = T();
 
     while start < end {
@@ -25,18 +29,171 @@ fn range(end: T) -> yield T requires <T> if Incrementable in T {
         ++start;
     }
 }
-
 /* ---------------------------------------------------------------------------------------------- */
 
-struct Factorial requires <N: i64> {
-    const factorial: i64 = N * (Factorial::<(N - 1)>()).factorial;
+struct Point {
+    let x: i32;
+    let y: i32;
 };
 
-extend Factorial for *T, U requires <T: i64, U: i64> {
-    const factorial: i64 = 1;
+#[mutable] // this denotes if a class can be mutated or not in the sense of after construction
+class Matrix
+  requires <T> /* if Arithmetic in T || T derives Point */ {
+    priv let rows: i32, cols: i32, data: libc::array::<T>;
+
+    /// constructor
+    fn Matrix(self, r: i32, c: i32) {
+        // at this stage type bounds are not yet implemented, so this class does not have any way to
+        // check if T is an arithmetic type or if it derives Point, but soon type bounds will be
+        // implemented
+
+        self.rows = r;
+        self.cols = c;
+        self.data = malloc((self.rows * self.cols) * sizeof(T)) as unsafe *T;
+    }
+
+    /// move constructor
+    fn Matrix(self, other: std::Temporary<T>) { /// std::Temporary is a temporary type that is
+                                                /// used to denote a temporary object that
+                                                /// requires to be moved, since the object would
+                                                /// be destroyed after creation
+                                                /// example:
+                                                /// fn foo(std::Temporary<T> obj) requires <T> {}
+                                                /// foo(T()); // creates a temporary object
+                                                ///           // and passes it to foo
+        self.rows = other.rows;
+        self.cols = other.cols;
+        self.data = other.data;
+        other.data = null;
+    }
+
+    /// destructor
+
+    /// copy constructor
+    fn Matrix(self, other: &Matrix) {
+        self.rows = other.rows;
+        self.cols = other.cols;
+        self.data = malloc((self.rows * self.cols) * sizeof(T)) as unsafe *T;
+
+        for i in range(self.rows * self.cols) {
+            self.data[i] = other.data[i];
+        }
+    }
+
+    /// mat access operator
+    op () fn call_op(self, r: i32, c: i32) -> &T {
+        return self.data[r * self.cols + c];
+    }
+
+    // op () fn const_call_op(self, r: i32, c: i32) -> T { /// this isnt going to compile 99% sure
+    //     return self.data[r * self.cols + c];
+    // }
+
+    /// mat addition
+    op + fn add(self, other: &Matrix::<T>) -> Matrix::<T> {
+        let result = Matrix::<T>(self.rows, self.cols);
+
+        for (let i: i32 = 0; i < self.rows * self.cols; ++i) {
+            result.data[i] = self.data[i] + other.data[i];
+        }
+
+        return result;
+    }
+
+    /// mat scalar multiplication
+    op * fn mul(self, scalar: T) -> Matrix::<T> {
+        let result = Matrix::<T>(self.rows, self.cols);
+        
+        for i in range(rows * cols) {
+            result.data[i] = self.data[i] * scalar;
+        }
+
+        return result;
+    }
+
+    /// display matrix
+    fn print(self) {
+        for i in range(self.rows) {
+            for j in range(self.cols) {
+                ::print(f"({self(i, j)}) ");
+            }
+        }
+    }
+};
+
+extend Matrix for Point {
+    /// mat addition
+    op + fn add(const other: &Matrix::<Point>) -> Matrix::<Point> {
+        let result = Matrix::<Point>(rows, cols);
+
+        for i in range(rows * cols) {
+            result.data[i] = Point {
+                x = data[i].x + other.data[i].x,
+                y = data[i].y + other.data[i].y
+            };
+        }
+
+        return result;
+    }
+
+    /// display matrix
+    fn print() {
+        for i in range(rows) {
+            for j in range(cols) {
+                let p = self(i, j);
+                print(f"({p.x}, {p.y}) ");
+            }
+        }
+    }
 }
 
 fn main() -> i32 {
-    print(Factorial::<50>().factorial);
+    /// mat of i32s (aka. int in c/c++)
+    let intMatrix = Matrix::<i32>(2, 2);
+    // if Matrix is not mutable, then the following will not compile
+    // intMatrix = Matrix::<i32>(3, 3);
+    // since the above line will try to reassign the value of intMatrix which is not allowed
+    // if a class is marked as mutable it is required to have a move constructor and a destructor
+
+    intMatrix(0, 0) = 1;
+    intMatrix(0, 1) = 2;
+    intMatrix(1, 0) = 3;
+    intMatrix(1, 1) = 4;
+
+    /// display matrix
+    print("\nInt Matrix:\n");
+    intMatrix.print();
+
+    /// Adding two int matrices
+    let intMatrix2 = Matrix::<i32>(2, 2);
+    intMatrix2(0, 0) = 2;
+    intMatrix2(0, 1) = 3;
+    intMatrix2(1, 0) = 4;
+    intMatrix2(1, 1) = 5;
+
+    let intMatrixSum = intMatrix + intMatrix2;
+    print("\nSum of Int Matrices:\n");
+    intMatrixSum.print();
+
+    // Matrix of Points
+    let pointMatrix = Matrix::<Point>(2, 2);
+    pointMatrix(0, 0) = Point{x=1, y=2};
+    pointMatrix(0, 1) = Point{x=3, y=4};
+    pointMatrix(1, 0) = Point{x=5, y=6};
+    pointMatrix(1, 1) = Point{x=7, y=8};
+
+    print(f"\nPoint Matrix:\n {pointMatrix.print()}");
+
+    // Adding two Point matrices
+    let pointMatrix2 = Matrix::<Point>(2, 2);
+    pointMatrix2(0, 0) = Point{x=2, y=3};
+    pointMatrix2(0, 1) = Point{x=4, y=5};
+    pointMatrix2(1, 0) = Point{x=6, y=7};
+    pointMatrix2(1, 1) = Point{x=8, y=9};
+
+    /// type inference
+    let pointMatrixSum = pointMatrix + pointMatrix2;
+    print(f"\nSum of Point Matrices:\n {pointMatrixSum.print()}");
+
     return 0;
 }

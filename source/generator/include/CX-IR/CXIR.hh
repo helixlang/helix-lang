@@ -10,6 +10,9 @@
 //                                                                                                //
 //====----------------------------------------------------------------------------------------====//
 
+#ifndef __CXIR_BASE_H__
+#define __CXIR_BASE_H__
+
 #include <clang/Format/Format.h>
 #include <llvm/ADT/StringRef.h>
 
@@ -18,8 +21,6 @@
 #include <regex>
 
 #include "neo-pprint/include/hxpprint.hh"
-
-using namespace clang;
 
 #include <memory>
 #include <optional>
@@ -411,3 +412,4 @@ __CXIR_CODEGEN_BEGIN {
     //     return visitor.json;
     // }
 }
+#endif // __CXIR_H__

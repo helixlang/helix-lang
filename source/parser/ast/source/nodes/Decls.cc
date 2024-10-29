@@ -581,7 +581,7 @@ AST_NODE_IMPL(Declaration, InterDecl, const std::shared_ptr<__TOKEN_N::TokenList
     parser::ast::node::RequiresParamDecl self_param{false};
 
     parser::ast::node::IdentExpr self_ident{
-        __TOKEN_N::Token{0, 0, 4, 0, "Self", "Self.internal.hlx", "identifer"}};
+        __TOKEN_N::Token{0, 0, 4, 0, "Self", "__/helix$$internal/__", "identifer"}};
     NodeT<parser::ast::node::IdentExpr> self_ident_node =
         parser::ast::make_node<parser::ast::node::IdentExpr>(self_ident);
 
