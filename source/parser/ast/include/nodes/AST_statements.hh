@@ -185,36 +185,21 @@ __AST_NODE_BEGIN {
 
     class ImportState final : public Node {
         BASE_CORE_METHODS(ImportState);
-
-
+    };
+    class ImportItem final : public Node {
+        BASE_CORE_METHODS(ImportItem);
     };
 
-    class SingleImportState final : public Node {
-        BASE_CORE_METHODS(SingleImportState);
+    class SingleImport final : public Node {
+        BASE_CORE_METHODS(SingleImport);
+    };
 
-        // := 'import' (E.PathExpr ('as' Ident)?) | Literal
-
-        enum class ImportType {
-            Helix,
-            External,
-        };
-
-        explicit SingleImportState(NodeT<> path, NodeT<IdentExpr> alias = nullptr)
-            : path(std::move(path))
-            , alias(std::move(alias)) {}
-
-        NodeT<>        path;
-        NodeT<IdentExpr> alias;
-
-        ImportType type = ImportType::Helix;
+    class SpecImport final : public Node {
+        BASE_CORE_METHODS(SpecImport);
     };
 
     class MultiImportState final : public Node {
         BASE_CORE_METHODS(MultiImportState);
-    };
-
-    class AliasState final : public Node {
-        BASE_CORE_METHODS(AliasState);
     };
 
     class YieldState final : public Node {

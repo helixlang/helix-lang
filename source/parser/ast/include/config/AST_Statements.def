@@ -29,10 +29,11 @@
     MACRO(SwitchState)           \
     MACRO(YieldState)            \
     MACRO(DeleteState)           \
-    MACRO(AliasState)            \
-    MACRO(SingleImportState)     \
-    MACRO(MultiImportState)      \
-    MACRO(ImportState)           \
+    MACRO(ImportState)            \
+    MACRO(ImportItem)     \
+    MACRO(SingleImport)      \
+    MACRO(SpecImport)           \
+    MACRO(MultiImportState)           \
     MACRO(ReturnState)           \
     MACRO(BreakState)            \
     MACRO(BlockState)            \

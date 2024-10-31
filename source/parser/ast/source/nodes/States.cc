@@ -70,13 +70,50 @@
 ///                            (CatchState | FinallyState)?                                      ///
 /// [x] * FinallyState       * 'finally' SuiteState                                              ///
 /// [x] * PanicState         * 'panic' ';'                                                       ///
-///                                                                                              ///
-/// [ ] * ImportState        * 'import' (SingleImportState | MultiImportState)                   ///
-/// [ ] * AliasState         * Ident 'as' Ident ';'                                              ///
-/// [ ] * SingleImportState  * Ident (',' Ident)*                                                ///
-/// [ ] * MultiImportState   * Ident 'as' Ident (',' Ident 'as' Ident)*                          ///
+///
+/// [ ] * ImportState        * 'import' (SpecImport | SingleImport) ';'
+/// [ ] * ImportItem         * Ident (('::' Ident)*)?
+/// [ ] * SingleImport       * ImportItem ('as' Ident)?
+/// [ ] * SpecImport         * ImportItem '::' '{' SingleImport (',' SingleImport)* '}'
+/// [ ] * MultiImportState   * 'import' '{' ImportState* '}'
+
+/// CHANGE
+/// [ ] * AliasState         *
+/// [ ] * SingleImportState  *
+/// [ ] * MultiImportState   *
 ///                                                                                              ///
 //===-----------------------------------------------------------------------------------------====//
+
+/// TODO: all the parser to work with a specific defined subset of tokens that can get scoped to
+///       allow for shorthand notation of repetition
+/// like if i have 10 vars in a call that are all priv and static
+/// instaed of:
+/*
+priv static let a: int = 1;
+priv static let b: int = 1;
+priv static let c: int = 1;
+priv static let d: int = 1;
+priv static let e: int = 1;
+priv static let f: int = 1;
+priv static let g: int = 1;
+priv static let h: int = 1;
+*/
+/// i can do:
+/*
+priv static {
+    let a: int = 1;
+    let b: int = 1;
+    let c: int = 1;
+    let d: int = 1;
+    let e: int = 1;
+    let f: int = 1;
+    let g: int = 1;
+    let h: int = 1;
+}
+*/
+
+/// the follow should be allowed to do this they can get chained:
+/// priv, pub, prot, static, inline, import, and ffi ...
 
 // if import is passed, as soon as its been parsed spwan a new thread to parse the import ast and
 // get symbols store symbols to to global symbols vec, while parsing set 'found import ...' (so if
@@ -291,6 +328,22 @@ AST_BASE_IMPL(Statement, parse) {  // NOLINT(readability-function-cognitive-comp
 
 // ---------------------------------------------------------------------------------------------- //
 
+
+/** in helix i would extend:
+macro return_if_empty! {
+if self.iter.remaining_n() == 0:
+    return std::unexpected(...);
+};
+
+extend Statement for NamedVarSpecifier {
+    fn parse(self, bool force_type) {
+        return_if_empty!
+
+        ...
+    }
+}
+
+*/
 AST_NODE_IMPL(Statement, NamedVarSpecifier, bool force_type) {
     IS_NOT_EMPTY;
 
@@ -926,58 +979,43 @@ AST_NODE_IMPL_VISITOR(Jsonify, DeleteState) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Statement, AliasState) {
-    IS_NOT_EMPTY;
-    NOT_IMPLEMENTED;
-}
-
-AST_NODE_IMPL_VISITOR(Jsonify, AliasState) { json.section("AliasState"); }
-
-// ---------------------------------------------------------------------------------------------- //
-
-AST_NODE_IMPL(Statement, SingleImportState) {
-    IS_NOT_EMPTY;
-
-    // := 'import' (E.PathExpr ('as' Ident)?) | Literal
-
-    IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_IMPORT);
-    iter.advance();  // skip 'import'
-
-    if (CURRENT_TOKEN_IS(__TOKEN_N::LITERAL_STRING)) {
-        ParseResult<LiteralExpr> literal = expr_parser.parse<LiteralExpr>();
-        RETURN_IF_ERROR(literal);
-
-        NodeT<SingleImportState> node = make_node<SingleImportState>(literal.value());
-        node->type                    = SingleImportState::ImportType::External;
-
-        IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
-        iter.advance();  // skip ';'
-
-        return node;
-    }
-
-    NOT_IMPLEMENTED;
-}
-
-AST_NODE_IMPL_VISITOR(Jsonify, SingleImportState) { json.section("SingleImportState"); }
-
-// ---------------------------------------------------------------------------------------------- //
-
-AST_NODE_IMPL(Statement, MultiImportState) {
-    IS_NOT_EMPTY;
-    NOT_IMPLEMENTED;
-}
-
-AST_NODE_IMPL_VISITOR(Jsonify, MultiImportState) { json.section("MultiImportState"); }
-
-// ---------------------------------------------------------------------------------------------- //
-
 AST_NODE_IMPL(Statement, ImportState) {
-    IS_NOT_EMPTY;
     NOT_IMPLEMENTED;
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, ImportState) { json.section("ImportState"); }
+
+// ---------------------------------------------------------------------------------------------- //
+
+AST_NODE_IMPL(Statement, ImportItem) {
+    NOT_IMPLEMENTED;
+}
+
+AST_NODE_IMPL_VISITOR(Jsonify, ImportItem) { json.section("ImportItem"); }
+
+// ---------------------------------------------------------------------------------------------- //
+
+AST_NODE_IMPL(Statement, SingleImport) {
+    NOT_IMPLEMENTED;
+}
+
+AST_NODE_IMPL_VISITOR(Jsonify, SingleImport) { json.section("SingleImport"); }
+
+// ---------------------------------------------------------------------------------------------- //
+
+AST_NODE_IMPL(Statement, SpecImport) {
+    NOT_IMPLEMENTED;
+}
+
+AST_NODE_IMPL_VISITOR(Jsonify, SpecImport) { json.section("SpecImport"); }
+
+// ---------------------------------------------------------------------------------------------- //
+
+AST_NODE_IMPL(Statement, MultiImportState) {
+    NOT_IMPLEMENTED;
+}
+
+AST_NODE_IMPL_VISITOR(Jsonify, MultiImportState) { json.section("MultiImportState"); }
 
 // ---------------------------------------------------------------------------------------------- //
 

@@ -138,12 +138,11 @@ extend Matrix for Point {
 
     /// display matrix
     fn print() {
-        for i in range(rows) {
+        for i in range(rows):
             for j in range(cols) {
                 let p = self(i, j);
                 print(f"({p.x}, {p.y}) ");
             }
-        }
     }
 }
 

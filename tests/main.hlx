@@ -345,7 +345,10 @@ fn call_function() -> u32 {
     return 0x120ABA1;
 }
 
+ffi "c++" import "chrono";
+
 fn main() -> i32 {
+    let start = std::chrono::high_resolution_clock::now();
     // Adding two numbers
     let sum = add(5, 7);
     const x: i32 = 10;
@@ -435,6 +438,14 @@ fn main() -> i32 {
     obj.print();
 
     print(f"testing \{ wooo \} {call_function() + 182 + 21991} hhhjjj ");
+
+    let end = std::chrono::high_resolution_clock::now();
+
+
+    /// in ns
+    let duration = (end - start).count() / 1000;
+
+    print(f"Time taken: {duration} ns");
 
     return 0;
 }

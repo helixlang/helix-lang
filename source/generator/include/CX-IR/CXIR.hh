@@ -365,10 +365,13 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::SwitchState &node) override;
         void visit(const parser ::ast ::node ::YieldState &node) override;
         void visit(const parser ::ast ::node ::DeleteState &node) override;
-        void visit(const parser ::ast ::node ::AliasState &node) override;
-        void visit(const parser ::ast ::node ::SingleImportState &node) override;
-        void visit(const parser ::ast ::node ::MultiImportState &node) override;
+
         void visit(const parser ::ast ::node ::ImportState &node) override;
+        void visit(const parser ::ast ::node ::ImportItem &node) override;
+        void visit(const parser ::ast ::node ::SingleImport &node) override;
+        void visit(const parser ::ast ::node ::SpecImport &node) override;
+        void visit(const parser ::ast ::node ::MultiImportState &node) override;
+        
         void visit(const parser ::ast ::node ::ReturnState &node) override;
         void visit(const parser ::ast ::node ::BreakState &node) override;
         void visit(const parser ::ast ::node ::BlockState &node) override;

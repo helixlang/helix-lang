@@ -68,14 +68,16 @@ __AST_NODE_BEGIN {
                 return parse_YieldState(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, DeleteState>) {
                 return parse_DeleteState(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, AliasState>) {
-                return parse_AliasState(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, SingleImportState>) {
-                return parse_SingleImportState(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, MultiImportState>) {
-                return parse_MultiImportState(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, ImportState>) {
                 return parse_ImportState(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, ImportItem>) {
+                return parse_ImportItem(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, SingleImport>) {
+                return parse_SingleImport(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, SpecImport>) {
+                return parse_SpecImport(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, MultiImportState>) {
+                return parse_MultiImportStatee(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, ReturnState>) {
                 return parse_ReturnState(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, BreakState>) {
@@ -113,10 +115,13 @@ __AST_NODE_BEGIN {
         ParseResult<ElseState>             parse_ElseState();
         ParseResult<SwitchState>           parse_SwitchState();
         ParseResult<SwitchCaseState>       parse_SwitchCaseState();
+
         ParseResult<ImportState>           parse_ImportState();
-        ParseResult<SingleImportState>     parse_SingleImportState();
-        ParseResult<MultiImportState>      parse_MultiImportState();
-        ParseResult<AliasState>            parse_AliasState();
+        ParseResult<ImportItem>     parse_ImportItem();
+        ParseResult<SingleImport>      parse_SingleImport();
+        ParseResult<SpecImport>            parse_SpecImport();
+        ParseResult<MultiImportState>            parse_MultiImportState();
+
         ParseResult<YieldState>            parse_YieldState();
         ParseResult<DeleteState>           parse_DeleteState();
         ParseResult<ReturnState>           parse_ReturnState();
