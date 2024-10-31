@@ -1,9 +1,17 @@
-#include "controller/include/config/Controller_config.def"
-#include "controller/include/shared/file_system.hh"
-#include "parser/ast/include/private/base/AST_base.hh"
-#include "parser/ast/include/types/AST_jsonify_visitor.hh"
-#include "parser/ast/include/types/AST_types.hh"
-#include "token/include/private/Token_base.hh"
+///--- The Helix Project ------------------------------------------------------------------------///
+///                                                                                              ///
+///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
+///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
+///   commercial purposes, provided that you give appropriate credit, and indicate if changes    ///
+///   were made.                                                                                 ///
+///                                                                                              ///
+///   For more information on the license terms and requirements, please visit:                  ///
+///     https://creativecommons.org/licenses/by/4.0/                                             ///
+///                                                                                              ///
+///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
+///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
+///                                                                                              ///
+///-------------------------------------------------------------------------------------- C++ ---///
 
 #include <array>
 #include <chrono>
@@ -16,10 +24,17 @@
 #include <vector>
 
 #include "controller/include/Controller.hh"
+#include "controller/include/config/Controller_config.def"
+#include "controller/include/shared/file_system.hh"
+#include "controller/include/shared/logger.hh"
+#include "controller/include/tooling/tooling.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "lexer/include/lexer.hh"
-#include "controller/include/tooling/tooling.hh"
-#include "controller/include/shared/logger.hh"
+#include "parser/ast/include/private/base/AST_base.hh"
+#include "parser/ast/include/types/AST_jsonify_visitor.hh"
+#include "parser/ast/include/types/AST_types.hh"
+#include "token/include/private/Token_base.hh"
+
 
 extern bool LSP_MODE;
 
@@ -45,7 +60,8 @@ int CompilationUnit::compile(int argc, char **argv) {
 
     start        = std::chrono::high_resolution_clock::now();
     in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
-    lexer        = {__CONTROLLER_FS_N::read_file(in_file_path.generic_string()), in_file_path.generic_string()};
+    lexer        = {__CONTROLLER_FS_N::read_file(in_file_path.generic_string()),
+                    in_file_path.generic_string()};
     tokens       = lexer.tokenize();
 
     helix::log<LogLevel::Info>("tokenized");
@@ -111,7 +127,8 @@ int CompilationUnit::compile(int argc, char **argv) {
         action_flags |= flag::CompileFlags(flag::types::CompileFlags::Verbose);
     }
 
-    compiler.compile_CXIR(CXXCompileAction::init(emitter, out_file, action_flags, parsed_args.cxx_args));
+    compiler.compile_CXIR(
+        CXXCompileAction::init(emitter, out_file, action_flags, parsed_args.cxx_args));
 
     if (error::HAS_ERRORED || parsed_args.lsp_mode) {
         LSP_MODE = parsed_args.lsp_mode;
@@ -146,12 +163,13 @@ void CompilationUnit::emit_cxir(const generator::CXIR::CXIR &emitter, bool verbo
     }
 }
 
-std::filesystem::path CompilationUnit::determine_output_file(const __CONTROLLER_CLI_N::CLIArgs &parsed_args,
-                                            const std::filesystem::path       &in_file_path) {
+std::filesystem::path
+CompilationUnit::determine_output_file(const __CONTROLLER_CLI_N::CLIArgs &parsed_args,
+                                       const std::filesystem::path       &in_file_path) {
 
     std::string out_file = (parsed_args.output_file.has_value())
-                                ? parsed_args.output_file.value()
-                                : std::filesystem::path(in_file_path).stem().generic_string();
+                               ? parsed_args.output_file.value()
+                               : std::filesystem::path(in_file_path).stem().generic_string();
 
 #if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
     out_file += ".exe";
@@ -161,8 +179,8 @@ std::filesystem::path CompilationUnit::determine_output_file(const __CONTROLLER_
 }
 
 void CompilationUnit::log_time(const std::chrono::high_resolution_clock::time_point &start,
-                        bool                                                  verbose,
-                        const std::chrono::high_resolution_clock::time_point &end) {
+                               bool                                                  verbose,
+                               const std::chrono::high_resolution_clock::time_point &end) {
 
     std::chrono::duration<double> diff = end - start;
 

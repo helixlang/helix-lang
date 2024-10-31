@@ -1,46 +1,55 @@
-#include <type_traits>
+///--- The Helix Project ------------------------------------------------------------------------///
+///                                                                                              ///
+///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
+///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
+///   commercial purposes, provided that you give appropriate credit, and indicate if changes    ///
+///   were made.                                                                                 ///
+///                                                                                              ///
+///   For more information on the license terms and requirements, please visit:                  ///
+///     https://creativecommons.org/licenses/by/4.0/                                             ///
+///                                                                                              ///
+///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
+///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
+///                                                                                              ///
+///-------------------------------------------------------------------------------------- C++ ---///
 
 #include "controller/include/config/cxx_flags.hh"
 #include "controller/include/shared/eflags.hh"
 #include "controller/include/shared/logger.hh"
 #include "controller/include/tooling/tooling.hh"
 
-template <typename... Flags>
-std::string make_command(const flag::types::Compiler _Compiler, Flags... flags) {
-    std::string compile_cmd;
+void CXIRCompiler::compile_CXIR(CXXCompileAction &&action) const {
+    CompileResult ret;
+#if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
+    // try compiling with msvc first
+    if (action.cxx_compiler.empty()) {
+        try {
+            ret = CXIR_MSVC(action);
 
-    // for each flag call flag->clang after checking if its of type cxx::flags::CX
-    (void)std::initializer_list<int>{(
-        [&compile_cmd, &_Compiler](auto flag) {
-            if constexpr (std::is_same_v<decltype(flag), cxx::flags::CF>) {
-                if (_Compiler == flag::types::Compiler::Clang) {
-                    compile_cmd += std::string((flag).clang) + " ";
-                } else if (_Compiler == flag::types::Compiler::GCC) {
-                    compile_cmd += std::string((flag).gcc) + " ";
-                } else if (_Compiler == flag::types::Compiler::MSVC) {
-                    compile_cmd += std::string((flag).msvc) + " ";
-                } else if (_Compiler == flag::types::Compiler::MingW) {
-                    compile_cmd += std::string((flag).mingw) + " ";
-                } else {
-                    throw std::runtime_error("unknown compiler");
-                }
-            } else if constexpr (std::is_same_v<decltype(flag), std::string> ||
-                                 std::is_same_v<decltype(flag), const char *>) {
-                compile_cmd += flag + std::string(" ");
-            } else {
-                static_assert(false, "invalid flag type");
+            if (ret.second.contains(flag::types::ErrorType::NotFound)) {
+                // try compiling with clang
+                action.cxx_compiler = "c++";
+                ret                 = CXIR_CXX(action);
             }
-        }(flags),
-        0)...};
+        } catch (...) { helix::log<LogLevel::Error>("failed to compile using msvc or clang"); }
 
-    return compile_cmd;
+        action.cleanup();
+        return;
+
+        return;
+    } else {
+        ret = CXIR_CXX(action);
+    }
+#else
+    CXIR_CXX(action);
+#endif
 }
 
-CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) const {
+CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &action) const {
     /// identify the compiler
     ExecResult            compile_result = exec(action.cxx_compiler + " --version");
     flag::types::Compiler compiler       = flag::types::Compiler::Custom;
-    bool is_verbose                      = action.flags.contains(EFlags(flag::types::CompileFlags::Verbose));
+    bool is_verbose = action.flags.contains(EFlags(flag::types::CompileFlags::Verbose));
 
     if (compile_result.return_code != 0) {
         helix::log<LogLevel::Error>("failed to identify the compiler");
@@ -58,7 +67,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
     }
 
     std::string compile_cmd = action.cxx_compiler + " ";
-    
+
     /// start with flags we know are going to be present
     compile_cmd += make_command(  // ...
         compiler,
@@ -84,7 +93,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
         cxx::flags::caretDiagnosticsMaxLinesFlag,
         cxx::flags::noElideTypeFlag,
 
-#if IS_UNIX
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
+    defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
+    defined(__MACH__)
         "-Wl,-w,-rpath,/usr/local/lib",
 #endif
         cxx::flags::warnAllFlag,
@@ -102,10 +113,10 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
 
     /// redirect stderr to stdout
     compile_cmd += " 2>&1";
-    
+
     /// execute the command
     compile_result = exec(compile_cmd);
-    
+
     if (is_verbose) {
         helix::log<LogLevel::Debug>("compile command: " + compile_cmd);
         helix::log<LogLevel::Debug>("compiler output:\n" + compile_result.output);
@@ -123,7 +134,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
 
     for (auto &line : lines) {
         ErrorPOFNormalized err;
-    
+
         if (compiler == flag::types::Compiler::Clang) {
             err = CXIRCompiler::parse_clang_err(line);
         } else if (compiler == flag::types::Compiler::GCC) {
@@ -137,13 +148,14 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
             helix::log<LogLevel::Info>("<------------ output");
 
             if (compile_result.return_code == 0) {
-                helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() + " and compiled cxir");
-                helix::log<LogLevel::Info>("compiled successfully to " + action.cc_output.generic_string());
+                helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() +
+                                           " and compiled cxir");
+                helix::log<LogLevel::Info>("compiled successfully to " +
+                                           action.cc_output.generic_string());
                 return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
             }
-            
+
             return {compile_result, flag::ErrorType(flag::types::ErrorType::Error)};
-           
         }
 
         if (!std::filesystem::exists(std::get<2>(err))) {
@@ -172,120 +184,21 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(CXXCompileAction action) cons
         error::Panic(error::CodeError{
             .pof          = &std::get<0>(err),
             .err_code     = 0.8245,
-            .err_fmt_args = {msg},
             .mark_pof     = false,
+            .err_fmt_args = {msg},
             .level        = level,
             .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),
         });
     }
 
     if (compile_result.return_code == 0) {
-        helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() + " and compiled cxir");
+        helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() +
+                                   " and compiled cxir");
         helix::log<LogLevel::Info>("compiled successfully to " + action.cc_output.generic_string());
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }
-    
+
     return {compile_result,
             flag::ErrorType(error::HAS_ERRORED ? flag::types::ErrorType::Error
                                                : flag::types::ErrorType::Success)};
 }
-
-//     std::string compiler        = "c++";
-//     auto        compiler_result = exec(compiler + " --version");
-//     std::string compile_flags   = "-std=c++23 ";
-//     compile_flags += is_debug ? "-g " : "-O2 ";
-
-//     if ((compiler_result.output.find("clang") != std::string::npos) ||
-//         (compiler_result.output.find("gcc") != std::string::npos)) {
-//         helix::log<LogLevel::Info>(
-//             "using system's '" +
-//             std::string((compiler_result.output.find("clang") != std::string::npos) ? "clang"
-//                                                                                     : "gcc")
-//                                                                                     +
-//             "' compiler, with the '" +
-//             ((compiler_result.output.find("clang") != std::string::npos) ? "lld" : "ld") +
-//             "' linker");
-
-//         // -fdiagnostics-format=json << gcc
-//         /// -fdiagnostics-show-hotness -fdiagnostics-print-source-range-info  << clang
-//         compile_flags += " -fcaret-diagnostics-max-lines=0 -fno-diagnostics-fixit-info "
-//                             "-fno-elide-type -fno-diagnostics-show-line-numbers "
-//                             "-fno-color-diagnostics -fno-diagnostics-show-option ";
-
-//     } else {
-//         helix::log<LogLevel::Error>("aborting. unknown compiler: " + compiler_result.output);
-//         return;
-//     }
-
-//     compile_flags += "-fno-omit-frame-pointer -Wl,-w,-rpath,/usr/local/lib ";
-//     compile_flags += "\"" + source_file.generic_string() + "\" -o \"" + (path / out).generic_string() + "\"";
-
-//     auto compile_result = exec("c++ " + compile_flags + " 2>&1");
-//     if (compile_result.return_code != 0) {
-//         std::vector<std::string> lines;
-//         std::istringstream       stream(compile_result.output);
-
-//         for (std::string line; std::getline(stream, line);) {
-//             if (line.starts_with('/')) {
-//                 lines.push_back(line);
-//             }
-//         }
-
-//         for (auto &line : lines) {
-//             auto err = parse_clang_err(line);
-
-//             if (!std::filesystem::exists(std::get<2>(err))) {
-//                 error::Panic(error::CompilerError{
-//                     .err_code     = 0.8245,
-//                     .err_fmt_args = {"error at: " + std::get<2>(err) + std::get<1>(err)},
-//                 });
-
-//                 continue;
-//             }
-
-//             std::pair<size_t, size_t> err_t = {std::get<1>(err).find_first_not_of(' '),
-//                                                 std::get<1>(err).find(':') -
-//                                                     std::get<1>(err).find_first_not_of(' ')};
-
-//             error::Level level = std::map<string, error::Level>{
-//                 {"error", error::Level::ERR},                       //
-//                 {"warning", error::Level::WARN},                    //
-//                 {"note", error::Level::NOTE}                        //
-//             }[std::get<1>(err).substr(err_t.first, err_t.second)];  //
-
-//             std::string msg = std::get<1>(err).substr(err_t.first + err_t.second + 1);
-
-//             msg = msg.substr(msg.find_first_not_of(' '));
-
-//             error::Panic(error::CodeError{
-//                 .pof          = &std::get<0>(err),
-//                 .err_code     = 0.8245,
-//                 .err_fmt_args = {msg},
-//                 .mark_pof     = false,
-//                 .level        = level,
-//                 .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),
-//             });
-//         }
-
-//         if (is_verbose || !error::HAS_ERRORED) {
-//             helix::log<LogLevel::Info>("compilation passed");
-//             helix::log<LogLevel::Error>((is_verbose ? "compiler output:\n" : "linker failed.
-//             ") +
-//                                     compile_result.output);
-//         } else {
-//             helix::log<LogLevel::Error>("compilation failed");
-//         }
-
-//         helix::log<LogLevel::Error>("aborting...");
-//         goto cleanup;
-//     }
-
-//     helix::log<LogLevel::Info>("lowered " +
-//                         (emitter.get_file_name().has_value() ?
-//                         emitter.get_file_name().value()
-//                                                                 : source_file.generic_string()) +
-//                         " and compiled cxir");
-//     helix::log<LogLevel::Info>("compiled successfully to " + (path / out).generic_string());
-
-// cleanup:
-//     std::filesystem::remove(source_file);

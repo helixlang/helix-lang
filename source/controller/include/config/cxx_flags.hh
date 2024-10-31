@@ -12,15 +12,16 @@ class CF {
     std::string_view mingw;
 };
 
-constexpr CF debugModeFlag{"-g -g3", "-g -g3", "/Zh /Zi", "-g -g3"};
+constexpr CF debugModeFlag{"-g -g3", "-g -g3", "/Zi", "-g -g3"};
 constexpr CF warnAllFlag{"-Wall", "-Wall", "/W4", "-Wall"};
 constexpr CF noWarningsFlag{"-w", "-w", "/w", "-w"};
 constexpr CF stdC23Flag{"-std=c23", "-std=c23", "/std:c23", "-std:c23"};
-constexpr CF stdCXX23Flag{"-std=c++23", "-std=c++23", "/std:c++23", "-std:c++23"};
+constexpr CF stdCXX23Flag{"-std=c++23", "-std=c++23", "/std:c++20", "-std:c++23"};
 constexpr CF optimizationLevel0{"-O0", "-O0", "/Od", "-O0"};
 constexpr CF optimizationLevel1{"-O1", "-O1", "/O1", "-O1"};
 constexpr CF optimizationLevel2{"-O2", "-O2", "/O2", "-O2"};
-constexpr CF optimizationLevel3{"-O3", "-O3", "/O3", "-O3"};
+constexpr CF optimizationLevel3{"-O3", "-O3", "/Ox", "-O3"};
+constexpr CF dryRunFlag{"-fsyntax-only", "-fsyntax-only", "/Zs", "-fsyntax-only"};
 constexpr CF optimizationFast{"-Ofast", "-Ofast", "/Ox", "-Ofast"};
 constexpr CF optimizationSize{"-Os", "-Os", "/O1", "-Os"};
 constexpr CF linkStatic{"-static", "-static", "/MT", "-static"};
@@ -31,8 +32,8 @@ constexpr CF noOptimization{"-fno-inline", "-fno-inline", "/Ob0", "-fno-inline"}
 constexpr CF defineFlag{"-D", "-D", "/D", "-D"};
 constexpr CF includeFlag{"-I", "-I", "/I", "-I"};
 constexpr CF linkFlag{"-l", "-l", "/link", "-l"};
-constexpr CF outputFlag{"-o", "-o", "/Fe", "-o"};
-constexpr CF inputFlag{"-i", "-i", "/Fi", "-i"};
+constexpr CF outputFlag{"-o", "-o", "/Fe:", "-o"};
+constexpr CF inputFlag{"-i", "-i", "/Fi:", "-i"};
 constexpr CF precompiledHeaderFlag{"-include", "-include", "/FI", "-include"};
 constexpr CF preprocessorFlag{"-E", "-E", "/P", "-E"};
 constexpr CF compileOnlyFlag{"-c", "-c", "/c", "-c"};
