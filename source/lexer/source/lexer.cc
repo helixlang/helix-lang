@@ -1,14 +1,17 @@
-//===------------------------------------------ C++ ------------------------------------------====//
-//                                                                                                //
-//  Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).       //
-//  You are allowed to use, modify, redistribute, and create derivative works, even for           //
-//  commercial purposes, provided that you give appropriate credit, and indicate if changes       //
-//   were made. For more information, please visit: https://creativecommons.org/licenses/by/4.0/  //
-//                                                                                                //
-//  SPDX-License-Identifier: CC-BY-4.0                                                            //
-//  Copyright (c) 2024 (CC BY 4.0)                                                                //
-//                                                                                                //
-//====----------------------------------------------------------------------------------------====//
+///--- The Helix Project ------------------------------------------------------------------------///
+///                                                                                              ///
+///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
+///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
+///   commercial purposes, provided that you give appropriate credit, and indicate if changes    ///
+///   were made.                                                                                 ///
+///                                                                                              ///
+///   For more information on the license terms and requirements, please visit:                  ///
+///     https://creativecommons.org/licenses/by/4.0/                                             ///
+///                                                                                              ///
+///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
+///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
+///                                                                                              ///
+///-------------------------------------------------------------------------------------- C++ ---///
 
 #include "lexer/include/lexer.hh"
 
@@ -414,8 +417,6 @@ inline __TOKEN_N::Token Lexer::parse_string() {
     }
 
     if (is_eof()) {
-        print(currentPos);
-        print(std::string(current(), 1));
         auto bad_token = __TOKEN_N::Token{start_line, start_column, 1, offset, "\"", file_name};
         throw error::Panic(
             error::create_old_CodeError(&bad_token, 2.1002, {}, std::vector<string>{"string"}));

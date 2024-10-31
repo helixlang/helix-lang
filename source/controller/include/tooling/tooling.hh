@@ -5,24 +5,22 @@
 #include <filesystem>
 #include <neo-panic/include/error.hh>
 #include <neo-pprint/include/hxpprint.hh>
-#include <numeric>
-#include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "controller/include/Controller.hh"
 #include "controller/include/config/Controller_config.def"
+#include "controller/include/config/cxx_flags.hh"
 #include "controller/include/shared/eflags.hh"
-#include "controller/include/shared/logger.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "token/include/private/Token_base.hh"
+
 
 #define IS_UNIX                                                                                    \
     (defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
      defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
      defined(__MACH__))
-
-#define IS_WIN32 (defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64))
 
 namespace flag {
 namespace types {
@@ -53,7 +51,7 @@ inline bool LSP_MODE = false;
 /// CXIRCompiler compiler;
 /// compiler.compile_CXIR(CXXCompileAction::init(emitter, out, flags, cxx_args));
 /// NOTE: init returns a rvalue reference you can not assign it to a variable
-struct CXXCompileAction {
+struct CXXCompileAction {  // NOLINT
     using Path = std::filesystem::path;
     using Args = std::vector<std::string>;
     using CXIR = generator::CXIR::CXIR;
@@ -67,82 +65,13 @@ struct CXXCompileAction {
     std::string        cxx_compiler;
 
     static CXXCompileAction
-    init(CXIR &emitter, const Path &cc_out, flag::CompileFlags flags, Args cxx_args) {
-        std::error_code ec;
-        Path            cwd      = __CONTROLLER_FS_N::get_cwd();
-        Path            temp_dir = std::filesystem::temp_directory_path(ec);
+         init(CXIR &emitter, const Path &cc_out, flag::CompileFlags flags, Args cxx_args);
+    void cleanup() const;
 
-        if (ec) {  /// use the current working directory
-            temp_dir = cwd;
-        }
-
-        CXXCompileAction action = {
-            .working_dir = cwd,
-            .cc_source   = temp_dir / generate_file_name(),
-            .cc_output   = cc_out,
-            .helix_src   = emitter.get_file_name().value_or(cc_out),
-            .cxx_args    = std::move(cxx_args),
-            .flags       = flags,
-#if IS_UNIX
-            .cxx_compiler = "c++",
-#else
-            .cxx_compiler = "",  // find msvc using vswhere, if not found try `c++`
-#endif
-        };
-
-        std::ofstream file(action.cc_source);
-
-        if (!file) {
-            helix::log<LogLevel::Error>("error creating ", action.cc_source.generic_string(), " file");
-            return action;
-        }
-
-        file << emitter.to_CXIR();
-        file.close();
-
-        if (flags.contains(EFlags(flag::types::CompileFlags::Verbose))) {
-            helix::log<LogLevel::Debug>("CXXCompileAction initialized with:");
-            helix::log<LogLevel::Debug>("working_dir: ", action.working_dir.generic_string());
-            helix::log<LogLevel::Debug>("cc_source: ", action.cc_source.generic_string());
-            helix::log<LogLevel::Debug>("cc_output: ", action.cc_output.generic_string());
-            helix::log<LogLevel::Debug>("helix_src: ", action.helix_src.generic_string());
-            helix::log<LogLevel::Debug>("cxx_compiler: ", action.cxx_compiler);
-            helix::log<LogLevel::Debug>(
-                "cxx_args: ",
-                "[" +
-                    std::accumulate(action.cxx_args.begin(),
-                                    action.cxx_args.end(),
-                                    std::string(),
-                                    [](const std::string &a, const std::string &b) {
-                                        return a.empty() ? b : a + ", " + b;
-                                    }) +
-                    "]");
-        }
-
-        return action;
-    }
-
-    ~CXXCompileAction() {
-        if (std::filesystem::exists(cc_source)) {
-            std::filesystem::remove(cc_source);
-        }
-    }
+    ~CXXCompileAction();
 
   private:
-    static std::string generate_file_name(size_t length = 6) {
-        const std::string chars = "QCDEGHINOPQRSAIUVYZabcefgjklnopqrsuvwyz012345789";
-        
-        std::random_device              rd;
-        std::mt19937                    gen(rd());
-        std::string                     name = "__";
-        std::uniform_int_distribution<> dist(0, chars.size() - 1);
-
-        name.reserve(length + name.size());
-
-        std::generate_n(std::back_inserter(name), length, [&]() { return chars[dist(gen)]; });
-
-        return name + ".helix-compiler.cxir";
-    }
+    static std::string generate_file_name(size_t length = 6);
 };
 
 class CXIRCompiler {
@@ -156,24 +85,7 @@ class CXIRCompiler {
 
     [[nodiscard]] static ExecResult exec(const std::string &cmd);
 
-    void compile_CXIR(CXXCompileAction &&action) const {
-#if IS_WIN32
-        // try compiling with msvc first
-        if (action.cxx_compiler.empty()) {
-            if (CXIR_MSVC(action).second == flag::types::ErrorType::NotFound) {
-                // try compiling with clang
-                action.cxx_compiler = "c++";
-                CXIR_CXX(action);
-            }
-
-            return;
-        } else {
-            CXIR_CXX(action);
-        }
-#else
-        CXIR_CXX(action);
-#endif
-    }
+    void compile_CXIR(CXXCompileAction &&action) const;
 
   private:
     /// (pof, msg, file)
@@ -183,9 +95,9 @@ class CXIRCompiler {
     [[nodiscard]] static ErrorPOFNormalized parse_gcc_err(std::string gcc_out);
     [[nodiscard]] static ErrorPOFNormalized parse_msvc_err(std::string msvc_out);
 
-    [[nodiscard]] CompileResult CXIR_MSVC(CXXCompileAction action) const;
+    [[nodiscard]] CompileResult CXIR_MSVC(const CXXCompileAction &action) const;
 
-    [[nodiscard]] CompileResult CXIR_CXX(CXXCompileAction action) const;
+    [[nodiscard]] CompileResult CXIR_CXX(const CXXCompileAction &action) const;
 };
 
 class CompilationUnit {
@@ -207,5 +119,36 @@ class CompilationUnit {
                          bool                                                  verbose,
                          const std::chrono::high_resolution_clock::time_point &end);
 };
+
+template <typename... Flags>
+inline std::string make_command(const flag::types::Compiler _Compiler, Flags... flags) {
+    std::string compile_cmd;
+
+    // for each flag call flag->clang after checking if its of type cxx::flags::CX
+    (void)std::initializer_list<int>{(
+        [&compile_cmd, &_Compiler](auto flag) {
+            if constexpr (std::is_same_v<decltype(flag), cxx::flags::CF>) {
+                if (_Compiler == flag::types::Compiler::Clang) {
+                    compile_cmd += std::string((flag).clang) + " ";
+                } else if (_Compiler == flag::types::Compiler::GCC) {
+                    compile_cmd += std::string((flag).gcc) + " ";
+                } else if (_Compiler == flag::types::Compiler::MSVC) {
+                    compile_cmd += std::string((flag).msvc) + " ";
+                } else if (_Compiler == flag::types::Compiler::MingW) {
+                    compile_cmd += std::string((flag).mingw) + " ";
+                } else {
+                    throw std::runtime_error("unknown compiler");
+                }
+            } else if constexpr (std::is_same_v<decltype(flag), std::string> ||
+                                 std::is_same_v<decltype(flag), const char *>) {
+                compile_cmd += flag + std::string(" ");
+            } else {
+                static_assert(false, "invalid flag type");
+            }
+        }(flags),
+        0)...};
+
+    return compile_cmd;
+}
 
 #endif  // __TOOLING_H__

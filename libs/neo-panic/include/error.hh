@@ -71,6 +71,8 @@ struct _internal_error {
         }
 
         json.add("quick_fixes", fix_arr);
+
+        return json;
     }
 };
 
@@ -127,7 +129,7 @@ class Panic {
     void process_compiler_error(CompilerError);
     void process_code_error(CodeError);
     void process_full_line();
-    void show_error();
+    void show_error(bool);
 
     u32 calculate_addition_pos(i64) const;
 

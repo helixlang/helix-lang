@@ -359,6 +359,7 @@ Panic::Panic(const CodeError &err)
                                   : set_level(final_err.level, err.level))
     , mark_pof(err.mark_pof) {
     auto err_map_at = ERROR_MAP.at(err.err_code);
+    bool internal_core_lib_err = false;
 
     if (err_map_at == std::nullopt) {
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
@@ -371,7 +372,16 @@ Panic::Panic(const CodeError &err)
     final_err.color_mode = "16bit";
     final_err.error_type = "code";
 
-    final_err.file = err.pof->file_name();
+    // if filename ends with $helix.core.lib remove it and mark the show error to be as a corelib err
+    if (err.pof->file_name().ends_with("$helix.core.lib")) {
+        std::string recovered_f_name = err.pof->file_name();
+        internal_core_lib_err = true;
+
+        recovered_f_name.erase(recovered_f_name.size() - std::string("$helix.core.lib").size(), std::string("$helix.core.lib").size());
+        final_err.file = recovered_f_name;
+    } else {
+        final_err.file = err.pof->file_name();
+    }
 
     final_err.msg = err_map_at->err;
     if (!err.err_fmt_args.empty()) {
@@ -397,10 +407,12 @@ Panic::Panic(const CodeError &err)
         }
     }
 
-    ERRORS.push_back(final_err);
+    if (!internal_core_lib_err) {
+        ERRORS.push_back(final_err);
+    }
 
     if (SHOW_ERROR) {
-        show_error();
+        show_error(internal_core_lib_err);
     }
 }
 
@@ -473,7 +485,7 @@ u32 Panic::calculate_addition_pos(i64 pos) const {
     return static_cast<u32>(pos);
 }
 
-void Panic::show_error() {
+void Panic::show_error(bool internal_core_lib_err) {
     lines_vec lines = get_surrounding_lines(final_err.file, final_err.line);
     string    markings;
     string    formatted_error;
@@ -540,7 +552,7 @@ void Panic::show_error() {
     formatted_error += A_W + final_err.level + ": " + std::string(colors::reset) + final_err.msg + string(colors::reset) +
                        "\n";  // fatal: missing semicolon
     formatted_error += A_W + string(level_len - 1, ' ') + "-->  at " +
-                       format_loc_info(final_err.file, final_err.line, final_err.col) + "\n";
+                       format_loc_info((internal_core_lib_err ? "helix.core.lib" : final_err.file), final_err.line, final_err.col) + "\n";
 
     string left_side;
 
