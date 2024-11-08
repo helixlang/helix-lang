@@ -15,18 +15,9 @@ ffi "c++" import "";
 
 class DefaultAllocator derives Allocator {
     fn DefaultAllocator(self) derives default; // call the default constructor for all members.
-
-    fn alloc(self, size: usize, alignment: usize) -> *void {
-
-    }
-
-    fn dealloc(self, ptr: *void, size: usize, alignment: usize) {
-
-    }
-
-    fn realloc(self, ptr: *void, old_size: usize, new_size: usize, alignment: usize) -> *void {
-
-    }
+    fn alloc(self, size: usize, alignment: usize) -> *void {}
+    fn dealloc(self, ptr: *void, size: usize, alignment: usize) {}
+    fn realloc(self, ptr: *void, old_size: usize, new_size: usize, alignment: usize) -> *void {}
 
     #[override]
     fn alloc_d(self, size: usize) -> *void {
@@ -44,7 +35,7 @@ class DefaultAllocator derives Allocator {
     }
 
     #[override]
-    fn can_alloc(self, size: usize, alignment: usize) -> bool {
+    fn can_alloc(self, size: usize, alignment: usize) {
         return true;
     }
 

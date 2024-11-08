@@ -26,7 +26,17 @@
 //
 //===------------------------------------------------------------------------------------------===//
 
-abstract Allocator {
+import folder::{
+    file::*,
+    file2,
+    file3,
+}
+
+// the following info needs to be extracted:
+// - vec of singleimports including the base path
+// the whole thing needs to be normalized to single imports only
+
+interface Allocator {
     // allocates a block of memory of at least `size` bytes with the specified alignment.
     // returns a pointer to the allocated memory or a null pointer on failure.
     fn alloc(self, size: usize, alignment: usize) -> *void {}
@@ -66,36 +76,10 @@ abstract Allocator {
     }
 }
 
-interface Interop {
-    // everything here works with tokens
-    eval fn import_to_helix(node: *ast::FFIImportNode) -> code_gen::CGObj {
-        finally {
-            delete node;
-            delete node; // double free
-        }
-
-        let import_path = *node.value;
-
-        if *node._ffi != "py" {
-            panic CompileError("invalid ffi standard");
-        }
-        
-        // FusionX
-    }
-}
-
 // structure to hold memory statistics (optional feature)
 struct AllocatorStats {
     let total_allocations:   usize;
     let total_deallocations: usize;
     let currently_allocated: usize;
     let max_allocated:       usize;
-
-    fn new() -> AllocatorStats {
-        return {
-            total_allocations   = 0;
-            total_deallocations = 0;
-            currently_allocated = 0;
-        }
-    }
 }

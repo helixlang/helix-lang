@@ -293,8 +293,6 @@ class Fish requires <T> if Bar in T, T derives Fuzz {
 
 
 
-
-
 // Function to print elements of a vector
 // TODO: implement range-based for loop
 fn print_vector(v: list::<i32>) -> void {
