@@ -32,6 +32,7 @@ __CONTROLLER_FS_BEGIN {
     using fs_path = std::filesystem::path;
 
     std::string                          get_cwd();
+    fs_path                              get_exe();
     fs_path                              normalize_path(std::string & filename);
     fs_path                              normalize_path_no_check(std::string & filename);
     std::optional<std::filesystem::path> resolve_path(const std::string &resolve,

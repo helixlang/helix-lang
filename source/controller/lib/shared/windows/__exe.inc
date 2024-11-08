@@ -13,28 +13,22 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
-#include <array>
-#include <string>
+#ifndef __WIN32_EXE_INC__
+#define __WIN32_EXE_INC__
 
-#include "controller/include/shared/file_system.hh"
+DWORD             bufferSize = 256;
+std::vector<char> buffer(bufferSize);
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
-#include <unistd.h>
-
-#include <climits>
-#include <cstring>
-#endif
-
-__CONTROLLER_FS_BEGIN {
-    std::string get_cwd() {
-#if defined(_WIN32) || defined(_WIN64)
-#include "controller/lib/shared/windows/__cwd.inc"
-#else
-#include "controller/lib/shared/unix/__cwd.inc"
-#endif
-        return {buffer.data()};
+while (true) {
+    DWORD result = GetModuleFileNameA(NULL, buffer.data(), bufferSize);
+    if (result == 0) {
+        throw std::runtime_error("Failed to retrieve executable path");
     }
-}  // __CONTROLLER_FS_BEGIN
+    if (result < bufferSize) {
+        return std::filesystem::path(buffer.data());
+    }
+    bufferSize *= 2;
+    buffer.resize(bufferSize);
+}
+
+#endif  // __WIN32_EXE_INC__

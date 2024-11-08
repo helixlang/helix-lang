@@ -13,28 +13,35 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
-#include <array>
-#include <string>
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <vector>
 
 #include "controller/include/shared/file_system.hh"
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
 #include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
+#elif defined(__unix__) || defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || \
+    defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__)
 #include <unistd.h>
-
-#include <climits>
-#include <cstring>
+#elif defined(__APPLE__) || defined(__MACH__)
+#include <mach-o/dyld.h>
+#else
+#error "unsupported platform"
 #endif
 
 __CONTROLLER_FS_BEGIN {
-    std::string get_cwd() {
-#if defined(_WIN32) || defined(_WIN64)
-#include "controller/lib/shared/windows/__cwd.inc"
+    fs_path get_exe() {
+#if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
+#include "controller/lib/shared/windows/__exe.inc"
+#elif defined(__unix__) || defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || \
+    defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__)
+#include "controller/lib/shared/unix/__exe.inc"
+#elif defined(__APPLE__) || defined(__MACH__)
+#include "controller/lib/shared/mac/__exe.inc"
 #else
-#include "controller/lib/shared/unix/__cwd.inc"
+        throw std::runtime_error("unsupported platform");
 #endif
-        return {buffer.data()};
     }
 }  // __CONTROLLER_FS_BEGIN

@@ -20,6 +20,7 @@
 #include <memory>
 #include <neo-panic/include/error.hh>
 #include <neo-pprint/include/hxpprint.hh>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,19 +36,95 @@
 #include "parser/ast/include/types/AST_types.hh"
 #include "token/include/private/Token_base.hh"
 
-
 extern bool LSP_MODE;
 
-int CompilationUnit::compile(int argc, char **argv) {
-    std::chrono::time_point<std::chrono::high_resolution_clock> start;
-    parser::ast::NodeT<parser::ast::node::Program>              ast;
-    std::filesystem::path                                       in_file_path;
-    generator::CXIR::CXIR                                       emitter;
-    parser::lexer::Lexer                                        lexer;
-    __TOKEN_N::TokenList                                        tokens;
+template <typename T>
+void process_paths(std::vector<T>                     &paths,
+                   std::vector<std::filesystem::path> &add_to,
+                   std::filesystem::path &
+                       base_to,  //< must be a file not a dir, it is checked also must be normalized
+                   std::vector<std::filesystem::path> add_after_base,
+                   bool                               is_dir = true) {
+    std::vector<std::filesystem::path> normalized_input;
+    std::filesystem::path              cwd = __CONTROLLER_FS_N::get_cwd();
+    std::filesystem::path              exe = __CONTROLLER_FS_N::get_exe();
 
+    if constexpr (!std::is_same_v<T, std::string> && !std::is_same_v<T, std::filesystem::path>) {
+        throw std::runtime_error("invalid usage of process_paths only string or path vec allowed");
+    }
+
+    if (!paths.empty()) {
+        for (auto &dir : paths) {
+            normalized_input.emplace_back(dir);
+        }
+    }
+
+    /// first path added is always the base_to if its not the cwd, then the cwd then the rest
+    if (std::filesystem::is_regular_file(base_to)) {
+        if (!std::filesystem::exists(base_to.parent_path()) &&
+            !std::filesystem::is_directory(base_to.parent_path())) {
+            helix::log<LogLevel::Warning>(
+                "specified include dir is not a directory or does not exist: \'" +
+                base_to.parent_path().generic_string() + "\'");
+        } else if (base_to.parent_path() != cwd) {
+            add_to.emplace_back(base_to.parent_path());
+        }
+
+    } else {
+        throw std::runtime_error("input must be a file.");
+    }
+
+    // add the cwd
+    add_to.emplace_back(cwd);
+
+    if (!add_after_base.empty()) {
+        for (auto &dir : add_after_base) {
+            if (std::filesystem::is_directory(dir)) {
+                add_to.emplace_back(dir);
+            } else {
+                helix::log<LogLevel::Warning>(
+                    "specified include dir is not a directory or does not exist: \'" +
+                    dir.generic_string() + "\'");
+            }
+        }
+    }
+
+    // add the remaining paths
+    if (!normalized_input.empty()) {
+        for (const auto &dir : normalized_input) {
+            auto path = __CONTROLLER_FS_N::resolve_path(dir, false);
+
+            if (path.has_value() && !std::filesystem::is_directory(path.value())) {
+                helix::log<LogLevel::Warning>(
+                    "specified include dir is not a directory or does not exist: \'" +
+                    dir.generic_string() + "\'");
+
+                continue;
+            }
+
+            add_to.emplace_back(path.value());
+        }
+    }
+}
+
+int CompilationUnit::compile(int argc, char **argv) {
     __CONTROLLER_CLI_N::CLIArgs parsed_args(argc, argv, "0.0.1-alpha-2012");
     check_exit(parsed_args);
+
+    return compile(parsed_args);
+}
+
+/// compile and return the path of the compiled file without calling the linker
+/// ret codes: 0 - success, 1 - error, 2 - lsp mode
+std::pair<CXXCompileAction, int>
+CompilationUnit::compile_wet(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
+    parser::ast::NodeT<parser::ast::node::Program> ast;
+    std::vector<std::filesystem::path>             import_dirs;
+    std::vector<std::filesystem::path>             link_dirs;
+    std::filesystem::path                          in_file_path;
+    generator::CXIR::CXIR                          emitter(true);
+    parser::lexer::Lexer                           lexer;
+    __TOKEN_N::TokenList                           tokens;
 
     if (parsed_args.quiet || parsed_args.lsp_mode) {
         NO_LOGS           = true;
@@ -58,7 +135,6 @@ int CompilationUnit::compile(int argc, char **argv) {
         helix::log<LogLevel::Debug>(parsed_args.get_all_flags);
     }
 
-    start        = std::chrono::high_resolution_clock::now();
     in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
     lexer        = {__CONTROLLER_FS_N::read_file(in_file_path.generic_string()),
                     in_file_path.generic_string()};
@@ -66,7 +142,31 @@ int CompilationUnit::compile(int argc, char **argv) {
 
     helix::log<LogLevel::Info>("tokenized");
 
-    // preprocessor - missing for now
+    process_paths(parsed_args.library_dirs,
+                  link_dirs,
+                  in_file_path,
+                  {__CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "libs"});
+
+    process_paths(parsed_args.include_dirs,
+                  import_dirs,
+                  in_file_path,
+                  {__CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "pkgs"});
+
+    if (parsed_args.verbose) {
+        helix::log<LogLevel::Debug>("import dirs: [");
+        for (const auto &dir : import_dirs) {
+            helix::log<LogLevel::Debug>(dir.generic_string() + ", ");
+        }
+        helix::log<LogLevel::Debug>("]");
+
+        helix::log<LogLevel::Debug>("link dirs: [");
+        for (const auto &dir : link_dirs) {
+            helix::log<LogLevel::Debug>(dir.generic_string() + ", ");
+        }
+        helix::log<LogLevel::Debug>("]");
+    }
+
+    // ImportProcessor(tokens, import_dirs)
     helix::log<LogLevel::Info>("preprocessed");
 
     if (parsed_args.emit_tokens) {
@@ -79,7 +179,7 @@ int CompilationUnit::compile(int argc, char **argv) {
 
     if (!ast) {
         helix::log<LogLevel::Error>("aborting...");
-        return 1;
+        return {{}, 1};
     }
 
     ast->parse();
@@ -91,7 +191,7 @@ int CompilationUnit::compile(int argc, char **argv) {
 
         if (parsed_args.lsp_mode) {
             print(json_visitor.json.to_string());
-            return 0;
+            return {{}, 2};
         }
 
         helix::log<LogLevel::Debug>(json_visitor.json.to_string());
@@ -99,7 +199,7 @@ int CompilationUnit::compile(int argc, char **argv) {
 
     if (error::HAS_ERRORED) {
         LSP_MODE = parsed_args.lsp_mode;
-        return 0;
+        return {{}, 2};
     }
 
     ast->accept(emitter);
@@ -110,11 +210,10 @@ int CompilationUnit::compile(int argc, char **argv) {
     }
 
     std::filesystem::path out_file = determine_output_file(parsed_args, in_file_path);
-    // helix::log<LogLevel::Info>("output file: " + out_file.generic_string());
 
     if (error::HAS_ERRORED) {
         helix::log<LogLevel::Error>("aborting... due to previous errors");
-        return 1;
+        return {{}, 1};
     }
 
     flag::CompileFlags action_flags;
@@ -127,8 +226,26 @@ int CompilationUnit::compile(int argc, char **argv) {
         action_flags |= flag::CompileFlags(flag::types::CompileFlags::Verbose);
     }
 
-    compiler.compile_CXIR(
-        CXXCompileAction::init(emitter, out_file, action_flags, parsed_args.cxx_args));
+    return {CXXCompileAction::init(emitter, out_file, action_flags, parsed_args.cxx_args), 0};
+}
+
+int CompilationUnit::compile(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
+    std::chrono::time_point<std::chrono::high_resolution_clock> start =
+        std::chrono::high_resolution_clock::now();
+    auto [action, result] = compile_wet(parsed_args);
+
+    switch (result) {
+        case 0:
+            break;
+
+        case 1:
+            return 1;
+
+        case 2:
+            return 0;
+    }
+
+    compiler.compile_CXIR(std::move(action));
 
     if (error::HAS_ERRORED || parsed_args.lsp_mode) {
         LSP_MODE = parsed_args.lsp_mode;

@@ -13,28 +13,22 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
-#include <array>
-#include <string>
+#ifndef __UNIX_EXE_INC__
+#define __UNIX_EXE_INC__
 
-#include "controller/include/shared/file_system.hh"
+size_t            bufferSize = 256;
+std::vector<char> buffer(bufferSize);
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
-#include <unistd.h>
-
-#include <climits>
-#include <cstring>
-#endif
-
-__CONTROLLER_FS_BEGIN {
-    std::string get_cwd() {
-#if defined(_WIN32) || defined(_WIN64)
-#include "controller/lib/shared/windows/__cwd.inc"
-#else
-#include "controller/lib/shared/unix/__cwd.inc"
-#endif
-        return {buffer.data()};
+while (true) {
+    ssize_t count = readlink("/proc/self/exe", buffer.data(), bufferSize);
+    if (count == -1) {
+        throw std::runtime_error("Failed to retrieve executable path");
     }
-}  // __CONTROLLER_FS_BEGIN
+    if (static_cast<size_t>(count) < bufferSize) {
+        return std::filesystem::path(std::string(buffer.data(), count));
+    }
+    bufferSize *= 2;
+    buffer.resize(bufferSize);
+}
+
+#endif  // __UNIX_EXE_INC__
