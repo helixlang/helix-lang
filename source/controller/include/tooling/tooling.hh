@@ -16,7 +16,6 @@
 #include "generator/include/CX-IR/CXIR.hh"
 #include "token/include/private/Token_base.hh"
 
-
 #define IS_UNIX                                                                                    \
     (defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
      defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
@@ -102,7 +101,9 @@ class CXIRCompiler {
 
 class CompilationUnit {
   public:
-    int compile(int argc, char **argv);
+    int                              compile(int argc, char **argv);
+    int                              compile(__CONTROLLER_CLI_N::CLIArgs &);
+    std::pair<CXXCompileAction, int> compile_wet(__CONTROLLER_CLI_N::CLIArgs &);
 
   private:
     CXIRCompiler compiler;

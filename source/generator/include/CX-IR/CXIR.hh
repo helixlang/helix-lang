@@ -21,17 +21,15 @@
 
 #include <filesystem>
 #include <fstream>
-#include <regex>
-
-#include "neo-pprint/include/hxpprint.hh"
-
 #include <memory>
 #include <optional>
+#include <regex>
 #include <string>
 #include <vector>
 
 #include "generator/include/CX-IR/tokens.def"
 #include "generator/include/config/Gen_config.def"
+#include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/AST.hh"
 #include "token/include/Token.hh"
 
@@ -214,9 +212,12 @@ __CXIR_CODEGEN_BEGIN {
     class CXIR : public __AST_VISITOR::Visitor {
       private:
         std::vector<std::unique_ptr<CX_Token>> tokens;
+        const bool forward_only = false;
 
       public:
-        CXIR()                        = default;
+        CXIR() = default;
+        explicit CXIR(bool forward_only)
+            : forward_only(forward_only) {}
         CXIR(const CXIR &)            = default;
         CXIR(CXIR &&)                 = delete;
         CXIR &operator=(const CXIR &) = default;
@@ -367,11 +368,11 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::DeleteState &node) override;
 
         void visit(const parser ::ast ::node ::ImportState &node) override;
-        void visit(const parser ::ast ::node ::ImportItem &node) override;
+        void visit(const parser ::ast ::node ::ImportItems &node) override;
         void visit(const parser ::ast ::node ::SingleImport &node) override;
         void visit(const parser ::ast ::node ::SpecImport &node) override;
         void visit(const parser ::ast ::node ::MultiImportState &node) override;
-        
+
         void visit(const parser ::ast ::node ::ReturnState &node) override;
         void visit(const parser ::ast ::node ::BreakState &node) override;
         void visit(const parser ::ast ::node ::BlockState &node) override;
@@ -418,4 +419,4 @@ __CXIR_CODEGEN_BEGIN {
     //     return visitor.json;
     // }
 }
-#endif // __CXIR_H__
+#endif  // __CXIR_H__

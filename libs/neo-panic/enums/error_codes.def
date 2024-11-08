@@ -132,6 +132,7 @@ const helix::CompTimeMap<float, Errors, 150> ERROR_MAP({
 
     // Logical Errors
     MP(4.1001, Errors{"logical flaw detected", "review the logic to ensure it meets the intended behavior.", error::NOTE}),
+    MP(4.1002, Errors{"{}", "", error::NOTE}),
 
     // Semantic Errors
     MP(5.1001, Errors{"semantic error: invalid operation '{}'", "ensure operations are semantically correct for the data types: '{}'.", error::ERR}),

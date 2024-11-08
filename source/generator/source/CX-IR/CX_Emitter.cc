@@ -25,6 +25,7 @@
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/nodes/AST_declarations.hh"
 #include "parser/ast/include/nodes/AST_expressions.hh"
+#include "parser/ast/include/nodes/AST_statements.hh"
 #include "parser/ast/include/private/AST_generate.hh"
 #include "parser/ast/include/types/AST_types.hh"
 #include "token/include/private/Token_base.hh"
@@ -41,6 +42,17 @@
     if (node.param != nullptr) \
     ADD_PARAM(node.param)
 #define ADD_PARAM(param) param->accept(*this)
+
+#define NO_EMIT_FORWARD_DECL  \
+    if (this->forward_only) { \
+        return;               \
+    }
+
+#define NO_EMIT_FORWARD_DECL_SEMICOLON \
+    if (this->forward_only) { \
+        ADD_TOKEN(CXX_SEMICOLON); \
+        return;               \
+    }
 
 // This macro will not add a separator after the last element.
 #define SEP(args, sep)                                  \
@@ -310,20 +322,25 @@ CX_VISIT_IMPL(FunctionCallExpr) {
             CODEGEN_ERROR(bad_tok, "__inline_cpp requires exactly one argument");
         }
 
-        auto arg = std::static_pointer_cast<parser::ast::node::ArgumentListExpr>(node.args)->args[0];
-        if (arg->getNodeType() != parser::ast::node::nodes::ArgumentExpr || std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value->getNodeType() != parser::ast::node::nodes::LiteralExpr) {
+        auto arg =
+            std::static_pointer_cast<parser::ast::node::ArgumentListExpr>(node.args)->args[0];
+        if (arg->getNodeType() != parser::ast::node::nodes::ArgumentExpr ||
+            std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value->getNodeType() !=
+                parser::ast::node::nodes::LiteralExpr) {
             auto bad_tok = node.path->get_back_name();
             CODEGEN_ERROR(bad_tok, "__inline_cpp requires a string literal argument");
         }
 
-        auto arg_ptr = std::static_pointer_cast<parser::ast::node::LiteralExpr>(std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value);
+        auto arg_ptr = std::static_pointer_cast<parser::ast::node::LiteralExpr>(
+            std::static_pointer_cast<parser::ast::node::ArgumentExpr>(arg)->value);
         if (arg_ptr->contains_format_args) {
             auto bad_tok = node.path->get_back_name();
             CODEGEN_ERROR(bad_tok, "__inline_cpp does not support format arguments");
         }
-        
+
         auto arg_str = arg_ptr->value;
-        arg_str.get_value() = arg_str.value().substr(1, arg_str.value().size() - 2); // remove quotes
+        arg_str.get_value() =
+            arg_str.value().substr(1, arg_str.value().size() - 2);  // remove quotes
         ADD_TOKEN_AS_TOKEN(CXX_INLINE_CODE, arg_str);
 
         return;
@@ -530,6 +547,7 @@ CX_VISIT_IMPL(ForCStatementCore) {
 }
 
 CX_VISIT_IMPL(ForState) {
+    NO_EMIT_FORWARD_DECL;
     // := 'for' (ForPyStatementCore | ForCStatementCore)
 
     ADD_TOKEN(CXX_FOR);
@@ -538,6 +556,7 @@ CX_VISIT_IMPL(ForState) {
 }
 
 CX_VISIT_IMPL(WhileState) {
+    NO_EMIT_FORWARD_DECL;
     // := 'while' expr Suite
 
     ADD_TOKEN(CXX_WHILE);
@@ -549,6 +568,7 @@ CX_VISIT_IMPL(WhileState) {
 }
 
 CX_VISIT_IMPL(ElseState) {
+    NO_EMIT_FORWARD_DECL;
 
     ADD_TOKEN(CXX_ELSE);
 
@@ -568,6 +588,7 @@ CX_VISIT_IMPL(ElseState) {
 }
 
 CX_VISIT_IMPL(IfState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_IF);
 
     if (node.type == parser::ast::node::IfState::IfType::Unless) {  //
@@ -589,6 +610,7 @@ CX_VISIT_IMPL(IfState) {
 }
 
 CX_VISIT_IMPL(SwitchCaseState) {
+    NO_EMIT_FORWARD_DECL;
     // What are case markers?? TODO: Implement them
     switch (node.type) {
 
@@ -620,6 +642,7 @@ CX_VISIT_IMPL(SwitchCaseState) {
 }
 
 CX_VISIT_IMPL(SwitchState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_SWITCH);
 
     PAREN_DELIMIT(                  //
@@ -632,30 +655,49 @@ CX_VISIT_IMPL(SwitchState) {
 }
 
 CX_VISIT_IMPL(YieldState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_CO_YIELD);
     ADD_NODE_PARAM(value);
     ADD_TOKEN(CXX_SEMICOLON);
 }
 
 CX_VISIT_IMPL(DeleteState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_DELETE);
     ADD_NODE_PARAM(value);
     ADD_TOKEN(CXX_SEMICOLON);
 }
 
-CX_VISIT_IMPL(ImportState) { CXIR_NOT_IMPLEMENTED; }
-CX_VISIT_IMPL(ImportItem) { CXIR_NOT_IMPLEMENTED; }
-CX_VISIT_IMPL(SingleImport) { CXIR_NOT_IMPLEMENTED; }
-CX_VISIT_IMPL(SpecImport) { CXIR_NOT_IMPLEMENTED; }
-CX_VISIT_IMPL(MultiImportState) { CXIR_NOT_IMPLEMENTED; }
+CX_VISIT_IMPL(ImportState) {
+    NO_EMIT_FORWARD_DECL;
+    CXIR_NOT_IMPLEMENTED;
+}
+CX_VISIT_IMPL(ImportItems) {
+    NO_EMIT_FORWARD_DECL;
+    CXIR_NOT_IMPLEMENTED;
+}
+CX_VISIT_IMPL(SingleImport) {
+    NO_EMIT_FORWARD_DECL;
+    CXIR_NOT_IMPLEMENTED;
+}
+CX_VISIT_IMPL(SpecImport) {
+    NO_EMIT_FORWARD_DECL;
+    CXIR_NOT_IMPLEMENTED;
+}
+CX_VISIT_IMPL(MultiImportState) {
+    NO_EMIT_FORWARD_DECL;
+    CXIR_NOT_IMPLEMENTED;
+}
 
 CX_VISIT_IMPL(ReturnState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_RETURN);  // TODO co_return for generator contexts?
     ADD_NODE_PARAM(value);
     ADD_TOKEN(CXX_SEMICOLON);
 }
 
 CX_VISIT_IMPL(BreakState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_BREAK);
     ADD_TOKEN(CXX_SEMICOLON);
 }
@@ -686,9 +728,13 @@ CX_VISIT_IMPL(SuiteState) {
         if (node.body) { ADD_NODE_PARAM(body); }  //
     );
 }
-CX_VISIT_IMPL(ContinueState) { ADD_TOKEN(CXX_CONTINUE); }
+CX_VISIT_IMPL(ContinueState) {
+    NO_EMIT_FORWARD_DECL;
+    ADD_TOKEN(CXX_CONTINUE);
+}
 
 CX_VISIT_IMPL(CatchState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_CATCH);
     PAREN_DELIMIT(                    //
         ADD_NODE_PARAM(catch_state);  //
@@ -697,6 +743,7 @@ CX_VISIT_IMPL(CatchState) {
 }
 
 CX_VISIT_IMPL(FinallyState) {
+    NO_EMIT_FORWARD_DECL;
     // TODO: this needs to be placed before return, so, the code gen needs to be statefull here...
     // for now it will just put the
     // https://stackoverflow.com/questions/33050620/golang-style-defer-in-c
@@ -708,6 +755,7 @@ CX_VISIT_IMPL(FinallyState) {
 }
 
 CX_VISIT_IMPL(TryState) {
+    NO_EMIT_FORWARD_DECL;
 
     // Is this nullable?
     if (node.finally_state) {           //
@@ -719,12 +767,14 @@ CX_VISIT_IMPL(TryState) {
 }
 
 CX_VISIT_IMPL(PanicState) {
+    NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_THROW);
     ADD_NODE_PARAM(expr);
     ADD_TOKEN(CXX_SEMICOLON);
 }
 
 CX_VISIT_IMPL(ExprState) {
+    NO_EMIT_FORWARD_DECL;
     // -> expr ';'
     ADD_NODE_PARAM(value);
     ADD_TOKEN(CXX_SEMICOLON);
@@ -1160,27 +1210,36 @@ CX_VISIT_IMPL(TypeDecl) {
 }
 
 CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
-    if (node.generics != nullptr) {  //
+    if (node.generics != nullptr) {  // template <...>
         ADD_NODE_PARAM(generics);
     };
-
-    if (!no_return_t) {
-        if (node.returns != nullptr) {  //
-            ADD_NODE_PARAM(returns);
-        } else {
-            ADD_TOKEN(CXX_VOID);
-        }
-    }
 
     // if (node.name == nullptr) {
     //     print("error");
     //     throw std::runtime_error("This is bad");
     // }
 
-    ADD_NODE_PARAM(name);
+    if (!no_return_t) {
+        ADD_TOKEN(CXX_AUTO);  // auto
+    }
+
+    ADD_NODE_PARAM(name);   // name
     PAREN_DELIMIT(          //
-        COMMA_SEP(params);  //
+        COMMA_SEP(params);  // (params)
     );
+
+    if (!no_return_t) {
+        ADD_TOKEN(CXX_PTR_ACC);  // ->
+
+        if (node.returns != nullptr) {  // return type
+            ADD_NODE_PARAM(returns);
+        } else {
+            ADD_TOKEN(CXX_VOID);
+        }
+    }
+
+    NO_EMIT_FORWARD_DECL_SEMICOLON;
+    
     if (node.body) {
         ADD_NODE_PARAM(body);  // TODO: should only error in interfaces
     };
@@ -1198,18 +1257,43 @@ CX_VISIT_IMPL(VarDecl) {
 }
 
 CX_VISIT_IMPL(FFIDecl) {
+    using namespace __AST_N;
     if (node.name->value.value() != "\"c++\"") {
         throw std::runtime_error("Only C++ is supported at the moment");
     }
 
-    ADD_TOKEN(CXX_PP_INCLUDE);
+    if (node.value->getNodeType() == node::nodes::ImportState) {
+        NodeT<node::ImportState> import = std::static_pointer_cast<node::ImportState>(node.value);
 
-    if (node.value->getNodeType() == parser::ast::node::nodes::SingleImportState) {
-        ADD_TOKEN_AS_VALUE(
-            CXX_CORE_LITERAL,
-            std::static_pointer_cast<parser::ast::node::LiteralExpr>(
-                std::static_pointer_cast<parser::ast::node::SingleImportState>(node.value)->path)
-                ->value.value());
+        if (import->type != node::ImportState::Type::Single) {
+            throw std::runtime_error("Only single imports are supported at the moment");
+        }
+
+        NodeT<node::SingleImport> single =
+            std::static_pointer_cast<node::SingleImport>(import->import);
+
+        if (single->type == node::SingleImport::Type::Module) {
+            NodeT<node::ScopePathExpr> path =
+                std::static_pointer_cast<node::ScopePathExpr>(single->path);
+
+            ADD_TOKEN(CXX_IMPORT);
+
+            for (auto &part : path->path) {
+                ADD_PARAM(part);
+                ADD_TOKEN(CXX_DOT);
+            }
+
+            if (path->path.size() > 0) {
+                ADD_PARAM(path->access);
+            }
+
+            ADD_TOKEN(CXX_SEMICOLON);
+        } else {
+            ADD_TOKEN(CXX_PP_INCLUDE);
+            ADD_TOKEN_AS_TOKEN(CXX_CORE_LITERAL,
+                               std::static_pointer_cast<node::LiteralExpr>(single->path)->value);
+        }
+
     } else {
         throw std::runtime_error("Only string literals are supported at the moment");
     }
@@ -1270,7 +1354,9 @@ CX_VISIT_IMPL(OpDecl) {
 CX_VISIT_IMPL(Program) {
     ADD_TOKEN_AS_VALUE(
         CXX_ANNOTATION,
-        R"(///*--- Helix ---*
+        R"(#ifndef __HELIX_CORE_CXX__
+#define __HELIX_CORE_CXX__
+///*--- Helix ---*
 ///
 ///  Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).
 ///  You are allowed to use, modify, redistribute, and create derivative works, even for
@@ -1614,9 +1700,16 @@ namespace libc {
     template <typename T, size_t N>
     using array = T[N];
 }
+
+#endif
 )");
+
+    ADD_TOKEN(CXX_NAMESPACE);
+    ADD_TOKEN(CXX_LBRACE);
 
     for (const auto &child : node.children) {
         child->accept(*this);
     }
+
+    ADD_TOKEN(CXX_RBRACE);
 }
