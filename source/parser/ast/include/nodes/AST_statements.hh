@@ -16,9 +16,11 @@
 #ifndef __AST_STATEMENTS_H__
 #define __AST_STATEMENTS_H__
 
+#include <memory>
 #include <utility>
 
 #include "parser/ast/include/config/AST_config.def"
+#include "parser/ast/include/nodes/AST_expressions.hh"
 #include "parser/ast/include/private/AST_nodes.hh"
 #include "parser/ast/include/types/AST_types.hh"
 
@@ -33,9 +35,7 @@ __AST_NODE_BEGIN {
 
         explicit NamedVarSpecifier(NodeT<IdentExpr> path, NodeT<Type> type = nullptr)
             : path(std::move(path))
-            , type(std::move(type)) {
-            
-        }
+            , type(std::move(type)) {}
 
         NodeT<IdentExpr> path;
         NodeT<Type>      type;
@@ -144,7 +144,7 @@ __AST_NODE_BEGIN {
         NodeT<SuiteState> body;
         ElseType          type = ElseType::Else;
     };
-    
+
     class SwitchState final : public Node {
         BASE_CORE_METHODS(SwitchState);
 
@@ -183,19 +183,93 @@ __AST_NODE_BEGIN {
         __TOKEN_N::Token  marker;
     };
 
+    /// ImportState        := 'import' (SpecImport | SingleImport) ';'
+    /// SingleImport       := (ScopePath | StringLiteral) ('as' Ident)?
+    /// ImportItems        := SingleImport (',' SingleImport)*
+    /// SpecImport         := ScopePath '::' ('{' ImportItems '}') | ('*')
+
+    /// MultiImportState   := 'import' '{' ImportState* '}'
+
     class ImportState final : public Node {
         BASE_CORE_METHODS(ImportState);
+
+        enum class Type {
+            Spec,
+            Single,
+        };
+
+        explicit ImportState(NodeT<SingleImport> imp, bool is_module)
+            : import(std::static_pointer_cast<Node>(std::move(imp)))
+            , explicit_module(is_module) {}
+        
+        explicit ImportState(NodeT<SpecImport> import, bool is_module)
+            : import(std::static_pointer_cast<Node>(std::move(import)))
+            , type(Type::Spec)
+            , explicit_module(is_module) {}
+
+        NodeT<> import;
+        Type    type            = Type::Single;
+        bool    explicit_module = false;
     };
-    class ImportItem final : public Node {
-        BASE_CORE_METHODS(ImportItem);
+
+    /* DEPRECATE */
+    class ImportItems final : public Node {
+        BASE_CORE_METHODS(ImportItems);
+
+        explicit ImportItems(NodeT<SingleImport> first) { imports.emplace_back(std::move(first)); }
+
+        NodeV<SingleImport> imports;
     };
 
     class SingleImport final : public Node {
         BASE_CORE_METHODS(SingleImport);
+
+        enum class Type {
+            Module,  //< import the entire module relative to cwd / -i path
+            File,    //< import a specific file either relative or absolute
+        };
+
+        explicit SingleImport(Type type)
+            : type(type) {}
+
+        NodeT<IdentExpr> alias; //< TODO: change to ScopePathExpr to allow for any path alias
+        NodeT<>          path;  //< either a string literal or a scope path
+        Type             type;
+        bool             is_wildcard;
     };
 
     class SpecImport final : public Node {
         BASE_CORE_METHODS(SpecImport);
+
+        enum class Type {
+            Wildcard,  //< import into the current module namespace
+            Symbol,    //< import a specific symbol from a module
+        };
+
+        explicit SpecImport(NodeT<ScopePathExpr> path)
+            : path(std::move(path)) {}
+
+        explicit SpecImport([[Owner]] NodeT<SingleImport> import) {
+            /// this means this is a single import thats a wildcard import
+            if (import->is_wildcard) {
+                if (import->type == SingleImport::Type::File) {
+                    throw std::runtime_error("wildcard imports are not allowed in file imports");
+                }
+
+                this->path = std::static_pointer_cast<ScopePathExpr>(std::move(import->path));
+                this->type = Type::Wildcard;
+
+                import.reset();  // clear the import
+
+                return;
+            }
+
+            throw std::runtime_error("invalid import");
+        }
+
+        NodeT<ScopePathExpr> path;     ///< always used
+        NodeT<ImportItems>   imports;  ///< only used if the type is Symbol
+        Type                 type = Type::Symbol;
     };
 
     class MultiImportState final : public Node {

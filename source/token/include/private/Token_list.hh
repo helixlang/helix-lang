@@ -129,6 +129,7 @@ __TOKEN_BEGIN {
         TokenVec &as_vec() { return *this; };
 
         void                            remove_left();
+        void                            remove(const token::Token &start, const token::Token &end);
         void                            reset();
         [[nodiscard]] TokenList         raw_slice(const u64 start, const i64 end) const;
         [[nodiscard]] TokenList         slice(u64 start, i64 end = -1);

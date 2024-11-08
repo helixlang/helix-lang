@@ -110,7 +110,7 @@ __AST_NODE_BEGIN {
         ParseResult<ArgumentExpr>          parse_ArgumentExpr();
         ParseResult<DotPathExpr>           parse_DotPathExpr(ParseResult<> lhs = nullptr);
         ParseResult<IdentExpr>             parse_IdentExpr();
-        ParseResult<ScopePathExpr>         parse_ScopePathExpr(ParseResult<> lhs = nullptr, bool global_scope = false);
+        ParseResult<ScopePathExpr>         parse_ScopePathExpr(ParseResult<> lhs = nullptr, bool global_scope = false, bool is_import = false);
         ParseResult<ArrayAccessExpr>       parse_ArrayAccessExpr(ParseResult<> lhs = nullptr);
         ParseResult<ArgumentListExpr>      parse_ArgumentListExpr();
         ParseResult<GenericInvokeExpr>     parse_GenericInvokeExpr();

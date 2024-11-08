@@ -70,8 +70,8 @@ __AST_NODE_BEGIN {
                 return parse_DeleteState(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, ImportState>) {
                 return parse_ImportState(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ImportItem>) {
-                return parse_ImportItem(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, ImportItems>) {
+                return parse_ImportItems(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, SingleImport>) {
                 return parse_SingleImport(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, SpecImport>) {
@@ -116,24 +116,24 @@ __AST_NODE_BEGIN {
         ParseResult<SwitchState>           parse_SwitchState();
         ParseResult<SwitchCaseState>       parse_SwitchCaseState();
 
-        ParseResult<ImportState>           parse_ImportState();
-        ParseResult<ImportItem>     parse_ImportItem();
-        ParseResult<SingleImport>      parse_SingleImport();
-        ParseResult<SpecImport>            parse_SpecImport();
-        ParseResult<MultiImportState>            parse_MultiImportState();
+        ParseResult<ImportState>      parse_ImportState(bool ffi_import = false);
+        ParseResult<ImportItems>       parse_ImportItems();
+        ParseResult<SingleImport>     parse_SingleImport();
+        ParseResult<SpecImport>       parse_SpecImport(ParseResult<SingleImport> path = nullptr);
+        ParseResult<MultiImportState> parse_MultiImportState();
 
-        ParseResult<YieldState>            parse_YieldState();
-        ParseResult<DeleteState>           parse_DeleteState();
-        ParseResult<ReturnState>           parse_ReturnState();
-        ParseResult<BreakState>            parse_BreakState();
-        ParseResult<ContinueState>         parse_ContinueState();
-        ParseResult<ExprState>             parse_ExprState();
-        ParseResult<BlockState>            parse_BlockState();
-        ParseResult<TryState>              parse_TryState();
-        ParseResult<CatchState>            parse_CatchState();
-        ParseResult<FinallyState>          parse_FinallyState();
-        ParseResult<PanicState>            parse_PanicState();
-        ParseResult<SuiteState>            parse_SuiteState();
+        ParseResult<YieldState>    parse_YieldState();
+        ParseResult<DeleteState>   parse_DeleteState();
+        ParseResult<ReturnState>   parse_ReturnState();
+        ParseResult<BreakState>    parse_BreakState();
+        ParseResult<ContinueState> parse_ContinueState();
+        ParseResult<ExprState>     parse_ExprState();
+        ParseResult<BlockState>    parse_BlockState();
+        ParseResult<TryState>      parse_TryState();
+        ParseResult<CatchState>    parse_CatchState();
+        ParseResult<FinallyState>  parse_FinallyState();
+        ParseResult<PanicState>    parse_PanicState();
+        ParseResult<SuiteState>    parse_SuiteState();
     };
 }  //  namespace __AST_NODE_BEGIN
 

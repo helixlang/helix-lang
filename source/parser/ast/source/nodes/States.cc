@@ -72,9 +72,9 @@
 /// [x] * PanicState         * 'panic' ';'                                                       ///
 ///
 /// [ ] * ImportState        * 'import' (SpecImport | SingleImport) ';'
-/// [ ] * ImportItem         * Ident (('::' Ident)*)?
-/// [ ] * SingleImport       * ImportItem ('as' Ident)?
-/// [ ] * SpecImport         * ImportItem '::' '{' SingleImport (',' SingleImport)* '}'
+/// [ ] * ImportItems         * Ident (('::' Ident)*)?
+/// [ ] * SingleImport       * ImportItems ('as' Ident)?
+/// [ ] * SpecImport         * ImportItems '::' '{' SingleImport (',' SingleImport)* '}'
 /// [ ] * MultiImportState   * 'import' '{' ImportState* '}'
 
 /// CHANGE
@@ -236,6 +236,7 @@ symbols from the imports are available when needed for resolution.
 #include "parser/ast/include/types/AST_types.hh"
 #include "token/include/Token.hh"
 #include "token/include/config/Token_cases.def"
+#include "token/include/config/Token_config.def"
 #include "token/include/private/Token_generate.hh"
 
 // ---------------------------------------------------------------------------------------------- //
@@ -267,43 +268,42 @@ AST_BASE_IMPL(Statement, parse) {  // NOLINT(readability-function-cognitive-comp
     // modifiers        = get_modifiers(iter);  /// get the modifiers for the statement
 
     switch (tok.token_kind()) {
-        // TODO: case __TOKEN_N::KEYWORD_IMPORT
         case __TOKEN_N::KEYWORD_IF:
         case __TOKEN_N::KEYWORD_UNLESS:
-            return parse_IfState();
+            return parse<IfState>();
 
         case __TOKEN_N::KEYWORD_RETURN:
-            return parse_ReturnState();
+            return parse<ReturnState>();
 
         case __TOKEN_N::KEYWORD_FOR:
-            return parse_ForState();
+            return parse<ForState>();
 
         case __TOKEN_N::KEYWORD_WHILE:
-            return parse_WhileState();
+            return parse<WhileState>();
 
         case __TOKEN_N::KEYWORD_BREAK:
-            return parse_BreakState();
+            return parse<BreakState>();
 
         case __TOKEN_N::KEYWORD_CONTINUE:
-            return parse_ContinueState();
+            return parse<ContinueState>();
 
         case __TOKEN_N::KEYWORD_SWITCH:
-            return parse_SwitchState();
+            return parse<SwitchState>();
 
         case __TOKEN_N::KEYWORD_TRY:
-            return parse_TryState();
+            return parse<TryState>();
 
         case __TOKEN_N::KEYWORD_PANIC:
-            return parse_PanicState();
+            return parse<PanicState>();
 
         case __TOKEN_N::KEYWORD_FINALLY:
-            return parse_FinallyState();
+            return parse<FinallyState>();
 
         case __TOKEN_N::KEYWORD_YIELD:
-            return parse_YieldState();
+            return parse<YieldState>();
 
         case __TOKEN_N::KEYWORD_DELETE:
-            return parse_DeleteState();
+            return parse<DeleteState>();
 
         case __TOKEN_N::KEYWORD_ELSE:
             return std::unexpected(PARSE_ERROR(
@@ -322,12 +322,11 @@ AST_BASE_IMPL(Statement, parse) {  // NOLINT(readability-function-cognitive-comp
                 PARSE_ERROR(CURRENT_TOK, "found dangling 'catch' without a matching 'try'"));
 
         default:
-            return parse_ExprState();
+            return parse<ExprState>();
     }
 }
 
 // ---------------------------------------------------------------------------------------------- //
-
 
 /** in helix i would extend:
 macro return_if_empty! {
@@ -462,7 +461,7 @@ AST_NODE_IMPL(Statement, ForPyStatementCore, bool skip_start) {
                     .level = error::WARN,
                 });
 
-                var->type = nullptr; // remove the type
+                var->type = nullptr;  // remove the type
             }
         }
     }
@@ -979,41 +978,281 @@ AST_NODE_IMPL_VISITOR(Jsonify, DeleteState) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Statement, ImportState) {
-    NOT_IMPLEMENTED;
+/* UPDATED GRAMMARS:
+
+/// ImportState        := 'import' (SpecImport | SingleImport) ';'
+/// SingleImport       := (ScopePath | StringLiteral) ('as' Ident)?
+/// ImportItems        := SingleImport (',' SingleImport)*
+/// SpecImport         := SingleImport '::' ('{' ImportItems '}') | ('*')
+
+*/
+
+AST_NODE_IMPL(Statement, ImportState, bool is_ffi) {
+    IS_NOT_EMPTY;
+    bool is_module = false;
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_IMPORT);
+    iter.advance();  // skip 'import'
+
+    if CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_MODULE) {
+        is_module = true;
+        iter.advance();  // skip 'module`
+    }
+
+    ParseResult<SingleImport> single_import = parse<SingleImport>();
+    RETURN_IF_ERROR(single_import);
+
+    if (single_import.value()->is_wildcard) {
+        /// not allowed if its an file import or ffi
+        if (is_ffi) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed in ffi imports"));
+        }
+
+        if (single_import.value()->type == SingleImport::Type::File) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed in file imports"));
+        }
+
+        if (single_import.value()->alias != nullptr) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "wildcard imports cannot have an alias"));
+        }
+
+        /// convert the single import to a spec import
+        NodeT<SpecImport> spec_import = make_node<SpecImport>(single_import.value());
+        return make_node<ImportState>(spec_import, is_module);
+    }
+
+    if CURRENT_TOKEN_IS (__TOKEN_N::PUNCTUATION_OPEN_BRACE) {
+        if (is_ffi) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "import items are not allowed in ffi imports"));
+        }
+
+        /// if we have a open brace then we have a spec import
+        ParseResult<SpecImport> spec_import = parse<SpecImport>(single_import.value());
+        RETURN_IF_ERROR(spec_import);
+
+        return make_node<ImportState>(spec_import.value(), is_module);
+    }
+
+    return make_node<ImportState>(single_import.value(), is_module);
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, ImportState) { json.section("ImportState"); }
+AST_NODE_IMPL_VISITOR(Jsonify, ImportState) {
+    json.section("ImportState")
+        .add("import", get_node_json(node.import))
+        .add("type", (int)node.type);
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Statement, ImportItem) {
-    NOT_IMPLEMENTED;
+AST_NODE_IMPL(Statement, ImportItems) {
+    IS_NOT_EMPTY;
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_OPEN_BRACE);
+    iter.advance();  // skip '{'
+
+    ParseResult<SingleImport> first = parse<SingleImport>();
+
+    if (first.value()->is_wildcard) {
+        return std::unexpected(PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed here"));
+    }
+
+    if (first.value()->type == SingleImport::Type::File) {
+        return std::unexpected(PARSE_ERROR(CURRENT_TOK, "file imports are not allowed here"));
+    }
+
+    NodeT<ImportItems> node = make_node<ImportItems>(first.value());
+
+    while
+        CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA) {
+            iter.advance();  // skip ','
+
+            if CURRENT_TOKEN_IS (__TOKEN_N::PUNCTUATION_CLOSE_BRACE) {
+                break;
+            }
+
+            ParseResult<SingleImport> next = parse<SingleImport>();
+            RETURN_IF_ERROR(next);
+
+            if (next.value()->is_wildcard) {
+                return std::unexpected(
+                    PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed here"));
+            }
+
+            if (next.value()->type == SingleImport::Type::File) {
+                return std::unexpected(
+                    PARSE_ERROR(CURRENT_TOK, "file imports are not allowed here"));
+            }
+
+            node->imports.emplace_back(next.value());
+        }
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_BRACE);
+    iter.advance();  // skip '}'
+
+    return node;
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, ImportItem) { json.section("ImportItem"); }
+AST_NODE_IMPL_VISITOR(Jsonify, ImportItems) {
+    json.section("ImportItems");
+
+    std::vector<neo::json> imports;
+
+    for (const auto &import : node.imports) {
+        imports.push_back(get_node_json(import));
+    }
+
+    json.add("imports", imports);
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
 AST_NODE_IMPL(Statement, SingleImport) {
-    NOT_IMPLEMENTED;
+    IS_NOT_EMPTY;
+
+    bool is_file_import = false;
+
+    switch (CURRENT_TOK.token_kind()) {
+        case token::LITERAL_TRUE:
+        case token::LITERAL_FALSE:
+        case token::LITERAL_INTEGER:
+        case token::LITERAL_COMPLIER_DIRECTIVE:
+        case token::LITERAL_FLOATING_POINT:
+        case token::LITERAL_CHAR:
+        case token::LITERAL_NULL:
+            return std::unexpected(PARSE_ERROR(
+                CURRENT_TOK, "expected a string literal or a scope, got another kind of literal."));
+            break;
+        case token::LITERAL_STRING:
+            is_file_import = true;
+        case token::IDENTIFIER:
+            break;
+        default:
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "expected a string literal or a scope for imports."));
+            break;
+    }
+
+    NodeT<SingleImport> node = make_node<SingleImport>(is_file_import ? SingleImport::Type::File
+                                                                      : SingleImport::Type::Module);
+    ParseResult<>       path;
+
+    if (!is_file_import) {
+        path = expr_parser.parse<ScopePathExpr>(nullptr, false, true);
+        RETURN_IF_ERROR(path);
+    } else {
+        path = expr_parser.parse<LiteralExpr>();
+        RETURN_IF_ERROR(path);
+
+        if (std::static_pointer_cast<LiteralExpr>(path.value())->contains_format_args) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "f-strings are not allowed in imports."));
+        }
+    }
+
+    node->path = path.value();
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_MUL)) {
+        iter.advance();  // skip '*'
+        node->is_wildcard = true;
+
+        if (is_file_import) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed in file imports."));
+        }
+    } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
+        if (is_file_import) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "file imports cannot have import items."));
+        }
+
+        return node;
+    }
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_AS)) {
+        iter.advance();  // skip 'as'
+
+        ParseResult<IdentExpr> alias = expr_parser.parse<IdentExpr>();
+        RETURN_IF_ERROR(alias);
+
+        node->alias = alias.value();
+    }
+
+    return node;
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, SingleImport) { json.section("SingleImport"); }
+AST_NODE_IMPL_VISITOR(Jsonify, SingleImport) {
+    json.section("SingleImport")
+        .add("path", get_node_json(node.path))
+        .add("alias", get_node_json(node.alias))
+        .add("is_wildcard", node.is_wildcard ? "true" : "false")
+        .add("type", (int)node.type);
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Statement, SpecImport) {
-    NOT_IMPLEMENTED;
+AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
+    IS_NOT_EMPTY;
+
+    NodeT<SpecImport> node;
+    bool              is_wildcard = false;
+    bool              is_symbol   = false;
+
+    IS_NOT_NULL_RESULT(path) {
+        /// parse a ScopePathExpr
+        ParseResult<ScopePathExpr> path = expr_parser.parse<ScopePathExpr>(nullptr, false, true);
+        RETURN_IF_ERROR(path);
+
+        if CURRENT_TOKEN_IS (__TOKEN_N::OPERATOR_MUL) {
+            iter.advance();  // skip '*'
+            is_wildcard = true;
+        } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
+            is_symbol = true;
+        }
+
+        node = make_node<SpecImport>(path.value());
+    }
+    else {
+        if (path.value()->type == SingleImport::Type::File) {
+            return std::unexpected(
+                PARSE_ERROR(CURRENT_TOK, "file imports cannot have import items."));
+        }
+
+        node = make_node<SpecImport>(std::static_pointer_cast<ScopePathExpr>(path.value()->path));
+        /// we only get here if there is a open brace
+        is_wildcard = path.value()->is_wildcard;
+        is_symbol   = true;
+    }
+
+    if (is_symbol && is_wildcard) {
+        return std::unexpected(
+            PARSE_ERROR(CURRENT_TOK, "wildcard imports are not allowed in direct symbol imports."));
+    }
+
+    if (is_symbol) {
+        ParseResult<ImportItems> items = parse<ImportItems>();
+        RETURN_IF_ERROR(items);
+
+        node->imports = items.value();
+        node->type    = SpecImport::Type::Symbol;
+    } else {
+        node->type = SpecImport::Type::Wildcard;
+    }
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, SpecImport) { json.section("SpecImport"); }
+AST_NODE_IMPL_VISITOR(Jsonify, SpecImport) {
+    json.section("SpecImport")
+        .add("path", get_node_json(node.path))
+        .add("imports", get_node_json(node.imports))
+        .add("type", (int)node.type);
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Statement, MultiImportState) {
-    NOT_IMPLEMENTED;
-}
+AST_NODE_IMPL(Statement, MultiImportState) { NOT_IMPLEMENTED; }
 
 AST_NODE_IMPL_VISITOR(Jsonify, MultiImportState) { json.section("MultiImportState"); }
 
@@ -1088,7 +1327,7 @@ AST_NODE_IMPL(Statement, ExprState) {
     return make_node<ExprState>(expr.value());
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, ExprState) { json.section("ExprState", get_node_json(node.value)); }
+AST_NODE_IMPL_VISITOR(Jsonify, ExprState) { json.section("ExprState").add("expr", get_node_json(node.value)); }
 
 // ---------------------------------------------------------------------------------------------- //
 

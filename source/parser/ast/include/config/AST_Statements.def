@@ -30,7 +30,7 @@
     MACRO(YieldState)            \
     MACRO(DeleteState)           \
     MACRO(ImportState)            \
-    MACRO(ImportItem)     \
+    MACRO(ImportItems)     \
     MACRO(SingleImport)      \
     MACRO(SpecImport)           \
     MACRO(MultiImportState)           \

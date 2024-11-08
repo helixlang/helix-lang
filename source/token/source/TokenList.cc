@@ -76,6 +76,17 @@ __TOKEN_BEGIN {
         return {this->filename, this->cbegin() + start_index, this->cbegin() + end_index};
     }
 
+    void TokenList::remove(const token::Token& start, const token::Token& end) {
+        auto start_it = std::find(this->cbegin(), this->cend(), start);
+        auto end_it   = std::find(this->cbegin(), this->cend(), end);
+
+        if (start_it == this->cend() || end_it == this->cend()) {
+            throw std::out_of_range("Token not found in list");
+        }
+
+        this->erase(start_it, end_it);
+    }
+
     TokenList TokenList::raw_slice(const u64 start, const i64 end) const {
         auto start_index = static_cast<TokenVec::difference_type>(start);
         auto end_index   = static_cast<TokenVec::difference_type>(end);

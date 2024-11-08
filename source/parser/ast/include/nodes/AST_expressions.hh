@@ -160,6 +160,17 @@ __AST_NODE_BEGIN {
         explicit ScopePathExpr(NodeT<IdentExpr> first) { path.emplace_back(std::move(first)); }
         explicit ScopePathExpr(bool /* unused */) {}
 
+        // -- Helper Functions -- //
+
+        [[nodiscard]] token::Token get_back_name() const {
+            if (path.empty()) {
+                return token::Token(
+                    token::tokens::IDENTIFIER, "__/helix$$internal/__", "__global__");
+            }
+
+            return path.back()->name;
+        }
+
         NodeV<IdentExpr> path;
         NodeT<>          access;
         bool             global_scope = false;

@@ -394,8 +394,7 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
 
     IS_NOT_NULL_RESULT(str_concat) {
         if (str_concat.value()->getNodeType() != nodes::LiteralExpr ||
-            convert_t<LiteralExpr>(str_concat.value())->type !=
-                LiteralExpr::LiteralType::String) {
+            convert_t<LiteralExpr>(str_concat.value())->type != LiteralExpr::LiteralType::String) {
             return std::unexpected(PARSE_ERROR(tok, "expected a string literal"));
         }
 
@@ -737,8 +736,8 @@ AST_NODE_IMPL(Expression, ArgumentExpr) {
         if (bin_expr->lhs->getNodeType() == nodes::IdentExpr &&
             bin_expr->op.token_kind() == __TOKEN_N::OPERATOR_ASSIGN) {
 
-            NodeT<NamedArgumentExpr> kwarg = make_node<NamedArgumentExpr>(
-                convert_t<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
+            NodeT<NamedArgumentExpr> kwarg =
+                make_node<NamedArgumentExpr>(convert_t<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
 
             result       = make_node<ArgumentExpr>(kwarg);
             result->type = ArgumentExpr::ArgumentType::Keyword;
@@ -860,7 +859,7 @@ AST_NODE_IMPL(Expression, GenericInvokePathExpr) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
+AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope, bool is_import) {
     IS_NOT_EMPTY;
 
     // := ('::'? E) ('::' E)*
@@ -874,14 +873,14 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
         path               = make_node<ScopePathExpr>(false);
         path->global_scope = true;
 
-        goto LINE902_PARSE_SCOPE_PATH_EXPR;
+        goto LINE910_PARSE_SCOPE_PATH_EXPR;
     } else {
         IS_NULL_RESULT(lhs) {
             if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE)) {  // global scope access
                 path               = make_node<ScopePathExpr>(false);
                 path->global_scope = true;
 
-                goto LINE902_PARSE_SCOPE_PATH_EXPR;
+                goto LINE910_PARSE_SCOPE_PATH_EXPR;
             }
 
             first = parse<IdentExpr>();
@@ -908,12 +907,19 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope) {
 
     path = make_node<ScopePathExpr>(first.value());
 
-LINE902_PARSE_SCOPE_PATH_EXPR:
+LINE910_PARSE_SCOPE_PATH_EXPR:
     while
         CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE) {
             iter.advance();  // skip '::'
 
-            if CURRENT_TOKEN_IS (__TOKEN_N::PUNCTUATION_OPEN_ANGLE) {  // turbofish
+            // turbofish | import
+            if (is_import) {
+                if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE) || CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_MUL)) {
+                    break;
+                }
+            }
+
+            if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_ANGLE)) {
                 path->access = path->path.back();
                 path->path.pop_back();
 
@@ -1087,8 +1093,7 @@ AST_NODE_IMPL(Expression,
             break;
 
         default:
-            return std::unexpected(
-                PARSE_ERROR_MSG("expected '(' or '{' after the previous token"));
+            return std::unexpected(PARSE_ERROR_MSG("expected '(' or '{' after the previous token"));
     }
     RETURN_IF_ERROR(initializer);
 
@@ -1733,6 +1738,8 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
                 continue_loop  = false;
                 break;
             }
+
+            // TODO: add support for scope path expressions
 
             default:
                 if (is_excepted(tok, IS_UNARY_OPERATOR)) {

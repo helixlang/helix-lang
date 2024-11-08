@@ -96,6 +96,7 @@
 #include <utility>
 #include <vector>
 
+#include "neo-panic/include/error.hh"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/nodes/AST_declarations.hh"
@@ -948,15 +949,47 @@ AST_NODE_IMPL(Declaration, FFIDecl, const std::shared_ptr<__TOKEN_N::TokenList> 
     IS_EXCEPTED_TOKEN(__TOKEN_N::LITERAL_STRING);
     node->name = expr_parser.parse<LiteralExpr>().value();
 
-    ParseResult<SingleImportState> ext_import = state_parser.parse<SingleImportState>();
+    ParseResult<ImportState> ext_import = state_parser.parse<ImportState>(true);
     RETURN_IF_ERROR(ext_import);
 
     node->value = ext_import.value();
+    if (ext_import.value()->type == ImportState::Type::Single &&
+        node->name->value.value() == "\"c++\"") {
+        NodeT<SingleImport> single =
+            std::static_pointer_cast<SingleImport>(ext_import.value()->import);
+
+        if (single->type == SingleImport::Type::Module) {
+            NodeT<ScopePathExpr> path = std::static_pointer_cast<ScopePathExpr>(single->path);
+            token::Token         tok  = path->get_back_name();
+
+            if (tok.value() == "__/helix$$internal/__") {
+                /// this is completely disallowed theres no marker for this
+                return std::unexpected(
+                    PARSE_ERROR(node->name->value,
+                                "global module imports are not allowed, remove the first `::`"));
+            }
+
+            error::Panic(error::CodeError{
+                .pof      = const_cast<__TOKEN_N::Token *>(&tok),
+                .err_code = 4.1002,
+                .mark_pof = true,
+                .fix_fmt_args{},
+                .err_fmt_args{"the specified module must be an exported c++ module otherwise use a "
+                              "\"...\" (path-based) import"},
+                .opt_fixes{},
+            });
+        }
+    }
 
     return node;
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, FFIDecl) { json.section("FFIDecl"); }
+AST_NODE_IMPL_VISITOR(Jsonify, FFIDecl) {
+    json.section("FFIDecl")
+        .add("name", get_node_json(node.name))
+        .add("value", get_node_json(node.value))
+        .add("vis", node.vis.to_json());
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
@@ -1063,7 +1096,12 @@ AST_NODE_IMPL(Declaration, OpDecl, const std::shared_ptr<__TOKEN_N::TokenList> &
     return node;
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, OpDecl) { json.section("OpDecl"); }
+AST_NODE_IMPL_VISITOR(Jsonify, OpDecl) {
+    json.section("OpDecl")
+        .add("op", node.op)
+        .add("func", get_node_json(node.func))
+        .add("modifiers", node.modifiers.to_json());
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
