@@ -111,4 +111,4 @@ We thank all security researchers and community members who help us maintain the
 
 Thank you for helping us improve the security of Helix. Your responsible disclosure and collaboration are greatly appreciated.
 
-For any further questions or concerns regarding our security policy, please contact us at [security@neorain.co](mailto:security@neorain.co).
+For any further questions or concerns regarding our security policy, please contact us at [security@neorain.co](mailto:security@helix-lang.com).
