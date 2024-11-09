@@ -28,7 +28,7 @@ Security updates for older versions may be provided on a case-by-case basis, dep
 
 #### Version Numbering
 
-Helix uses [semantic versioning](https://semver.org/) for its releases. The version number is formatted as `MAJOR.MINOR.PATCH`, where:
+Helix compiler uses [semantic versioning](https://semver.org/) for its releases. The version number is formatted as `MAJOR.MINOR.PATCH`, where:
 
 - **MAJOR:** Incremented for incompatible API changes.
 - **MINOR:** Incremented for new features that are backward-compatible.
@@ -44,7 +44,7 @@ At Helix, we take security issues seriously. If you discover a security vulnerab
 
 Please report security vulnerabilities to our dedicated security team at:
 
-- **Email:** [security@neorain.co](mailto:security@neorain.co)
+- **Email:** [security@neorain.co](mailto:security@helix-lang.com)
 
 #### Guidelines for Reporting
 
