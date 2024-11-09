@@ -44,7 +44,7 @@ At Helix, we take security issues seriously. If you discover a security vulnerab
 
 Please report security vulnerabilities to our dedicated security team at:
 
-- **Email:** [security@neorain.co](mailto:security@helix-lang.com)
+- **Email:** [security@helix-lang.com](mailto:security@helix-lang.com)
 
 #### Guidelines for Reporting
 
@@ -111,4 +111,4 @@ We thank all security researchers and community members who help us maintain the
 
 Thank you for helping us improve the security of Helix. Your responsible disclosure and collaboration are greatly appreciated.
 
-For any further questions or concerns regarding our security policy, please contact us at [security@neorain.co](mailto:security@helix-lang.com).
+For any further questions or concerns regarding our security policy, please contact us at [security@helix-lang.com](mailto:security@helix-lang.com).
