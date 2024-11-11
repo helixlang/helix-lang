@@ -29,7 +29,7 @@ Helix is designed to address several limitations found in other modern languages
 - **Performance-centric**:  Designed to compete with C in terms of performance.
 - **Expressive syntax**:    Combines Python's simplicity with Rust's modern constructs and C++'s power.
 - **Type safety**:          Strong type system, but with the flexibility of python type annotations.
-- **Interoperability**:     Seamless integration starting with C and C++, then expanding to other languages. With a extendable FFI system that allows for easy integration with any other languages.
+- **Interoperability**:     Seamless integration starting with C and C++, then expanding to other languages. With an extendable FFI system that allows for easy integration with any other languages.
 - **Non-Erroring Borrow checker**: Ensures safe memory management, similar to Rust's borrow checker but, Helix treats **invalid borrows and ownership violations** as **warnings** rather than errors, allowing the program to compile and run. but in a performance degraded mode, while still maintaining memory safety.
 
 ### Applications:
