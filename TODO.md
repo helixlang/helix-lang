@@ -8,7 +8,7 @@
 - [ ] Parse simple macros and invocations
 - [ ] Parse eval if statements
 - [ ] Get CXIR compile messages to convert to helix errors
-- [ ] Parse basic helix imports (star imports only for now)
+- [x] Parse basic helix imports (no symbol resolution)
 - [ ] Codegen C++ headers to allow C++ to call helix code
 - [ ] Parse and codegen catch blocks with no catch type
 - [ ] Make test syntax work for definitions and usages
@@ -16,7 +16,7 @@
 - [x] Get f-strings working
 - [x] Convert clang errors into the helix error msg format.
 - [ ] Convert gcc errors into the helix error msg format.
-- [ ] Convert msvc errors into the helix error msg format.
+- [x] Convert msvc errors into the helix error msg format.
 - [ ] Fix ast error messages, where the message tells a fix to also add a quick fix to the error
 - [x] Add support for global scopes in the parser
 - [ ] Add panic unwinding support
@@ -77,7 +77,7 @@ if a_ptr != &null {
 
 ```rs
 let a: i32 = 123;
-let a_ptr: unsafe *i32 = 0xAB12 as *i32; // a_ptr points to 0xAB12
+let a_ptr: unsafe *i32 = 0xAB12 as unsafe *i32; // a_ptr points to 0xAB12
 
 print(*a_ptr); // if 0xAB12 is uninitialized then segfault or undefined behavior, else reads data in 0xAB12
 

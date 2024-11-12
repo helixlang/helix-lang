@@ -34,6 +34,8 @@ namespace error {
 const helix::CompTimeMap<float, Errors, 150> ERROR_MAP({
     // Syntax Errors
     MP(0.0001, Errors{"invalid syntax: {}", "", error::ERR}),
+    MP(0.0123, Errors{"invalid import: {}", "", error::ERR}),
+    MP(0.0126, Errors{"invalid import: {}", "{}", error::ERR}),
     MP(0.0002, Errors{"invalid use of a literal", "use the literal in a correct manner.", error::ERR}),
     MP(0.0003, Errors{"bad float", "", error::ERR}),
     MP(1.0010, Errors{"syntax error, unexpected token '{}'", "use a correct literal here.", error::ERR}),
