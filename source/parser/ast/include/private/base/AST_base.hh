@@ -25,6 +25,8 @@
 #include "parser/ast/include/types/AST_types.hh"
 #include "parser/ast/include/types/AST_visitor.hh"
 
+namespace generator::CXIR{class CXIR;}
+
 __AST_NODE_BEGIN {
     class Node {  // base node
       public:
@@ -49,13 +51,15 @@ __AST_NODE_BEGIN {
       public:
         Program()                           = delete;
         ~Program() override                 = default;
-        Program(const Program &)            = default;  // no move or copy semantics
+        Program(const Program &)            = delete;  // no move or copy semantics
         Program &operator=(const Program &) = delete;
         Program(Program &&)                 = delete;
         Program &operator=(Program &&)      = delete;
 
-        explicit Program(__TOKEN_N::TokenList &source_tokens)
-            : source_tokens(source_tokens) {}
+        explicit Program(__TOKEN_N::TokenList         &source_tokens,
+                        std::string file_name)
+            : filename(std::move(file_name))
+            , source_tokens(source_tokens) {}
 
         void accept(parser ::ast ::visitor ::Visitor &visitor) const override {
             visitor.visit(*this);
@@ -64,6 +68,7 @@ __AST_NODE_BEGIN {
         [[nodiscard]] nodes        getNodeType() const override { return nodes::Program; }
         [[nodiscard]] std ::string getNodeName() const override { return "Program"; };
         [[nodiscard]] bool         is(nodes node) const override { return node == nodes::Program; }
+        [[nodiscard]] std::string get_file_name() const {return filename; }
 
         Program &parse(bool quiet = false) {
             auto iter = source_tokens.begin();
@@ -76,8 +81,9 @@ __AST_NODE_BEGIN {
 
                 if (!expr.has_value()) {
                     has_errored = true;
-                    if (!quiet) { expr.error().panic();
-}
+                    if (!quiet) {
+                        expr.error().panic();
+                    }
 #ifdef DEBUG
                     print(std::string(colors::fg16::red),
                           "error: ",
@@ -93,9 +99,11 @@ __AST_NODE_BEGIN {
             return *this;
         }
 
-        NodeV<> children;
-        NodeV<> annotations;
-        bool has_errored = false;
+        NodeV<>                       children;
+        NodeV<>                       annotations;
+        bool                          has_errored = false;
+        std::string filename;
+        std::string entry = "main";
 
       private:
         __TOKEN_N::TokenList &source_tokens;

@@ -249,7 +249,7 @@ __AST_NODE_BEGIN {
         explicit SpecImport(NodeT<ScopePathExpr> path)
             : path(std::move(path)) {}
 
-        explicit SpecImport([[Owner]] NodeT<SingleImport> import) {
+        explicit SpecImport(/* takes ownership */ NodeT<SingleImport> import) {
             /// this means this is a single import thats a wildcard import
             if (import->is_wildcard) {
                 if (import->type == SingleImport::Type::File) {

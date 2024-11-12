@@ -13,8 +13,8 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
-#ifndef __CXIR_BASE_H__
-#define __CXIR_BASE_H__
+#ifndef __CXIR_H__
+#define __CXIR_H__
 
 #include <clang/Format/Format.h>
 #include <llvm/ADT/StringRef.h>
@@ -25,12 +25,14 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "generator/include/CX-IR/tokens.def"
 #include "generator/include/config/Gen_config.def"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/AST.hh"
+#include "parser/preprocessor/include/private/utils.hh"
 #include "token/include/Token.hh"
 
 const std::regex
@@ -212,15 +214,17 @@ __CXIR_CODEGEN_BEGIN {
     class CXIR : public __AST_VISITOR::Visitor {
       private:
         std::vector<std::unique_ptr<CX_Token>> tokens;
-        const bool forward_only = false;
+        std::vector<generator::CXIR::CXIR>     imports;
+        const bool                             forward_only = false;
 
       public:
-        CXIR() = default;
-        explicit CXIR(bool forward_only)
-            : forward_only(forward_only) {}
+        explicit CXIR(bool forward_only = false, std::vector<generator::CXIR::CXIR> imports = {})
+            : imports(std::move(imports))
+            , forward_only(forward_only) {}
+
         CXIR(const CXIR &)            = default;
-        CXIR(CXIR &&)                 = delete;
-        CXIR &operator=(const CXIR &) = default;
+        CXIR(CXIR &&)                 = default;
+        CXIR &operator=(const CXIR &) = delete;
         CXIR &operator=(CXIR &&)      = delete;
         ~CXIR() override              = default;
 
@@ -238,15 +242,28 @@ __CXIR_CODEGEN_BEGIN {
             return std::nullopt;
         }
 
+        template <const bool add_core = true>
         [[nodiscard]] std::string to_CXIR() const {
             std::string cxir;
-            u64         current_line_no = 0;
+
+            if constexpr (add_core) {
+                cxir += get_core() + "\n" + get_imports<false>() + "\n";
+            } else {
+                cxir += get_imports<false>() + "\n";
+            }
+
+            u64 current_line_no = 0;
 
             // normalize tokens
             // if tokens has a line number, add a new line
             for (u64 i = 0; i < tokens.size(); ++i) {
                 // normalize so there arent multiple #line
                 if (tokens[i]->get_value()[0] == '#') {
+                    if (!((i + 1) < tokens.size())) {
+                        cxir += "\n" + tokens[i]->get_value() + "\n";
+                        continue;
+                    }
+
                     cxir += "\n" + tokens[i]->get_value() + " " + tokens[i + 1]->get_value() + "\n";
                     ++i;
                 } else if (tokens[i]->get_value() == ";") {
@@ -271,7 +288,7 @@ __CXIR_CODEGEN_BEGIN {
         }
 
         [[nodiscard]] std::string to_readable_CXIR() const {
-            std::string cxir;
+            std::string cxir = get_imports<true>() + "\n";
 
             // Build the CXIR string from tokens
             for (const auto &token : tokens) {
@@ -319,6 +336,23 @@ __CXIR_CODEGEN_BEGIN {
             }
 
             return std::regex_replace(*formattedCode, double_semi_regexp, ";");
+        }
+
+        static std::string get_core();
+
+        template <const bool readable>
+        std::string get_imports() const {
+            std::string cxir;
+
+            for (const auto &import : this->imports) {
+                if constexpr (readable) {
+                    cxir += import.to_readable_CXIR();
+                } else {
+                    cxir += import.to_CXIR<false>();
+                }
+            }
+
+            return cxir;
         }
 
         void visit(const parser ::ast ::node ::LiteralExpr &node) override;
@@ -403,8 +437,11 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::LetDecl &node) override { visit(node, false); };
         void visit(const parser ::ast ::node ::LetDecl &node, bool is_in_statement);
         void visit(const parser ::ast ::node ::OpDecl &node) override;
-        void visit(const parser ::ast ::node ::OpDecl &node, bool remove_self) {};
-        void visit(const parser ::ast ::node ::Program &node) override;
+        /// REMOVED: void visit(const parser ::ast ::node ::OpDecl &node, bool remove_self) {};
+        void visit(const parser ::ast ::node ::Program &node) override {
+            visit(const_cast<parser ::ast ::node ::Program &>(node));
+        }
+        void visit(parser ::ast ::node ::Program &node);
         void visit(const parser ::ast ::node ::FuncDecl &node) override { visit(node, false); };
     };
 

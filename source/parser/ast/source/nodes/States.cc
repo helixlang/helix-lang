@@ -1201,12 +1201,13 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
     bool              is_wildcard = false;
     bool              is_symbol   = false;
 
-    IS_NOT_NULL_RESULT(path) {
+
+    IS_NULL_RESULT(path) {
         /// parse a ScopePathExpr
         ParseResult<ScopePathExpr> path = expr_parser.parse<ScopePathExpr>(nullptr, false, true);
         RETURN_IF_ERROR(path);
 
-        if CURRENT_TOKEN_IS (__TOKEN_N::OPERATOR_MUL) {
+        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_MUL)) {
             iter.advance();  // skip '*'
             is_wildcard = true;
         } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
@@ -1214,8 +1215,7 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
         }
 
         node = make_node<SpecImport>(path.value());
-    }
-    else {
+    } else {
         if (path.value()->type == SingleImport::Type::File) {
             return std::unexpected(
                 PARSE_ERROR(CURRENT_TOK, "file imports cannot have import items."));
@@ -1241,6 +1241,8 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
     } else {
         node->type = SpecImport::Type::Wildcard;
     }
+
+    return node;
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, SpecImport) {

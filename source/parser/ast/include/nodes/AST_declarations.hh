@@ -85,7 +85,7 @@ __AST_NODE_BEGIN {
         BASE_CORE_METHODS(TypeBoundDecl);
 
         // TypeBoundDecl := InstOfExpr
-        
+
         NodeT<InstOfExpr> bound;
     };
 
@@ -189,6 +189,32 @@ __AST_NODE_BEGIN {
 
         explicit FuncDecl(bool /* unused */) {}
 
+        token::TokenList get_name_t() const {
+            /// normalize the func name
+            token::TokenList result;
+
+            switch (name->type) {
+                case PathExpr::PathType::Identifier: {
+                    result.push_back(std::static_pointer_cast<IdentExpr>(name->path)->name);
+                    break;
+                }
+
+                case PathExpr::PathType::Scope: {
+                    auto path = std::static_pointer_cast<ScopePathExpr>(name->path);
+
+                    for (const auto &token : path->path) {
+                        result.push_back(token->name);
+                    }
+
+                    break;
+                }
+
+                default: break;
+            }
+
+            return result;
+        }
+
         Modifiers modifiers  = Modifiers(Modifiers::ExpectedModifier::FuncSpec,
                                         Modifiers::ExpectedModifier::AccessSpec);
         Modifiers qualifiers = Modifiers(Modifiers::ExpectedModifier::FuncQual);
@@ -240,10 +266,10 @@ __AST_NODE_BEGIN {
         // OpDecl :=  SharedModifiers? 'op' T FuncDecl[no_SharedModifiers=true]
         explicit OpDecl(bool /* unused */) {}
 
-        Modifiers        modifiers = Modifiers(Modifiers::ExpectedModifier::FuncSpec,
+        Modifiers                     modifiers = Modifiers(Modifiers::ExpectedModifier::FuncSpec,
                                         Modifiers::ExpectedModifier::AccessSpec);
         std::vector<__TOKEN_N::Token> op;
-        NodeT<FuncDecl>  func;
+        NodeT<FuncDecl>               func;
     };
 
     class ModuleDecl final : public Node {

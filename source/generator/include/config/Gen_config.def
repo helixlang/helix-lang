@@ -45,4 +45,67 @@
                                   .err_fmt_args{GET_DEBUG_INFO + msg},              \
                                   .opt_fixes{}});
 
+#define CXIR_NOT_IMPLEMENTED throw std::runtime_error(GET_DEBUG_INFO + "Not implemented yet")
+#define ADD_TOKEN(token) tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token))
+#define ADD_TOKEN_AS_VALUE(token, value) \
+    tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token, value))
+#define ADD_TOKEN_AS_TOKEN(token, token_value) \
+    tokens.push_back(std::make_unique<CX_Token>(token_value, cxir_tokens::token))
+
+#define ADD_NODE_PARAM(param)  \
+    if (node.param != nullptr) \
+    ADD_PARAM(node.param)
+#define ADD_PARAM(param) param->accept(*this)
+
+#define NO_EMIT_FORWARD_DECL  \
+    if (this->forward_only) { \
+        return;               \
+    }
+
+#define NO_EMIT_FORWARD_DECL_SEMICOLON \
+    if (this->forward_only) {          \
+        ADD_TOKEN(CXX_SEMICOLON);      \
+        return;                        \
+    }
+
+// This macro will not add a separator after the last element.
+#define SEP(args, sep)                                  \
+    if (!node.args.empty()) {                           \
+        ADD_NODE_PARAM(args[0]);                        \
+        for (size_t i = 1; i < node.args.size(); ++i) { \
+            sep;                                        \
+            ADD_NODE_PARAM(args[i]);                    \
+        }                                               \
+    }
+
+// This macro always adds the separator, even after the last element.
+#define SEP_TRAILING(args, sep)                         \
+    if (!node.args.empty())                             \
+        for (size_t i = 0; i < node.args.size(); ++i) { \
+            ADD_NODE_PARAM(args[i]);                    \
+            sep                                         \
+        }
+
+#define UNLESS_NULL(x) (node.x) if (node.x != nullptr)
+
+#define ADD_ALL_PARAMS(params)         \
+    for (const auto &param : params) { \
+        ADD_PARAM(param);              \
+    }
+
+#define ADD_ALL_NODE_PARAMS(params) ADD_ALL_PARAMS(node.params)
+
+#define COMMA_SEP(args) SEP(args, ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, ",");)
+#define SCOPE_SEP(args) SEP(args, ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, "::");)
+
+#define DELIMIT(L, R, ...) \
+    ADD_TOKEN(L);          \
+    __VA_ARGS__            \
+    ADD_TOKEN(R)
+
+#define PAREN_DELIMIT(...) DELIMIT(CXX_LPAREN, CXX_RPAREN, __VA_ARGS__)
+#define BRACE_DELIMIT(...) DELIMIT(CXX_LBRACE, CXX_RBRACE, __VA_ARGS__)
+#define BRACKET_DELIMIT(...) DELIMIT(CXX_LBRACKET, CXX_RBRACKET, __VA_ARGS__)
+#define ANGLE_DELIMIT(...) DELIMIT(CXX_LESS, CXX_GREATER, __VA_ARGS__)
+
 #endif  // __CODEGEN_CONFIG_DEF__
