@@ -1,12 +1,115 @@
-## this file defines all the langauge features of helix that make the language very powerful and easy to use.
+## this file defines all the language features of helix
 # Language Features
 
+### Interoperability
+Helix has a very powerful interoperability feature that allows you to use anything from other languages like C, C++, Python, and Rust (What we will make). Or even extend the language to work with other languages.
+
+```helix
+ffi "c" import "stdio.h";
+ffi "c++" import "iostream";
+ffi "py" import os;
+ffi "rs" import std::fs;
+```
+
+### OOP
+Helix has all of OOP features like classes, interfaces, and inheritance.
+
+```helix
+interface Animal {
+    fn speak(self) -> string;
+}
+
+class Base {
+    fn Base() {
+        print("Base created");
+    }
+}
+
+#[impl(Animal)]
+class Dog derives Base {
+    fn Dog() {
+        print("Dog created");
+    }
+
+    fn speak(self) -> string {
+        return "Woof!";
+    }
+}
+
+fn main() {
+    let dog = Dog();
+    let animal = dog as Base;
+
+    print(Animal in dog); // true
+    print(Animal in animal); // false
+
+    print(dog derives Base); // true
+    print(animal derives Base); // true
+}
+```
+
+### Functional Programming
+Helix has all of the functional programming features like higher-order functions, lambdas, closures, generators, and pattern matching.
+
+```helix
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn closure_example() -> int {
+    let a = 10;
+    let b = 20;
+
+    fn add_closure(a: int, b: int) -> int { /// this does not have access to the outer scope
+        return a + b;
+    }
+
+    let other_closure = fn(a: int, b: int) -> int { /// this does have access to the outer scope
+        return a + b;
+    };
+
+    /// both the closures can be used as higher-order functions
+
+    return add_closure(a, b);
+}
+
+fn generator() -> yield int {
+    for i in 0..10 {
+        yield i;
+    }
+}
+
+fn main() {
+    let a = 10;
+    let b = 20;
+
+    let c = match a {
+        10 -> 1;
+        20 -> 2;
+        _  -> 3;
+    };
+}
+```
+
+### Null Safety
+Helix by default is null safe, and you can use the `?` operator to specify that a value can be null.
+
+```helix
+fn add(a: int?, b: int?) -> int? {
+    if a? && b? {
+        return a + b;
+    } else {
+        return null;
+    }
+}
+```
+
 ### Generics
-Generics in helix are handled in a way that is completly unique to the language.
+Generics in helix are handled in a way that is complexly unique to the language.
 
 ```helix
 fn add(a: T, b: T) -> T
-  requires <T> if T has Add {
+  requires <T> if Add in T {
     return a + b;
 }
 
@@ -27,7 +130,7 @@ Things to note here:
 1. The `requires` keyword is used to specify the constraints on the generic type.
 2. The `if` keyword is used to specify the condition that the generic type must satisfy. (optional)
 3. The `derives` keyword is a strict constraint that the generic type must satisfy, it is used to specify that the generic type MUST derive from a specific type.
-4. The `has` keyword is used to specify that the generic type must implement the specified type's methods (not necessarily derive from the type).
+4. The `in` keyword is used to specify that the generic type must implement the specified type's methods (not necessarily derive from the type).
 
 
 ### Pattern Matching
@@ -173,24 +276,6 @@ Things to note here:
 6. The `T` is a generic type that is used to specify that the function can accept any type that derives from `Mammal`.
 7. The `requires` keyword is used to specify the constraints on the generic type.
 8. The `if` keyword is used to specify the condition that the generic type must satisfy.
-
-### Interoperability
-Helix has a very powerful interoperability feature that allows you to call functions from other languages like C, C++, and Rust.
-Or even extend the language with more interop features. though easy to use interfaces.
-
-```helix
-module cxx_ffi_imports { // module is not required, but it is a good practice to use it. since c/c++ imports are transitive. and can cause name conflicts.
-    ffi "c++" import "iostream";
-}
-
-ffi "py" import "os";
-
-fn main() {
-    cxx_ffi_imports::std::cout << "Hello, World!" << cxx_ffi_imports::std::endl;
-
-    os.system("echo Hello, World!");
-}
-```
 
 ### Macros
 Helix has 3 types of macros:
