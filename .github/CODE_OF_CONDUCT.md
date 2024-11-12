@@ -61,7 +61,7 @@ Community members are expected to adhere to these standards. Unacceptable behavi
 
 ### Reporting Issues
 
-If you encounter or witness behavior that violates this Code of Conduct, please report it to the Helix Conduct Team at [conduct@neorain.co](mailto:conduct@neorain.co). Your report will be handled confidentially. 
+If you encounter or witness behavior that violates this Code of Conduct, please report it to the Helix Conduct Team at [conduct@helix-lang.com](mailto:conduct@helix-lang.com). Your report will be handled confidentially. 
 
 #### What to Include in a Report
 
