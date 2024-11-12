@@ -21,6 +21,17 @@
      defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
      defined(__MACH__))
 
+#ifndef VERBOSE_LOG
+#define VERBOSE_LOG(...)                          \
+    if (parsed_args.verbose) {                    \
+        helix::log<LogLevel::Debug>(__VA_ARGS__); \
+    }
+#endif
+
+namespace parser::preprocessor {
+class ImportProcessor;
+}
+
 namespace flag {
 namespace types {
     enum class CompileFlags : u8 {
@@ -67,6 +78,59 @@ struct CXXCompileAction {  // NOLINT
          init(CXIR &emitter, const Path &cc_out, flag::CompileFlags flags, Args cxx_args);
     void cleanup() const;
 
+    CXXCompileAction() = default;
+    CXXCompileAction(Path               working_dir,
+                     Path               cc_source,
+                     Path               cc_output,
+                     Path               helix_src,
+                     Args               cxx_args,
+                     flag::CompileFlags flags,
+                     std::string        cxx_compiler)
+        : working_dir(std::move(working_dir))
+        , cc_source(std::move(cc_source))
+        , cc_output(std::move(cc_output))
+        , helix_src(std::move(helix_src))
+        , cxx_args(std::move(cxx_args))
+        , flags(flags)
+        , cxx_compiler(std::move(cxx_compiler)) {}
+
+    CXXCompileAction(const CXXCompileAction &other) = default;
+
+    CXXCompileAction &operator=(const CXXCompileAction &other) {
+        if (this != &other) {
+            working_dir  = other.working_dir;
+            cc_source    = other.cc_source;
+            cc_output    = other.cc_output;
+            helix_src    = other.helix_src;
+            cxx_args     = other.cxx_args;
+            flags        = other.flags;
+            cxx_compiler = other.cxx_compiler;
+        }
+        return *this;
+    }
+
+    CXXCompileAction(CXXCompileAction &&other) noexcept
+        : working_dir(std::move(other.working_dir))
+        , cc_source(std::move(other.cc_source))
+        , cc_output(std::move(other.cc_output))
+        , helix_src(std::move(other.helix_src))
+        , cxx_args(std::move(other.cxx_args))
+        , flags(other.flags)
+        , cxx_compiler(std::move(other.cxx_compiler)) {}
+
+    CXXCompileAction &operator=(CXXCompileAction &&other) noexcept {
+        if (this != &other) {
+            working_dir  = std::move(other.working_dir);
+            cc_source    = std::move(other.cc_source);
+            cc_output    = std::move(other.cc_output);
+            helix_src    = std::move(other.helix_src);
+            cxx_args     = std::move(other.cxx_args);
+            flags        = other.flags;
+            cxx_compiler = std::move(other.cxx_compiler);
+        }
+        return *this;
+    }
+
     ~CXXCompileAction();
 
   private:
@@ -103,10 +167,14 @@ class CompilationUnit {
   public:
     int                              compile(int argc, char **argv);
     int                              compile(__CONTROLLER_CLI_N::CLIArgs &);
-    std::pair<CXXCompileAction, int> compile_wet(__CONTROLLER_CLI_N::CLIArgs &);
+    std::pair<CXXCompileAction, int> build_unit(__CONTROLLER_CLI_N::CLIArgs &, bool = true);
+    generator::CXIR::CXIR            generate_cxir(bool);
+    __TOKEN_N::TokenList             pre_process(__CONTROLLER_CLI_N::CLIArgs &, bool);
 
   private:
-    CXIRCompiler compiler;
+    CXIRCompiler                                           compiler;
+    parser::ast::NodeT<parser::ast::node::Program>         ast;
+    std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr;
 
     static void remove_comments(__TOKEN_N::TokenList &tokens);
 

@@ -13,12 +13,17 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include <algorithm>
+#include <concepts>
 #include <cstdio>
 #include <ctime>
 #include <memory>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "generator/include/CX-IR/CXIR.hh"
+#include "generator/include/config/Gen_config.def"
 #include "neo-panic/include/error.hh"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/AST.hh"
@@ -27,72 +32,10 @@
 #include "parser/ast/include/nodes/AST_expressions.hh"
 #include "parser/ast/include/nodes/AST_statements.hh"
 #include "parser/ast/include/private/AST_generate.hh"
+#include "parser/ast/include/private/base/AST_base_expression.hh"
 #include "parser/ast/include/types/AST_types.hh"
 #include "token/include/private/Token_base.hh"
 #include "token/include/private/Token_generate.hh"
-
-#define CXIR_NOT_IMPLEMENTED throw std::runtime_error(GET_DEBUG_INFO + "Not implemented yet")
-#define ADD_TOKEN(token) tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token))
-#define ADD_TOKEN_AS_VALUE(token, value) \
-    tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token, value))
-#define ADD_TOKEN_AS_TOKEN(token, token_value) \
-    tokens.push_back(std::make_unique<CX_Token>(token_value, cxir_tokens::token))
-
-#define ADD_NODE_PARAM(param)  \
-    if (node.param != nullptr) \
-    ADD_PARAM(node.param)
-#define ADD_PARAM(param) param->accept(*this)
-
-#define NO_EMIT_FORWARD_DECL  \
-    if (this->forward_only) { \
-        return;               \
-    }
-
-#define NO_EMIT_FORWARD_DECL_SEMICOLON \
-    if (this->forward_only) { \
-        ADD_TOKEN(CXX_SEMICOLON); \
-        return;               \
-    }
-
-// This macro will not add a separator after the last element.
-#define SEP(args, sep)                                  \
-    if (!node.args.empty()) {                           \
-        ADD_NODE_PARAM(args[0]);                        \
-        for (size_t i = 1; i < node.args.size(); ++i) { \
-            sep;                                        \
-            ADD_NODE_PARAM(args[i]);                    \
-        }                                               \
-    }
-
-// This macro always adds the separator, even after the last element.
-#define SEP_TRAILING(args, sep)                         \
-    if (!node.args.empty())                             \
-        for (size_t i = 0; i < node.args.size(); ++i) { \
-            ADD_NODE_PARAM(args[i]);                    \
-            sep                                         \
-        }
-
-#define UNLESS_NULL(x) (node.x) if (node.x != nullptr)
-
-#define ADD_ALL_PARAMS(params)         \
-    for (const auto &param : params) { \
-        ADD_PARAM(param);              \
-    }
-
-#define ADD_ALL_NODE_PARAMS(params) ADD_ALL_PARAMS(node.params)
-
-#define COMMA_SEP(args) SEP(args, ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, ",");)
-#define SCOPE_SEP(args) SEP(args, ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, "::");)
-
-#define DELIMIT(L, R, ...) \
-    ADD_TOKEN(L);          \
-    __VA_ARGS__            \
-    ADD_TOKEN(R)
-
-#define PAREN_DELIMIT(...) DELIMIT(CXX_LPAREN, CXX_RPAREN, __VA_ARGS__)
-#define BRACE_DELIMIT(...) DELIMIT(CXX_LBRACE, CXX_RBRACE, __VA_ARGS__)
-#define BRACKET_DELIMIT(...) DELIMIT(CXX_LBRACKET, CXX_RBRACKET, __VA_ARGS__)
-#define ANGLE_DELIMIT(...) DELIMIT(CXX_LESS, CXX_GREATER, __VA_ARGS__)
 
 CX_VISIT_IMPL(LiteralExpr) {
     if (node.contains_format_args) {
@@ -1162,6 +1105,7 @@ CX_VISIT_IMPL(InterDecl) {
                 );
                 ADD_TOKEN(CXX_SEMICOLON););
             ADD_TOKEN(CXX_LOGICAL_AND);
+            std::same_as<int, int>;
         }
         ADD_TOKEN(CXX_TRUE);  // This is just to prevent a syntax error, will be removed in the
         // MAYBE this->tokens.pop_back();
@@ -1214,10 +1158,10 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
         ADD_NODE_PARAM(generics);
     };
 
-    // if (node.name == nullptr) {
-    //     print("error");
-    //     throw std::runtime_error("This is bad");
-    // }
+    if (node.name == nullptr) {
+        print("error");
+        throw std::runtime_error("This is bad");
+    }
 
     if (!no_return_t) {
         ADD_TOKEN(CXX_AUTO);  // auto
@@ -1239,7 +1183,7 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     }
 
     NO_EMIT_FORWARD_DECL_SEMICOLON;
-    
+
     if (node.body) {
         ADD_NODE_PARAM(body);  // TODO: should only error in interfaces
     };
@@ -1351,365 +1295,87 @@ CX_VISIT_IMPL(OpDecl) {
     };
 }
 
-CX_VISIT_IMPL(Program) {
-    ADD_TOKEN_AS_VALUE(
-        CXX_ANNOTATION,
-        R"(#ifndef __HELIX_CORE_CXX__
-#define __HELIX_CORE_CXX__
-///*--- Helix ---*
-///
-///  Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).
-///  You are allowed to use, modify, redistribute, and create derivative works, even for
-///  commercial purposes, provided that you give appropriate credit, and indicate if changes
-///  were made. For more information, please visit: https://creativecommons.org/licenses/by/4.0/
-///
-///  SPDX-License-Identifier: CC-BY-4.0
-///  Copyright (c) 2024 (CC BY 4.0)
-///
-///  This file was generated by the Helix compiler, do not modify it directly.
-///  Generated on: )" +
-            std::to_string(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())) +
-            R"( [unix-timestamp]
-///
-///*--- Helix ---*
-
-// auto c++ includes for the core of the language
-#include <array>
-#include <concepts>
-#include <coroutine>
-#include <cstdint>
-#include <iostream>
-#include <limits>
-#include <map>
-#include <memory>
-#include <optional>
-#include <set>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
-#include <vector>
-
-#ifdef __GNUG__
-#include <cxxabi.h>
-#endif
-
-/// language primitive types
-
-/// ensure cross-platform compatibility for 128-bit and 256-bit types.
-/// gcc/clang support these types, but MSVC may not. We can conditionally include them.
-
-namespace libcxx = std;
-
-using u8  = unsigned char;
-using i8  = signed char;
-using u16 = unsigned short;
-using i16 = signed short;
-using u32 = unsigned int;
-using i32 = signed int;
-using u64 = unsigned long long;
-using i64 = signed long long;
-
-#if !defined(_MSC_VER)
-using u128 = __uint128_t;
-using i128 = __int128_t;
-#endif
-
-using f32 = float;
-using f64 = double;
-using f80 = long double;
-
-using usize = ::libcxx::size_t;
-using isize = ::libcxx::ptrdiff_t;
-
-using byte   = ::libcxx::byte;
-using string = ::libcxx::string;
-
-template <typename... Args>
-using tuple = ::libcxx::tuple<Args...>;
-template <typename... Args>
-using list = ::libcxx::vector<Args...>;
-template <typename... Args>
-using set = ::libcxx::set<Args...>;
-template <typename... Args>
-using map = ::libcxx::map<Args...>;
-
-#if __cplusplus < 202002L
-static_assert(false, "helix requires c++20 or higher");
-#endif
-
-/// \include belongs to the helix standard library.
-/// \brief namespace for helix standard library in c++
-namespace helix {
-/// \include belongs to the helix standard library.
-/// \brief namespace for helix standard library
-namespace std {
-/// \include belongs to the helix standard library.
-/// \brief namespace for internal interfaces
-namespace __internal_interfaces {
-    /// \include belongs to the helix standard library.
-    /// \brief concept for converting a type to a string
-    ///
-    /// This concept checks if a type has a to_string method that returns a string
-    ///
-    template <typename T>
-    concept ToString = requires(T a) {
-        { a.to_string() } -> ::libcxx::convertible_to<::string>;
-    };
-
-    /// \include belongs to the helix standard library.
-    /// \brief concept for converting a type to a ostream
-    ///
-    /// This concept checks if a type has an ostream operator
-    ///
-    template <typename T>
-    concept OStream = requires(::libcxx::ostream &os, T a) {
-        { os << a } -> ::libcxx::convertible_to<::libcxx::ostream &>;
-    };
-
-    /// \include belongs to the helix standard library.
-    /// \brief concept for converting a type to a string
-    ///
-    /// This concept checks if a type can be converted to a string
-    ///
-    template <typename T>
-    concept CanConvertToStringForm = ToString<T> || OStream<T>;
-}  // namespace __internal_interfaces
-
-/// \include belongs to the helix standard library.
-/// \brief convert any type to a string
-///
-/// This function will try to convert the argument to a string using the following methods:
-/// - if the argument has a to_string method, it will use that
-/// - if the argument has a ostream operator, it will use that
-/// - if the argument is an arithmetic type, it will use std::to_string
-/// - if all else fails, it will convert the address of the argument to a string
-///
-template <typename Expr>
-constexpr ::string any_to_string(Expr &&arg) {
-    if constexpr (__internal_interfaces::ToString<Expr>) {
-        return arg.to_string();
-    } else if constexpr (__internal_interfaces::OStream<Expr>) {
-        ::libcxx::stringstream ss;
-        ss << arg;
-        return ss.str();
-    } else if constexpr (::libcxx::is_arithmetic_v<Expr>) {
-        return ::libcxx::to_string(arg);
-    } else {
-        ::libcxx::stringstream ss;
-
-#       ifdef __GNUG__
-            int   status;
-            char *realname = abi::__cxa_demangle(typeid(arg).name(), 0, 0, &status);
-            ss << "[" << realname << " at 0x" << ::libcxx::hex << &arg << "]";
-            free(realname);
-#       else
-            ss << "[" << typeid(arg).name() << " at 0x" << ::libcxx::hex << &arg << "]";
-#       endif
-
-        return ss.str();
-    }
-}
-
-/// \include belongs to the helix standard library.
-/// \brief format a string with arguments
-///
-/// TODO: = is not yet suppoted
-///
-/// the following calls can happen in helix and becomes the following c++:
-///
-/// f"hi: {var}"   -> format_string("hi: \{\}", var)
-/// f"hi: {var1=}" -> format_string("hi: var1=\{\}", var1)
-///
-/// f"hi: {(some_expr() + 12)=}" -> format_string("hi: (some_expr() + 12)=\{\}", some_expr())
-/// f"hi: {some_expr() + 12}"    -> format_string("hi: \{\}", some_expr() + 12)
-///
-template <typename... Expr>
-constexpr ::string format_string(::string base, Expr &&...args) {
-    const ::libcxx::array<::string, sizeof...(args)> exprs_as_string = {
-        any_to_string(::libcxx::forward<Expr>(args))...};
-    size_t pos = 0;
-
-#   pragma unroll
-        for (auto &&arg : exprs_as_string) {
-            pos = base.find("\\{\\}", pos);
-
-            if (pos == ::string::npos) [[unlikely]] {
-                throw ::libcxx::runtime_error(
-                    "error: [f-stirng engine]: format argument count mismatch, this should not "
-                    "happen, please open a issue on github");
-            }
-
-            base.replace(pos, 4, arg);
-            pos += arg.size();
+void generator ::CXIR ::CXIR ::visit(parser ::ast ::node ::Program &node) {
+    std::erase_if(node.children, [&](const auto &child) {
+        if (child->getNodeType() == parser::ast::node::nodes::FFIDecl) {
+            child->accept(*this);
+            return true;
         }
+        return false;
+    });
 
-    return base;
-}
-}  // namespace std
+    std::string _namespace = sanitize_string(node.get_file_name());
 
-class endl {
-  public:
-    endl &operator=(const endl &) = delete;
-    endl &operator=(endl &&)      = delete;
-    endl(const endl &end)         = delete;
-    endl(endl &&)                 = delete;
-    endl()                        = default;
-    ~endl()                       = default;
-
-    explicit endl(::string end)
-        : end_l(::libcxx::move(end)) {}
-
-    explicit endl(const char *end)
-        : end_l(end) {}
-
-    explicit endl(const char end)
-        : end_l(::string(1, end)) {}
-
-    friend ::libcxx::ostream &operator<<(::libcxx::ostream &oss, const endl &end) {
-        oss << end.end_l;
-        return oss;
-    }
-
-  private:
-    ::string end_l = "\n";
-};
-
-template <::libcxx::movable T>
-class generator {
-  public:
-    struct promise_type {
-        static ::libcxx::suspend_always initial_suspend() noexcept { return {}; }
-        static ::libcxx::suspend_always final_suspend() noexcept { return {}; }
-        generator<T> get_return_object() { return generator{Handle::from_promise(*this)}; }
-
-        ::libcxx::suspend_always yield_value(T value) noexcept {
-            current_value = ::libcxx::move(value);
-            return {};
-        }
-
-        void                     await_transform() = delete;
-        [[noreturn]] static void unhandled_exception() { throw; }
-
-        ::libcxx::optional<T> current_value;
-    };
-
-    using Handle = ::libcxx::coroutine_handle<promise_type>;
-
-    generator()                             = default;
-    generator(const generator &)            = delete;
-    generator &operator=(const generator &) = delete;
-    explicit generator(const Handle coroutine)
-        : m_coroutine{coroutine} {}
-
-    generator(generator &&other) noexcept
-        : m_coroutine{other.m_coroutine} {
-        other.m_coroutine = {};
-    }
-
-    generator &operator=(generator &&other) noexcept {
-        if (this != &other) {
-            if (m_coroutine) {
-                m_coroutine.destroy();
-            }
-
-            m_coroutine       = other.m_coroutine;
-            other.m_coroutine = {};
-        }
-        return *this;
-    }
-
-    ~generator() {
-        if (m_coroutine) {
-            m_coroutine.destroy();
-        }
-    }
-
-    class Iter {
-      public:
-        void     operator++() { m_coroutine.resume(); }
-        const T &operator*() const { return *m_coroutine.promise().current_value; }
-        bool     operator==(::libcxx::default_sentinel_t /*unused*/) const {
-            return !m_coroutine || m_coroutine.done();
-        }
-
-        explicit Iter(const Handle coroutine)
-            : m_coroutine{coroutine} {}
-
-        size_t index() const { return m_coroutine.promise().index; }
-
-      private:
-        Handle m_coroutine;
-    };
-
-    Iter begin() {
-        if (m_coroutine) {
-            m_coroutine.resume();
-        }
-
-        if (m_iter == nullptr) {
-            m_iter = new Iter{m_coroutine};
-        }
-        
-        return *m_iter;
-    }
-
-    ::libcxx::default_sentinel_t end() { return {}; }
-
-  private:
-    Handle m_coroutine;
-    Iter  *m_iter = nullptr;
-};
-}  // namespace helix
-
-/// next function to advance a generator manually and return the current value
-template <::libcxx::movable T>
-inline T next(helix::generator<T> &gen) {
-    auto iter = gen.begin();
-    return *iter;
-}
-
-template <typename... Args>
-inline constexpr void print(Args &&...args) {
-    if constexpr (sizeof...(args) == 0) {
-        ::libcxx::cout << helix::endl('\n');
-        return;
-    };
-
-    (::libcxx::cout << ... << args);
-
-    if constexpr (sizeof...(args) > 0) {
-        if constexpr (!::libcxx::is_same_v<::libcxx::remove_cv_t<::libcxx::remove_reference_t<
-                                            decltype(::libcxx::get<sizeof...(args) - 1>(
-                                                ::libcxx::tuple<Args...>(args...)))>>,
-                                        helix::endl>) {
-            ::libcxx::cout << helix::endl('\n');
-        }
-    }
-}
-
-#define _new(type, ...) new type(__VA_ARGS__)
-
-namespace libc {
-    template <typename T>
-    using va_array = T[];
-
-    template <typename T, size_t N>
-    using array = T[N];
-}
-
-#endif
-)");
+    // insert header guards
+    ADD_TOKEN(CXX_PP_IFNDEF);
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace + "_M");
+    ADD_TOKEN(CXX_PP_DEFINE);
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace + "_M");
 
     ADD_TOKEN(CXX_NAMESPACE);
+
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "helix");
+    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace);
+
     ADD_TOKEN(CXX_LBRACE);
 
-    for (const auto &child : node.children) {
+    std::vector<parser::ast::NodeT<parser::ast::node::FuncDecl>> main_funcs;
+
+    std::for_each(node.children.begin(), node.children.end(), [&](const auto &child) {
+        if (child->getNodeType() == parser::ast::node::nodes::FuncDecl) {
+            parser::ast::NodeT<parser::ast::node::FuncDecl> func =
+                std::static_pointer_cast<parser::ast::node::FuncDecl>(child);
+            auto name = func->get_name_t();
+
+            if (!name.empty() && name.size() == 1) {
+                /// all allowed main functions in all platforms of c++ are:
+                /// main, wmain, WinMain, wWinMain, _tmain, _tWinMain
+
+                if (name[0].value() == "main" || name[0].value() == "_main" ||
+                    name[0].value() == "wmain" || name[0].value() == "WinMain" ||
+                    name[0].value() == "wWinMain" || name[0].value() == "_tmain" ||
+                    name[0].value() == "_tWinMain" || name[0].value() == node.entry) {
+
+                    auto &func_body = func->body->body->body;
+
+                    /// insert an __inline_cpp("using namespace helix::_namespace;") at the start of
+                    /// the main function
+                    auto make_token = [&node](token::tokens kind, const std::string &value) {
+                        return token::Token(kind, node.get_file_name(), value);
+                    };
+
+                    token::TokenList inline_cpp = {
+                        make_token(token::tokens::IDENTIFIER, "__inline_cpp"),
+                        make_token(token::tokens::PUNCTUATION_OPEN_PAREN, "("),
+                        make_token(token::tokens::LITERAL_STRING,
+                                   "\"using namespace helix:: " + _namespace + "\""),
+                        make_token(token::tokens::PUNCTUATION_CLOSE_PAREN, ")"),
+                        make_token(token::tokens::PUNCTUATION_SEMICOLON, ";"),
+                        make_token(token::tokens::EOF_TOKEN, "")};
+
+                    token::TokenList::TokenListIter inline_cpp_iter = inline_cpp.begin();
+
+                    parser::ast::node::Statement                           parser(inline_cpp_iter);
+                    parser::ast::ParseResult<parser::ast::node::ExprState> inline_cpp_node =
+                        parser.parse<parser::ast::node::ExprState>();
+
+                    func_body.insert(func_body.begin(), inline_cpp_node.value());
+                    main_funcs.push_back(func);
+
+                    return;
+                }
+            }
+        }
+
         child->accept(*this);
+    });
+
+    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RBRACE));
+
+    for (auto &func : main_funcs) {
+        func->accept(*this);
     }
 
-    ADD_TOKEN(CXX_RBRACE);
+    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_IDENTIFIER, "#endif"));
 }

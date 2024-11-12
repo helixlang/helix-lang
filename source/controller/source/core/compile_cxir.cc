@@ -17,6 +17,7 @@
 #include "controller/include/shared/eflags.hh"
 #include "controller/include/shared/logger.hh"
 #include "controller/include/tooling/tooling.hh"
+#include "parser/preprocessor/include/preprocessor.hh"
 
 void CXIRCompiler::compile_CXIR(CXXCompileAction &&action) const {
     CompileResult ret;
@@ -41,7 +42,7 @@ void CXIRCompiler::compile_CXIR(CXXCompileAction &&action) const {
         ret = CXIR_CXX(action);
     }
 #else
-    CXIR_CXX(action);
+    ret = CXIR_CXX(action);
 #endif
 }
 
@@ -100,8 +101,15 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
 #endif
         cxx::flags::warnAllFlag,
         cxx::flags::outputFlag,
-        action.cc_output.generic_string()  // output
+        "\"" + action.cc_output.generic_string() + "\""  // output
     );
+
+    // add all the import paths:
+    if (!COMPILE_ACTIONS.empty()) {
+        for (auto &action : COMPILE_ACTIONS) {
+            compile_cmd += "\"" + action.cc_source.generic_string() + "\" ";
+        }
+    }
 
     /// add any additional flags passed into the action
     for (auto &flag : action.cxx_args) {
@@ -184,7 +192,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         error::Panic(error::CodeError{
             .pof          = &std::get<0>(err),
             .err_code     = 0.8245,
-            .mark_pof     = false,
+            .mark_pof     = true,
             .err_fmt_args = {msg},
             .level        = level,
             .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),

@@ -13,24 +13,35 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include <unordered_map>
 #include "controller/include/tooling/tooling.hh"
+
+/// key is the line number in the output, value is the line and column, and length associated in the source
+ std::unordered_map<size_t, std::tuple<size_t, size_t, size_t>> LINE_COLUMN_MAP;
 
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_clang_err(std::string clang_out) {
     std::string filePath;
-    int         lineNumber   = 0;
-    int         columnNumber = 0;
+    size_t         lineNumber   = 0;
+    size_t         columnNumber = 0;
+    size_t         length       = 0;
     std::string message;
 
     std::istringstream stream(clang_out);
     std::getline(stream, filePath, ':');  // Extract file path
-    stream >> lineNumber;                 // Extract line number
-    stream.ignore();                      // Ignore the next colon
-    stream >> columnNumber;               // Extract column number
-    stream.ignore();                      // Ignore the next colon
-    std::getline(stream, message);        // Extract the message
+    stream >> lineNumber;                               // Extract line number
+    stream.ignore();                                    // Ignore the next colon
+    stream >> columnNumber;                             // Extract column number
+    stream.ignore();                                    // Ignore the next colon
+    std::getline(stream, message);            // Extract the message
 
-    token::Token pof =
-        token::Token(lineNumber, 0, 1, columnNumber, "/*error*/", filePath, "<other>");
+    if (LINE_COLUMN_MAP.find(lineNumber) != LINE_COLUMN_MAP.end()) {
+        auto source_loc = LINE_COLUMN_MAP[lineNumber];
+        lineNumber     = std::get<0>(source_loc);
+        columnNumber   = std::get<1>(source_loc);
+        length         = std::get<2>(source_loc);
+    }
+
+    token::Token pof = token::Token(lineNumber, columnNumber, length, columnNumber+lineNumber, "/*error*/", filePath, "<other>");
 
     return {pof, message, filePath};
 }

@@ -40,8 +40,13 @@ CXXCompileAction::init(CXIR &emitter, const Path &cc_out, flag::CompileFlags fla
     std::error_code            ec;
     std::optional<std::string> helix_src = emitter.get_file_name();
     Path                       cwd       = __CONTROLLER_FS_N::get_cwd();
-    Path                       temp_dir  = std::filesystem::temp_directory_path(ec);
-    Path                       cc_source = temp_dir / generate_file_name();
+#ifndef DEBUG_OUTPUT
+    Path temp_dir  = std::filesystem::temp_directory_path(ec);
+    Path cc_source = temp_dir / generate_file_name();
+#else
+    Path temp_dir  = cwd;
+    Path cc_source = cwd / generate_file_name();
+#endif
 
     bool is_verbose = flags.contains(EFlags(flag::types::CompileFlags::Verbose));
 
@@ -54,19 +59,19 @@ CXXCompileAction::init(CXIR &emitter, const Path &cc_out, flag::CompileFlags fla
         cc_source = cwd / "IR.temp.debug.verbose.helix-compiler.cxir";
     }
 
-    CXXCompileAction action = {
-        .working_dir = cwd,
-        .cc_source   = cc_source,
-        .cc_output   = cc_out,
-        .helix_src   = helix_src.has_value() ? Path(helix_src.value()) : cc_out,
-        .cxx_args    = std::move(cxx_args),
-        .flags       = flags,
+    CXXCompileAction action = CXXCompileAction{
+        /* working_dir */ cwd,
+        /* cc_source   */ cc_source,
+        /* cc_output   */ cc_out,
+        /* helix_src   */ helix_src.has_value() ? Path(helix_src.value()) : cc_out,
+        /* cxx_args    */ std::move(cxx_args),
+        /* flags       */ flags,
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
     defined(__MACH__)
-        .cxx_compiler = "c++",
+        /* cxx_compiler */ "c++",
 #else
-        .cxx_compiler = "",  // find msvc using vswhere, if not found try `c++`
+        /* cxx_compiler */ "",  // find msvc using vswhere, if not found try `c++`
 #endif
     };
 
@@ -115,9 +120,11 @@ CXXCompileAction::~CXXCompileAction()
 #endif
 
 void CXXCompileAction::cleanup() const {
+#ifndef DEBUG_OUTPUT
     if (std::filesystem::exists(cc_source)) {
         std::filesystem::remove(cc_source);
     }
+#endif
 }
 
 std::string CXXCompileAction::generate_file_name(size_t length) {

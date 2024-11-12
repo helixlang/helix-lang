@@ -21,6 +21,7 @@
 #include "controller/include/shared/file_system.hh"
 #include "controller/include/shared/logger.hh"
 #include "controller/include/tooling/tooling.hh"
+#include "parser/preprocessor/include/preprocessor.hh"
 #include "token/include/config/Token_config.def"
 
 #ifndef DEBUG_LOG
@@ -118,12 +119,18 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         cxx::flags::dryRunFlag,
         cxx::flags::warnAllFlag,
         cxx::flags::outputFlag,
-        action.cc_output.generic_string()  // output
+        "\"" + action.cc_output.generic_string() + "\""  // output
     );
 
     /// add any additional flags passed into the action
     for (auto &flag : action.cxx_args) {
         compile_cmd += flag + " ";
+    }
+
+    if (!COMPILE_ACTIONS.empty()) {
+        for (auto &action : COMPILE_ACTIONS) {
+            compile_cmd += "\"" + action.cc_source.generic_string() + "\" ";
+        }
     }
 
     /// add the source file in a normalized path format

@@ -34,6 +34,7 @@
 #include "parser/ast/include/private/base/AST_base.hh"
 #include "parser/ast/include/types/AST_jsonify_visitor.hh"
 #include "parser/ast/include/types/AST_types.hh"
+#include "parser/preprocessor/include/preprocessor.hh"
 #include "token/include/private/Token_base.hh"
 
 extern bool LSP_MODE;
@@ -114,33 +115,17 @@ int CompilationUnit::compile(int argc, char **argv) {
     return compile(parsed_args);
 }
 
-/// compile and return the path of the compiled file without calling the linker
-/// ret codes: 0 - success, 1 - error, 2 - lsp mode
-std::pair<CXXCompileAction, int>
-CompilationUnit::compile_wet(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
-    parser::ast::NodeT<parser::ast::node::Program> ast;
-    std::vector<std::filesystem::path>             import_dirs;
-    std::vector<std::filesystem::path>             link_dirs;
-    std::filesystem::path                          in_file_path;
-    generator::CXIR::CXIR                          emitter(true);
-    parser::lexer::Lexer                           lexer;
-    __TOKEN_N::TokenList                           tokens;
+__TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &parsed_args,
+                                                  bool                         enable_logging) {
+    std::vector<std::filesystem::path> import_dirs;
+    std::vector<std::filesystem::path> link_dirs;
+    std::filesystem::path in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
 
-    if (parsed_args.quiet || parsed_args.lsp_mode) {
-        NO_LOGS           = true;
-        error::SHOW_ERROR = false;
-    }
+    parser::lexer::Lexer lexer  = {__CONTROLLER_FS_N::read_file(in_file_path.generic_string()),
+                                   in_file_path.generic_string()};
+    __TOKEN_N::TokenList tokens = __TOKEN_N::TokenList(lexer.tokenize());
 
-    if (parsed_args.verbose) {
-        helix::log<LogLevel::Debug>(parsed_args.get_all_flags);
-    }
-
-    in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
-    lexer        = {__CONTROLLER_FS_N::read_file(in_file_path.generic_string()),
-                    in_file_path.generic_string()};
-    tokens       = lexer.tokenize();
-
-    helix::log<LogLevel::Info>("tokenized");
+    helix::log_opt<LogLevel::Info>(enable_logging, "tokenized");
 
     process_paths(parsed_args.library_dirs,
                   link_dirs,
@@ -153,29 +138,53 @@ CompilationUnit::compile_wet(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
                   {__CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "pkgs"});
 
     if (parsed_args.verbose) {
-        helix::log<LogLevel::Debug>("import dirs: [");
+        helix::log_opt<LogLevel::Debug>(enable_logging, "import dirs: [");
         for (const auto &dir : import_dirs) {
-            helix::log<LogLevel::Debug>(dir.generic_string() + ", ");
+            helix::log_opt<LogLevel::Debug>(enable_logging, dir.generic_string() + ", ");
         }
-        helix::log<LogLevel::Debug>("]");
+        helix::log_opt<LogLevel::Debug>(enable_logging, "]");
 
-        helix::log<LogLevel::Debug>("link dirs: [");
+        helix::log_opt<LogLevel::Debug>(enable_logging, "link dirs: [");
         for (const auto &dir : link_dirs) {
-            helix::log<LogLevel::Debug>(dir.generic_string() + ", ");
+            helix::log_opt<LogLevel::Debug>(enable_logging, dir.generic_string() + ", ");
         }
-        helix::log<LogLevel::Debug>("]");
+        helix::log_opt<LogLevel::Debug>(enable_logging, "]");
     }
 
-    // ImportProcessor(tokens, import_dirs)
-    helix::log<LogLevel::Info>("preprocessed");
+    helix::log_opt<LogLevel::Info>(enable_logging, "preprocessing");
+
+    import_processor =
+        std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
+    import_processor->parse();
+
+    helix::log_opt<LogLevel::Info>(enable_logging, "preprocessed");
 
     if (parsed_args.emit_tokens) {
-        helix::log<LogLevel::Debug>(tokens.to_json());
+        helix::log_opt<LogLevel::Debug>(enable_logging, tokens.to_json());
         print_tokens(tokens);
     }
 
+    return tokens;
+}
+
+/// compile and return the path of the compiled file without calling the linker
+/// ret codes: 0 - success, 1 - error, 2 - lsp mode
+std::pair<CXXCompileAction, int>
+CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging) {
+    if (parsed_args.quiet || parsed_args.lsp_mode) {
+        NO_LOGS           = true;
+        error::SHOW_ERROR = false;
+    }
+
+    VERBOSE_LOG(parsed_args.get_all_flags);
+
+    std::filesystem::path in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
+    __TOKEN_N::TokenList  tokens       = pre_process(parsed_args, enable_logging);
+
+    helix::log<LogLevel::Info>("parsing ast...");
+
     remove_comments(tokens);
-    ast = parser::ast::make_node<parser::ast::node::Program>(tokens);
+    ast = parser::ast::make_node<parser::ast::node::Program>(tokens, in_file_path);
 
     if (!ast) {
         helix::log<LogLevel::Error>("aborting...");
@@ -202,8 +211,7 @@ CompilationUnit::compile_wet(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
         return {{}, 2};
     }
 
-    ast->accept(emitter);
-    helix::log<LogLevel::Info>("emitted cx-ir");
+    generator::CXIR::CXIR emitter = generate_cxir(false);
 
     if (parsed_args.emit_ir) {
         emit_cxir(emitter, parsed_args.verbose);
@@ -229,11 +237,27 @@ CompilationUnit::compile_wet(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
     return {CXXCompileAction::init(emitter, out_file, action_flags, parsed_args.cxx_args), 0};
 }
 
+generator::CXIR::CXIR CompilationUnit::generate_cxir(bool forward_only) {
+
+    std::vector<generator::CXIR::CXIR> imports;
+
+    if (import_processor != nullptr) {
+        imports = std::move(import_processor->imports);
+    }
+
+    generator::CXIR::CXIR emitter(forward_only, std::move(imports));
+
+    ast->accept(emitter);
+    helix::log<LogLevel::Info>("emitted cx-ir");
+
+    return emitter;
+}
+
 int CompilationUnit::compile(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
     std::chrono::time_point<std::chrono::high_resolution_clock> start =
         std::chrono::high_resolution_clock::now();
-    auto [action, result] = compile_wet(parsed_args);
-
+    auto [action, result] = build_unit(parsed_args);
+CXXCompileAction _;
     switch (result) {
         case 0:
             break;
@@ -244,6 +268,8 @@ int CompilationUnit::compile(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
         case 2:
             return 0;
     }
+
+    helix::log<LogLevel::Info>("compiling");
 
     compiler.compile_CXIR(std::move(action));
 
