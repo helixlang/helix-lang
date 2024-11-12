@@ -239,7 +239,7 @@ op == fn equals(a: Fraction, b: Fraction) -> bool {
 // }
 // TODO: references do not work - THEY DO NOW!!!!
 // Overload the stream insertion operator (for printing)
-// op << fn stream_insert(out: std::ostream , a: Fraction) -> std::ostream {
+// op << fn stream_insert(out: ::std::ostream , a: Fraction) -> ::std::ostream {
 //     return out << a.n << "/" << a.d;
 // }
 
@@ -346,7 +346,7 @@ fn call_function() -> u32 {
 ffi "c++" import "chrono";
 
 fn main() -> i32 {
-    let start = std::chrono::high_resolution_clock::now();
+    let start = ::std::chrono::high_resolution_clock::now();
     // Adding two numbers
     let sum = add(5, 7);
     const x: i32 = 10;
@@ -368,7 +368,7 @@ fn main() -> i32 {
     let bp: *i32 = &a;
 
     let xy = hi_there();
-    print(f"x: {std::get::<0>(xy)}, y: {std::get::<1>(xy).c_str()}");
+    print(f"x: {::std::get::<0>(xy)}, y: {::std::get::<1>(xy).c_str()}");
     print(f"numbers = {numbers}");
 
     let primitive_numbers: *u32 = alloca(5 * sizeof(u32)) as *u32;
@@ -396,9 +396,9 @@ fn main() -> i32 {
     // Printing vector elements
     print_vector(numbers);
 
-    // Using C++ std::string
-    let greeting = std::string("Hello from Helix and C++!");
-    std::cout << greeting << std::endl;
+    // Using C++ ::std::string
+    let greeting = ::std::string("Hello from Helix and C++!");
+    ::std::cout << greeting << ::std::endl;
 
     // Conditional check
     if sum > fact {
@@ -437,7 +437,7 @@ fn main() -> i32 {
 
     print(f"testing \{ wooo \} {call_function() + 182 + 21991} hhhjjj ");
 
-    let end = std::chrono::high_resolution_clock::now();
+    let end = ::std::chrono::high_resolution_clock::now();
 
 
     /// in ns

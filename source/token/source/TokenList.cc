@@ -113,14 +113,13 @@ __TOKEN_BEGIN {
         return {this->filename, this->cbegin(), this->cbegin() + diff};
     }
 
-    const Token &TokenList::pop_front() {
+    const Token TokenList::pop_front() {
         if (this->empty()) {
-            throw std::out_of_range("Token is not in range");
+            throw std::out_of_range("TokenList is empty");
         }
-        const Token &tok = this->front();
 
-        *this = {this->filename, this->cbegin() + 1, this->cend()};
-
+        const Token tok = this->front();
+        this->erase(this->cbegin());
         return tok;
     }
 

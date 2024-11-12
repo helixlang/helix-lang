@@ -28,6 +28,9 @@
 /// }
 ///
 /// op's in class defs need to ignore self parm and work without self while calling as well.
+import core::lol::*;
+ffi "c++" import "iostream";
+
 interface Incrementable {
     op ++ fn inc(self) -> Self;
     op < fn lt(self, other: Self) -> bool;
@@ -37,7 +40,6 @@ interface Incrementable {
 fn range(start: T, end: T, step: T = 1) -> yield T requires <T> if Incrementable in T {
     while start < end {
         yield start;
-        
         start += step;
     }
 }
@@ -74,35 +76,37 @@ fn multi_iter() -> yield (int, float) {
     yield (2, 2.0);
     yield (3, 3.0);
 }
-
+// find closest if either left or right is the same then take right
 fn main() -> int {
-    let a = SomeBad();
+    let some_a = SomeBad();
 
-    for i in a.iter() {
+    print(add(1, "2"));
+
+    for i in some_a.iter() {
         print(i);
     }
 
-    // let iter = range(0, 10, 9);
+    let iter = range(0, 10, 9);
 
-    // print(f"Iterating over range(0, 10): {next(iter)}");
-    // print(f"Iterating over range(0, 10): {next(iter)}");
+    print(f"Iterating over range(0, 10): {next(iter)}");
+    print(f"Iterating over range(0, 10): {next(iter)}");
     
-    // for i in range(0, 10) {
-    //     print(i);
-    // }
+    for i in range(0, 10) {
+        print(i);
+    }
 
-    // let a = 0;
-    // let b = 10;
+    let a = 0;
+    let b = 10;
 
-    // for i in a..b {
-    //     print(i);
-    // }
+    for i in range(a, b) {
+        print(i);
+    }
 
-    // for i, y in multi_iter():
-    //     print(f"i = {i}, y = {y}");
+    for i, y in multi_iter():
+        print(f"i = {i}, y = {y}");
 
-    // for i in range('a', 'z'):
-    //     print(f"i = {(i - 19) as char}");
+    for i in range('a', 'z'):
+        print(f"i = {(i - 19) as char}");
 
     return 0;
 }

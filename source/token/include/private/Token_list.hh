@@ -135,7 +135,7 @@ __TOKEN_BEGIN {
         [[nodiscard]] TokenList         slice(u64 start, i64 end = -1);
         std::pair<TokenList, TokenList> split_at(const u64 i) const;
         TokenList                       pop(const u64 offset = 1);
-        const Token                    &pop_front();
+        const Token                     pop_front();
         TO_NEO_JSON_IMPL {
             neo::json token_list_json("TokenList");
             token_list_json.add("tokens", std::vector<Token>(*this));

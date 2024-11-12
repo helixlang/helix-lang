@@ -36,10 +36,11 @@ struct Point {
     let y: i32;
 };
 
-#[mutable] // this denotes if a class can be mutated or not in the sense of after construction
+#[assignable] // this denotes if a class can be reassigned (like primitive arrays in c/c++)
 class Matrix
   requires <T> /* if Arithmetic in T || T derives Point */ {
     priv let rows: i32, cols: i32, data: libc::array::<T>;
+    pub let count = 9;
 
     /// constructor
     fn Matrix(self, r: i32, c: i32) {
@@ -196,3 +197,4 @@ fn main() -> i32 {
 
     return 0;
 }
+
