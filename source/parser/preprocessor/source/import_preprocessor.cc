@@ -64,7 +64,7 @@ __PREPROCESSOR_BEGIN {
             // handle special import cases
             // TODO
 
-            throw error::Panic(error::CodeError{
+            error::Panic(error::CodeError{
                 .pof      = &start_tok,
                 .err_code = 0.0001,
                 .mark_pof = true,
@@ -72,6 +72,8 @@ __PREPROCESSOR_BEGIN {
                 .err_fmt_args{GET_DEBUG_INFO + "global import not yet supported'"},
                 .opt_fixes{},
             });
+
+            std::exit(1);
         }
 
         if (!scope->path.empty()) {
@@ -83,7 +85,7 @@ __PREPROCESSOR_BEGIN {
         if (scope->access != nullptr &&
             scope->access->getNodeType() != parser::ast::node::nodes::IdentExpr) {
             if (!final_path.empty()) {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &final_path.back(),
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -91,6 +93,8 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"expected an identifier after '::', but found something else"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             throw std::runtime_error(GET_DEBUG_INFO + "invalid path access");
@@ -114,7 +118,7 @@ __PREPROCESSOR_BEGIN {
         // handle the alias
         if (single_import->alias != nullptr) {
             if (single_import->is_wildcard) {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -122,6 +126,8 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"wildcard imports cannot have an alias"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             if (single_import->alias->getNodeType() == parser::ast::node::nodes::IdentExpr) {
@@ -137,7 +143,7 @@ __PREPROCESSOR_BEGIN {
                 //
                 // alias = normalize_scope_path(path, start_tok);
             } else {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -146,13 +152,15 @@ __PREPROCESSOR_BEGIN {
                                   "something else"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
         }
 
         // handle the path
         if (single_import->type == parser::ast::node::SingleImport::Type::Module) {
             if (single_import->path->getNodeType() != parser::ast::node::nodes::ScopePathExpr) {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -160,6 +168,8 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"expected a scope path for the import, but found something else"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             ASTScopePath path =
@@ -171,7 +181,7 @@ __PREPROCESSOR_BEGIN {
 
         if (single_import->type == parser::ast::node::SingleImport::Type::File) {
             if (single_import->path->getNodeType() != parser::ast::node::nodes::LiteralExpr) {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -180,6 +190,8 @@ __PREPROCESSOR_BEGIN {
                         "expected a string literal for the import, but found something else"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             std::filesystem::path f_path =
@@ -197,9 +209,22 @@ __PREPROCESSOR_BEGIN {
             normalize_scope_path(spec_import->path, std::move(start_tok));
         MultipleImportsNormalized imports;
 
+        if (spec_import == nullptr) {
+            error::Panic(error::CodeError{
+                .pof      = &start_tok,
+                .err_code = 0.0001,
+                .mark_pof = true,
+                .fix_fmt_args{},
+                .err_fmt_args{"expected a spec import, but found none"},
+                .opt_fixes{},
+            });
+
+            std::exit(1);
+        }
+
         if (spec_import->type == parser::ast::node::SpecImport::Type::Wildcard) {
-            if (spec_import->imports == nullptr) {
-                throw error::Panic(error::CodeError{
+            if (spec_import->imports != nullptr) {
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -207,12 +232,14 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"expected a wildcard import, but found a symbol import"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             imports.emplace_back(base_path, __TOKEN_N::TokenList{}, true);
         } else if (spec_import->type == parser::ast::node::SpecImport::Type::Symbol) {
             if (spec_import->imports == nullptr || spec_import->imports->imports.empty()) {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -220,6 +247,8 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"expected at least one import item, but found none"},
                     .opt_fixes{},
                 });
+
+                std::exit(1);
             }
 
             if (!spec_import->imports->imports.empty()) {
@@ -235,7 +264,7 @@ __PREPROCESSOR_BEGIN {
                     imports.emplace_back(path, alias, is_wildcard);
                 }
             } else {
-                throw error::Panic(error::CodeError{
+                error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
                     .mark_pof = true,
@@ -243,10 +272,12 @@ __PREPROCESSOR_BEGIN {
                     .err_fmt_args{"expected at least one import item, but found none"},
                     .opt_fixes{},
                 });
-            }
 
-            return imports;
+                std::exit(1);
+            }
         }
+
+        return imports;
     }
 
     // path       , alias       | namespace
@@ -311,7 +342,7 @@ __PREPROCESSOR_BEGIN {
                 if (iter->token_kind() != __TOKEN_N::tokens::LITERAL_STRING) {
                     Token bad_tok = iter.current();
 
-                    throw error::Panic(error::CodeError{
+                    error::Panic(error::CodeError{
                         .pof      = &bad_tok,
                         .err_code = 0.0001,
                         .mark_pof = true,
@@ -319,6 +350,8 @@ __PREPROCESSOR_BEGIN {
                         .err_fmt_args{"expected a string literal after 'ffi'"},
                         .opt_fixes{},
                     });
+
+                    std::exit(1);
                 }
 
                 ADVANCE_AND_CHECK;  // skip the language
@@ -336,7 +369,7 @@ __PREPROCESSOR_BEGIN {
                                                   ? __TOKEN_N::tokens::PUNCTUATION_CLOSE_BRACE
                                                   : __TOKEN_N::tokens::PUNCTUATION_SEMICOLON)) {
                     if (iter.remaining_n() == 0) {
-                        throw error::Panic(error::CodeError{
+                        error::Panic(error::CodeError{
                             .pof      = &ffi_tok,
                             .err_code = 0.0001,
                             .mark_pof = true,
@@ -346,6 +379,8 @@ __PREPROCESSOR_BEGIN {
                                           " to close the 'ffi' block"},
                             .opt_fixes{},
                         });
+
+                        std::exit(1);
                     }
 
                     ADVANCE_AND_CHECK;  // WARNING: this may fail since we break and dont break
@@ -362,7 +397,7 @@ __PREPROCESSOR_BEGIN {
                 start_pos      = iter.position();
 
                 if (!iter.peek(offset).has_value()) {
-                    throw error::Panic(error::CodeError{
+                    error::Panic(error::CodeError{
                         .pof      = &start,
                         .err_code = 0.0001,
                         .mark_pof = true,
@@ -370,6 +405,8 @@ __PREPROCESSOR_BEGIN {
                         .err_fmt_args{"expected a something after 'import' keyword"},
                         .opt_fixes{},
                     });
+
+                    std::exit(1);
                 }
 
                 if (iter.peek(offset)->get().token_kind() ==
@@ -380,7 +417,7 @@ __PREPROCESSOR_BEGIN {
 
                 while (iter.peek(offset).has_value()) {  // at this stage this is safe
                     if (!iter.peek(offset).has_value()) {
-                        throw error::Panic(error::CodeError{
+                        error::Panic(error::CodeError{
                             .pof      = &start,
                             .err_code = 0.0001,
                             .mark_pof = true,
@@ -388,6 +425,8 @@ __PREPROCESSOR_BEGIN {
                             .err_fmt_args{"expected a ';' or '}' to close the 'import' statement"},
                             .opt_fixes{},
                         });
+
+                        std::exit(1);
                     }
 
                     if (iter.peek(offset)->get().token_kind() ==
@@ -639,7 +678,6 @@ __PREPROCESSOR_BEGIN {
                                                                     /// during cxir generation
 
             } else if (type == Type::Header) {
-                /// we tokenize and insert into the current file
                 __TOKEN_N::TokenList import_tokens = unit.pre_process(parsed_args, false);
 
                 tokens.insert(tokens.cbegin() + static_cast<std::ptrdiff_t>(
