@@ -1,0 +1,69 @@
+---
+title: Enhanced Helix Core Functions
+description: Comprehensive reference for Helix's core functions, designed for high flexibility and functionality.
+---
+
+# Helix Core Functions
+
+The `core` functions in Helix are lightweight yet powerful utilities always available in every Helix file. They're designed to support foundational tasks, system interactions, and low-level functionality, with an eye toward a versatile, Rust/Zig-inspired future.
+
+> Key: Generic types must be specified with `<...>` where applicable; they're not inferred.
+
+| Function Signature | Description |
+| --- | --- |
+| `print(...T, end: U = '\n', sep: U = ' ')`                                   | Outputs the provided arguments to the console, customizable separator and end character. |
+| `input<U = string>(prompt: string = '') -> U`                                | Prompts for user input, returning the response cast to the specified type. |
+| `len(T) -> int`                                                              | Returns the length of an iterable or collection. |
+| `range(start: T, end: T, step: T = 1) -> yield T`                            | Generates values from `start` to `end` (exclusive), iterating by `step`. |
+| `enumerate(T) -> yield (int, T)`                                             | Returns a generator with each element's index and value. |
+| `zip<T, U>(iterable1: T, iterable2: U) -> yield (T?, U?)`                    | Generates pairs of elements from two iterables, halting at the shorter. |
+| `map<T, U>(func: fn(T) -> U, iterable: T) -> yield U`                        | Applies a function to each item in an iterable, returning a generator of the results. |
+| `filter<T>(func: fn(T) -> bool, iterable: T) -> yield T`                     | Filters items in the iterable based on a predicate function. |
+| `sum(T) -> T`                                                                | Returns the cumulative sum of numeric values in an iterable. |
+| `any(T) -> bool`                                                             | Returns `true` if any element in the iterable is truthy. |
+| `all(T) -> bool`                                                             | Returns `true` if all elements in the iterable are truthy. |
+| `min<T>(T) -> T`                                                             | Returns the smallest element in an iterable. |
+| `max<T>(T) -> T`                                                             | Returns the largest element in an iterable. |
+| `sorted<T>(T, key: fn(T) -> U = identity, reverse: bool = false) -> list<T>` | Returns a sorted list based on a custom sorting key and order. |
+| `abs(T) -> T`                                                                | Returns the absolute value of a number. |
+| `pow(base: T, exp: int) -> T`                                                | Returns `base` raised to the power `exp`. |
+
+### Type Handling & Reflection
+| Function Signature | Description |
+| --- | --- |
+| `isinstance(T, U) -> bool` | Checks if a value is an instance of a type. |
+| `issubclass(T, U) -> bool` | Checks if a type is a subclass of another. |
+| `type_of(T) -> TypeInfo`   | Returns the type information for a value. |
+
+
+### Error Handling
+| Function Signature | Description |
+| --- | --- |
+| `assert(condition: bool, message: string = '') -> void` | Checks a condition, throwing an error if it's false. |
+| `__panic_handler(PanicFrame) -> void`                   | Default panic handler for error handling. |
+
+### Low-Level Utilities
+| Function Signature | Description |
+| --- | --- |
+| `ptr<T>(value: T) -> *T` | Returns a pointer to the given value, allowing low-level memory access. |
+| `dereference<T>(pointer: *T) -> T` | Returns the value pointed to by a pointer. |
+| `sizeof<T>() -> int` | Returns the size of a type in bytes. |
+| `alignof<T>() -> int` | Returns the alignment of a type. |
+
+### Concurrency & Async
+| Function Signature | Description |
+| --- | --- |
+| `spawn(func: () -> void) -> ThreadHandle` | Launches a new thread to execute the provided function. |
+| `async<T>(func: () -> T) -> Future<T>` | Starts an asynchronous task, returning a `Future`. |
+| `await<T>(future: Future<T>) -> T` | Waits for an asynchronous task to complete, returning its result. |
+
+---
+
+## Highlights:
+- **Memory Access**: `ptr`, `dereference`, `sizeof`, and `alignof` give you low-level control.
+- **Concurrency**: Lightweight async and thread spawning for scalable task handling.
+- **Error Management**: Built-in `assert`, `panic`, and `Result`-based error handling keep safety at the forefront.
+- **Type Flexibility**: Functions like `isinstance`, `issubclass`, and `type_name` allow for introspection and polymorphism.
+- **Sorting and Math**: Essential utilities for common mathematical and sorting needs.
+
+This should provide a solid, flexible foundation for Helix's `core`, balancing simplicity and depth for a broad range of development needs.

@@ -21,12 +21,12 @@
 
 /*
 using the new toolchain the entire process can happen like this:
+*/
 
-template <std::size_t N>
-int helix_compiler(std::array<std::string, N> args) {
-    InvocationManager       invoke      = InvocationManager(args, true);
-    CompilationUnit         compile     = CompilationUnit(invoke);
-    PrettyDiagnosticHandler diag_handle = PrettyDiagnosticHandler();
+fn helix_compiler(std::array::<std::string, N> args) -> i32 requires <N: std::size_t> {
+    let invoke:      InvocationManager       = InvocationManager(args, true);
+    let compile:     CompilationUnit         = CompilationUnit(invoke);
+    let diag_handle: PrettyDiagnosticHandler = PrettyDiagnosticHandler();
 
     // frontend processors
     compile.add_frontend_processor(LexicalProcessor());
@@ -84,8 +84,6 @@ int helix_compiler(std::array<std::string, N> args) {
 
     return 0;
 }
-
-*/
 
 /* other.hlx
 ```helix
