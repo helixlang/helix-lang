@@ -83,7 +83,7 @@ __PREPROCESSOR_BEGIN {
         }
 
         if (scope->access != nullptr &&
-            scope->access->getNodeType() != parser::ast::node::nodes::IdentExpr) {
+            scope->access->getNodeType() != __AST_NODE::nodes::IdentExpr) {
             if (!final_path.empty()) {
                 error::Panic(error::CodeError{
                     .pof      = &final_path.back(),
@@ -101,8 +101,7 @@ __PREPROCESSOR_BEGIN {
         }
 
         if (scope->access != nullptr) {
-            final_path.emplace_back(
-                std::static_pointer_cast<parser::ast::node::IdentExpr>(scope->access)->name);
+            final_path.emplace_back(__AST_N::as<__AST_NODE::IdentExpr>(scope->access)->name);
         }
 
         return final_path;
@@ -111,7 +110,8 @@ __PREPROCESSOR_BEGIN {
     /// \return a tuple containing the resolved path, the alias, and a bool indicating if the import
     /// is a wildcard
     ImportProcessor::SingleImportNormalized ImportProcessor::resolve_single_import(
-        const parser::ast::NodeT<parser::ast::node::SingleImport> &single_import, Token start_tok) {
+        const __AST_N::NodeT<__AST_NODE::SingleImport> &single_import, Token start_tok) {
+    
         __TOKEN_N::TokenList final_path;
         __TOKEN_N::TokenList alias;
 
@@ -130,15 +130,14 @@ __PREPROCESSOR_BEGIN {
                 std::exit(1);
             }
 
-            if (single_import->alias->getNodeType() == parser::ast::node::nodes::IdentExpr) {
+            if (single_import->alias->getNodeType() == __AST_NODE::nodes::IdentExpr) {
                 alias.emplace_back(
-                    std::static_pointer_cast<parser::ast::node::IdentExpr>(single_import->alias)
-                        ->name);
+                    __AST_N::as<__AST_NODE::IdentExpr>(single_import->alias)->name);
             } else if (single_import->alias->getNodeType() ==
-                       parser::ast::node::nodes::ScopePathExpr) {
+                       __AST_NODE::nodes::ScopePathExpr) {
                 /// TODO
                 // ASTScopePath path =
-                //     std::static_pointer_cast<parser::ast::node::ScopePathExpr>(
+                //     __AST_N::as<__AST_NODE::ScopePathExpr>(
                 //         single_import->alias);
                 //
                 // alias = normalize_scope_path(path, start_tok);
@@ -158,8 +157,8 @@ __PREPROCESSOR_BEGIN {
         }
 
         // handle the path
-        if (single_import->type == parser::ast::node::SingleImport::Type::Module) {
-            if (single_import->path->getNodeType() != parser::ast::node::nodes::ScopePathExpr) {
+        if (single_import->type == __AST_NODE::SingleImport::Type::Module) {
+            if (single_import->path->getNodeType() != __AST_NODE::nodes::ScopePathExpr) {
                 error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
@@ -172,15 +171,14 @@ __PREPROCESSOR_BEGIN {
                 std::exit(1);
             }
 
-            ASTScopePath path =
-                std::static_pointer_cast<parser::ast::node::ScopePathExpr>(single_import->path);
+            ASTScopePath path = __AST_N::as<__AST_NODE::ScopePathExpr>(single_import->path);
 
             final_path = normalize_scope_path(path, start_tok);
             return {final_path, alias, single_import->is_wildcard};
         }
 
-        if (single_import->type == parser::ast::node::SingleImport::Type::File) {
-            if (single_import->path->getNodeType() != parser::ast::node::nodes::LiteralExpr) {
+        if (single_import->type == __AST_NODE::SingleImport::Type::File) {
+            if (single_import->path->getNodeType() != __AST_NODE::nodes::LiteralExpr) {
                 error::Panic(error::CodeError{
                     .pof      = &start_tok,
                     .err_code = 0.0001,
@@ -195,8 +193,7 @@ __PREPROCESSOR_BEGIN {
             }
 
             std::filesystem::path f_path =
-                std::static_pointer_cast<parser::ast::node::LiteralExpr>(single_import->path)
-                    ->value.value();
+                __AST_N::as<__AST_NODE::LiteralExpr>(single_import->path)->value.value();
             return {f_path, alias, single_import->is_wildcard};
         }
 
@@ -222,7 +219,7 @@ __PREPROCESSOR_BEGIN {
             std::exit(1);
         }
 
-        if (spec_import->type == parser::ast::node::SpecImport::Type::Wildcard) {
+        if (spec_import->type == __AST_NODE::SpecImport::Type::Wildcard) {
             if (spec_import->imports != nullptr) {
                 error::Panic(error::CodeError{
                     .pof      = &start_tok,
@@ -237,7 +234,7 @@ __PREPROCESSOR_BEGIN {
             }
 
             imports.emplace_back(base_path, __TOKEN_N::TokenList{}, true);
-        } else if (spec_import->type == parser::ast::node::SpecImport::Type::Symbol) {
+        } else if (spec_import->type == __AST_NODE::SpecImport::Type::Symbol) {
             if (spec_import->imports == nullptr || spec_import->imports->imports.empty()) {
                 error::Panic(error::CodeError{
                     .pof      = &start_tok,
@@ -322,9 +319,9 @@ __PREPROCESSOR_BEGIN {
     void ImportProcessor::parse() {
         /// make an ast parser
         __TOKEN_N::TokenList::TokenListIter                      iter = tokens.begin();
-        parser::ast::node::Statement                             ast_parser(iter);
-        parser::ast::NodeT<parser::ast::node::ImportState>       import;
-        parser::ast::ParseResult<parser::ast::node::ImportState> import_result;
+        __AST_NODE::Statement                             ast_parser(iter);
+        __AST_N::NodeT<__AST_NODE::ImportState>       import;
+        __AST_N::ParseResult<__AST_NODE::ImportState> import_result;
 
         size_t start_pos = std::numeric_limits<size_t>::max();
         Token  start;
@@ -439,7 +436,7 @@ __PREPROCESSOR_BEGIN {
                     ++offset;
                 }
 
-                import_result = ast_parser.parse<parser::ast::node::ImportState>();
+                import_result = ast_parser.parse<__AST_NODE::ImportState>();
                 found_import  = true;
                 break;
             }
@@ -493,15 +490,15 @@ __PREPROCESSOR_BEGIN {
         std::vector<std::filesystem::path> resolved_paths;
         MultipleImportsNormalized          resolved_imports;
 
-        if (import->type == parser::ast::node::ImportState::Type::Single) {
+        if (import->type == __AST_NODE::ImportState::Type::Single) {
             SingleImportNormalized imports = resolve_single_import(
-                std::static_pointer_cast<parser::ast::node::SingleImport>(import->import), start);
+                __AST_N::as<__AST_NODE::SingleImport>(import->import), start);
 
             resolved_imports.emplace_back(imports);
 
-        } else if (import->type == parser::ast::node::ImportState::Type::Spec) {
+        } else if (import->type == __AST_NODE::ImportState::Type::Spec) {
             auto imports = resolve_spec_import(
-                std::static_pointer_cast<parser::ast::node::SpecImport>(import->import), start);
+                __AST_N::as<__AST_NODE::SpecImport>(import->import), start);
 
             resolved_imports.insert(resolved_imports.end(), imports.begin(), imports.end());
         }
