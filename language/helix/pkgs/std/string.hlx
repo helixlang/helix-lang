@@ -54,7 +54,7 @@ ffi "py" fn c_print(str: string) {
     printf(str);
 }
 
-#[lib(hide-from-abi)] // Hide from libhlx to prevent the use of FFI with any STD components
+#[lib(internal)] // Hide from libhlx to prevent the use of FFI with any STD components
 class string {
     fn string(self) {
         

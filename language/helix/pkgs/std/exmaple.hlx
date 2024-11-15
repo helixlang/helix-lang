@@ -1,0 +1,69 @@
+import std::io;
+import std::memory;
+import std::libc;
+
+class Point {
+    let x: i32;
+    let y: i32;
+}
+
+class Matrix requires <T> if Arithmetic in T {
+    priv {
+        let rows: i32;
+        let cols: i32;
+        let data: unsafe *T;
+    }
+
+    fn Matrix(self, r: i32, c: i32) {
+        self.rows = r;
+        self.cols = c;
+        self.data = std::libc::malloc((self.rows * self.cols) * sizeof(T)) as unsafe *T;
+    }
+
+    op + fn add(self, other: &Matrix::<T>) -> Matrix::<T> { // rust like turbofish syntax is only temporary and will be removed in the self hosted compiler
+        let result = Matrix::<T>(self.rows, self.cols);
+        for (let i: i32 = 0; i < self.rows * self.cols; ++i):
+            ...
+    
+        return result;
+    }
+
+    fn print(self) {
+        for i in range(self.rows) {
+            for j in range(self.cols) {
+                ::print(f"({self(i, j)}) ");
+            }
+        }
+    }
+}
+
+extend Matrix for Point { // Specialization for Matrix<Point>
+    op + fn add(const other: &Matrix::<Point>) -> Matrix::<Point> {
+        ...
+    }
+
+    fn print() {
+        ...
+    }
+}
+
+fn main() -> i32 {
+    let intMatrix = Matrix::<i32>(2, 2); // Matrix of i32s
+    intMatrix(0, 0) = 1;
+    intMatrix(0, 1) = 2;
+    intMatrix.print();
+
+    let pointMatrix = Matrix::<Point>(2, 2); // Specialized Matrix for Point
+    pointMatrix(0, 0) = Point{x=1, y=2};
+    pointMatrix(0, 1) = Point{x=3, y=4};
+    pointMatrix.print();
+
+    let intMatrix2 = Matrix::<i32>(2, 2); // Another Matrix of i32s
+    intMatrix2(0, 0) = 2;
+    intMatrix2(0, 1) = 3;
+
+    let intMatrixSum = intMatrix + intMatrix2;
+    intMatrixSum.print();
+
+    return 0;
+}
