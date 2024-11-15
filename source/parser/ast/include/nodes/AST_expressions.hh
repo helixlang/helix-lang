@@ -77,7 +77,7 @@ __AST_NODE_BEGIN {
             in_type = as;
 
             if (opd->getNodeType() == nodes::UnaryExpr) {
-                std::static_pointer_cast<UnaryExpr>(opd)->mark_in_type(as);
+                parser::ast::as<UnaryExpr>(opd)->mark_in_type(as);
             }
         }
     };
@@ -144,15 +144,6 @@ __AST_NODE_BEGIN {
         NodeV<> args;
     };
 
-    class GenericInvokePathExpr final : public Node {  // := E GenericInvokeExpr
-        BASE_CORE_METHODS(GenericInvokePathExpr);
-
-        GenericInvokePathExpr(NodeT<> path, NodeT<> generic);
-
-        NodeT<> path;
-        NodeT<> generic;
-    };
-
     class ScopePathExpr final : public Node {  // := E '::' E
         /// TODO: add support for generics
         BASE_CORE_METHODS(ScopePathExpr);
@@ -182,6 +173,16 @@ __AST_NODE_BEGIN {
         DotPathExpr(NodeT<> lhs, NodeT<> rhs)
             : lhs(std::move(lhs))
             , rhs(std::move(rhs)) {}
+        
+        [[nodiscard]] NodeT<> get_back() const {
+            NodeT<> current = rhs;
+
+            while (auto next = std::dynamic_pointer_cast<DotPathExpr>(current)) {
+                current = next->rhs;
+            }
+
+            return current;
+        }
 
         NodeT<> lhs;
         NodeT<> rhs;
@@ -223,7 +224,7 @@ __AST_NODE_BEGIN {
 
             switch (type) {
                 case PathType::Scope: {
-                    NodeT<ScopePathExpr> scope = std::static_pointer_cast<ScopePathExpr>(path);
+                    NodeT<ScopePathExpr> scope = parser::ast::as<ScopePathExpr>(path);
                     if (scope->path.empty()) {  // this is a global scope
                         return token::Token(
                             token::tokens::IDENTIFIER, "__/helix$$internal/__", "__global__");
@@ -233,7 +234,7 @@ __AST_NODE_BEGIN {
                     break;
                 }
                 case PathType::Identifier:
-                    return std::static_pointer_cast<parser::ast::node::IdentExpr>(path)->name;
+                    return parser::ast::as<parser::ast::node::IdentExpr>(path)->name;
                     break;
                 default:
                     print("failed default path", (int)type);
@@ -386,6 +387,8 @@ __AST_NODE_BEGIN {
         explicit Type(NodeT<LambdaExpr> value)
             : value(std::move(value)) {}
         explicit Type(bool /* unused */) {}
+
+        
 
         NodeT<>                  value;
         NodeT<GenericInvokeExpr> generics;

@@ -611,6 +611,54 @@ __AST_BEGIN {
             });
         }
 
+        [[nodiscard]] token::Token get(const token::tokens &token_kind) const {
+            for (auto &mod : modifiers) {
+                if (std::holds_alternative<StorageSpecifier>(mod)) {
+                    if (std::get<StorageSpecifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<StorageSpecifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<FFIQualifier>(mod)) {
+                    if (std::get<FFIQualifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<FFIQualifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<TypeSpecifier>(mod)) {
+                    if (std::get<TypeSpecifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<TypeSpecifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<AccessSpecifier>(mod)) {
+                    if (std::get<AccessSpecifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<AccessSpecifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<FunctionSpecifier>(mod)) {
+                    if (std::get<FunctionSpecifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<FunctionSpecifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<FunctionQualifier>(mod)) {
+                    if (std::get<FunctionQualifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<FunctionQualifier>(mod).marker;
+                    }
+                }
+
+                if (std::holds_alternative<ClassSpecifier>(mod)) {
+                    if (std::get<ClassSpecifier>(mod).marker.token_kind() == token_kind) {
+                        return std::get<ClassSpecifier>(mod).marker;
+                    }
+                }
+            }
+
+            return token::Token();
+        }
+
         template <typename T>
         void add(T modifier) {
             modifiers.push_back(modifier);

@@ -199,11 +199,11 @@ __AST_NODE_BEGIN {
         };
 
         explicit ImportState(NodeT<SingleImport> imp, bool is_module)
-            : import(std::static_pointer_cast<Node>(std::move(imp)))
+            : import(__AST_N::as<Node>(std::move(imp)))
             , explicit_module(is_module) {}
         
         explicit ImportState(NodeT<SpecImport> import, bool is_module)
-            : import(std::static_pointer_cast<Node>(std::move(import)))
+            : import(__AST_N::as<Node>(std::move(import)))
             , type(Type::Spec)
             , explicit_module(is_module) {}
 
@@ -256,7 +256,7 @@ __AST_NODE_BEGIN {
                     throw std::runtime_error("wildcard imports are not allowed in file imports");
                 }
 
-                this->path = std::static_pointer_cast<ScopePathExpr>(std::move(import->path));
+                this->path = __AST_N::as<ScopePathExpr>(std::move(import->path));
                 this->type = Type::Wildcard;
 
                 import.reset();  // clear the import

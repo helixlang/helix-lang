@@ -60,8 +60,7 @@ __AST_BEGIN {
                 .fix_fmt_args{},
                 .err_fmt_args{msg},
                 .opt_fixes{},
-                
-                });
+            });
         }
     };
 }  // namespace __AST_BEGIN

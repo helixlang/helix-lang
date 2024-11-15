@@ -60,8 +60,6 @@ __AST_NODE_BEGIN {
                 return parse_ArgumentListExpr(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, GenericInvokeExpr>) {
                 return parse_GenericInvokeExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, GenericInvokePathExpr>) {
-                return parse_GenericInvokePathExpr(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, ScopePathExpr>) {
                 return parse_ScopePathExpr(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, DotPathExpr>) {
@@ -114,7 +112,6 @@ __AST_NODE_BEGIN {
         ParseResult<ArrayAccessExpr>       parse_ArrayAccessExpr(ParseResult<> lhs = nullptr);
         ParseResult<ArgumentListExpr>      parse_ArgumentListExpr();
         ParseResult<GenericInvokeExpr>     parse_GenericInvokeExpr();
-        ParseResult<GenericInvokePathExpr> parse_GenericInvokePathExpr();
         ParseResult<ArrayLiteralExpr>      parse_ArrayLiteralExpr();
         ParseResult<TupleLiteralExpr>
         parse_TupleLiteralExpr(ParseResult<> starting_element = nullptr);

@@ -35,8 +35,6 @@
 #include <memory>
 #include <vector>
 
-
-
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/types/AST_parse_error.hh"
 #include "token/include/Token.hh"
@@ -51,6 +49,9 @@ __AST_NODE_BEGIN {
 }  // namespace __AST_NODE
 
 __AST_BEGIN {
+    template <typename T>
+    concept DerivedFromNode = std::is_base_of_v<__AST_NODE::Node, T>;
+
     /// NodeT is a unique pointer to a T (where T is a AST node)
     template <typename T = __AST_NODE::Node>
     using NodeT = std::shared_ptr<T>;
@@ -62,9 +63,14 @@ __AST_BEGIN {
     template <typename T = __AST_NODE::Node>
     using NodeV = std::vector<NodeT<T>>;
 
-    template <typename T, typename U>
-    inline std::shared_ptr<T> convert_t(const NodeT<U> &ptr) {
-        return std::static_pointer_cast<T>(ptr);
+    template <class T, class U>
+    inline NodeT<T> as(const NodeT<U> &ptr) _NOEXCEPT {
+        return NodeT<T>(ptr, static_cast<typename NodeT<T>::element_type *>(ptr.get()));
+    }
+
+    template <class T, class U>
+    inline NodeT<T> as(NodeT<U> && ptr) noexcept {
+        return NodeT<T>(std::move(ptr), static_cast<typename NodeT<T>::element_type *>(ptr.get()));
     }
 
     /// make_node is a helper function to create a new node with perfect forwarding
@@ -76,7 +82,7 @@ __AST_BEGIN {
         // return a heap-alloc unique pointer to the new node with
         // perfect forwarding of the arguments allowing the caller
         // to identify any errors in the arguments at compile time
-        return std::make_shared<T>(std::forward<Args>(args)...);
+        return NodeT<T>(std::make_shared<T>(std::forward<Args>(args)...));
     }
 }  // namespace __AST_BEGIN
 

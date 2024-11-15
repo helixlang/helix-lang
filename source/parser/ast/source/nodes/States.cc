@@ -1147,7 +1147,7 @@ AST_NODE_IMPL(Statement, SingleImport) {
         path = expr_parser.parse<LiteralExpr>();
         RETURN_IF_ERROR(path);
 
-        if (std::static_pointer_cast<LiteralExpr>(path.value())->contains_format_args) {
+        if (__AST_N::as<LiteralExpr>(path.value())->contains_format_args) {
             return std::unexpected(
                 PARSE_ERROR(CURRENT_TOK, "f-strings are not allowed in imports."));
         }
@@ -1221,7 +1221,7 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
                 PARSE_ERROR(CURRENT_TOK, "file imports cannot have import items."));
         }
 
-        node = make_node<SpecImport>(std::static_pointer_cast<ScopePathExpr>(path.value()->path));
+        node = make_node<SpecImport>(__AST_N::as<ScopePathExpr>(path.value()->path));
         /// we only get here if there is a open brace
         is_wildcard = path.value()->is_wildcard;
         is_symbol   = true;

@@ -38,7 +38,7 @@ __AST_NODE_BEGIN {
         [[nodiscard]] virtual bool        is(nodes node) const                          = 0;
         template <typename T, typename U>
         [[nodiscard]] static NodeT<T> as(U &from) {
-            return std::static_pointer_cast<T>(from);
+            return __AST_N::as<T>(from);
         }
 
         Node(const Node &)            = default;

@@ -195,12 +195,12 @@ __AST_NODE_BEGIN {
 
             switch (name->type) {
                 case PathExpr::PathType::Identifier: {
-                    result.push_back(std::static_pointer_cast<IdentExpr>(name->path)->name);
+                    result.push_back(as<IdentExpr>(name->path)->name);
                     break;
                 }
 
                 case PathExpr::PathType::Scope: {
-                    auto path = std::static_pointer_cast<ScopePathExpr>(name->path);
+                    auto path = as<ScopePathExpr>(name->path);
 
                     for (const auto &token : path->path) {
                         result.push_back(token->name);

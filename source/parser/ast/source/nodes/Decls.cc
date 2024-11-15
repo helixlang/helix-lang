@@ -579,53 +579,11 @@ AST_NODE_IMPL(Declaration, InterDecl, const std::shared_ptr<__TOKEN_N::TokenList
         node->derives = derives.value();
     }
 
-    parser::ast::node::RequiresParamDecl self_param{false};
-
-    parser::ast::node::IdentExpr self_ident{
-        __TOKEN_N::Token{0, 0, 4, 0, "Self", "__/helix$$internal/__", "identifer"}};
-    NodeT<parser::ast::node::IdentExpr> self_ident_node =
-        parser::ast::make_node<parser::ast::node::IdentExpr>(self_ident);
-
-    // parser::ast::node::IdentExpr typename_ident{
-    //     __TOKEN_N::Token{0, 0, 4, 0, "typename", "typename.internal.hlx", "identifer"}};
-    // NodeT<parser::ast::node::IdentExpr> typename_ident_node =
-    //     parser::ast::make_node<parser::ast::node::IdentExpr>(typename_ident);
-
-    // parser::ast::node::Type        typename_type{typename_ident_node};
-    // NodeT<parser::ast::node::Type> typename_type_node =
-    //     parser::ast::make_node<parser::ast::node::Type>(typename_type);
-
-    parser::ast::node::NamedVarSpecifier self_name_var{
-        self_ident_node,
-    };  //
-    NodeT<parser::ast::node::NamedVarSpecifier> self_name_var_node =
-        parser::ast::make_node<parser::ast::node::NamedVarSpecifier>(self_name_var);
-
-    // Set the identifier.
-    self_param.var.swap(self_name_var_node);
-
-    NodeT<parser::ast::node::RequiresParamDecl> self_param_node =
-        make_node<parser::ast::node::RequiresParamDecl>(self_param);
-
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_REQUIRES)) {
         ParseResult<RequiresDecl> generics = parse<RequiresDecl>();
         RETURN_IF_ERROR(generics);
 
         node->generics = generics.value();
-
-        node->generics->params->params.insert(node->generics->params->params.begin(),
-                                              self_param_node);
-
-    } else {
-        // Create the node as it does not exist
-        parser::ast::node::RequiresParamList        rpl{self_param_node};
-        NodeT<parser::ast::node::RequiresParamList> rpl_node =
-            make_node<parser::ast::node::RequiresParamList>(rpl);
-        parser::ast::node::RequiresDecl        dcl{rpl_node};
-        NodeT<parser::ast::node::RequiresDecl> dcl_node =
-            make_node<parser::ast::node::RequiresDecl>(dcl);
-
-        node->generics.swap(dcl_node);
     }
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_SEMICOLON)) {  // forward declaration
@@ -956,10 +914,10 @@ AST_NODE_IMPL(Declaration, FFIDecl, const std::shared_ptr<__TOKEN_N::TokenList> 
     if (ext_import.value()->type == ImportState::Type::Single &&
         node->name->value.value() == "\"c++\"") {
         NodeT<SingleImport> single =
-            std::static_pointer_cast<SingleImport>(ext_import.value()->import);
+            parser::ast::as<SingleImport>(ext_import.value()->import);
 
         if (single->type == SingleImport::Type::Module) {
-            NodeT<ScopePathExpr> path = std::static_pointer_cast<ScopePathExpr>(single->path);
+            NodeT<ScopePathExpr> path = parser::ast::as<ScopePathExpr>(single->path);
             token::Token         tok  = path->get_back_name();
 
             if (tok.value() == "__/helix$$internal/__") {

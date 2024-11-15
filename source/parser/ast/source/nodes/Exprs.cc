@@ -85,7 +85,6 @@
 ///                                                                                              ///
 ///                                /* generics */                                                ///
 /// [ ] * GenericInvokeExpr         * GI -> '<' TY? ( ',' TY )* '>'                              ///
-/// [ ] * GenericInvokePathExpr     * PGE -> PE GI                                               ///
 ///                                                                                              ///
 ///                                                                                              ///
 /// [x] * Type    * TY -> ID | PT                                                                ///
@@ -394,11 +393,11 @@ AST_NODE_IMPL(Expression, LiteralExpr, ParseResult<> str_concat) {
 
     IS_NOT_NULL_RESULT(str_concat) {
         if (str_concat.value()->getNodeType() != nodes::LiteralExpr ||
-            convert_t<LiteralExpr>(str_concat.value())->type != LiteralExpr::LiteralType::String) {
+            as<LiteralExpr>(str_concat.value())->type != LiteralExpr::LiteralType::String) {
             return std::unexpected(PARSE_ERROR(tok, "expected a string literal"));
         }
 
-        NodeT<LiteralExpr> str = convert_t<LiteralExpr>(str_concat.value());
+        NodeT<LiteralExpr> str = as<LiteralExpr>(str_concat.value());
 
         if (tok.token_kind() != __TOKEN_N::LITERAL_STRING) {
             return std::unexpected(PARSE_ERROR(tok, "expected a string literal"));
@@ -618,7 +617,7 @@ AST_NODE_IMPL(Expression, BinaryExpr, ParseResult<> lhs, int min_precedence) {
         lhs = make_node<BinaryExpr>(lhs.value(), rhs.value(), op);
     }
 
-    return convert_t<BinaryExpr>(lhs.value());
+    return as<BinaryExpr>(lhs.value());
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, BinaryExpr) {
@@ -644,7 +643,7 @@ AST_NODE_IMPL(Expression, UnaryExpr, ParseResult<> lhs, bool in_type) {
         RETURN_IF_ERROR(rhs);
 
         if (rhs.value()->getNodeType() == nodes::UnaryExpr) {
-            NodeT<UnaryExpr> rhs_unary = convert_t<UnaryExpr>(rhs.value());
+            NodeT<UnaryExpr> rhs_unary = as<UnaryExpr>(rhs.value());
             rhs_unary->in_type         = in_type;
 
             return make_node<UnaryExpr>(rhs_unary, op, UnaryExpr::PosType::PreFix, in_type);
@@ -731,13 +730,13 @@ AST_NODE_IMPL(Expression, ArgumentExpr) {
     NodeT<> lhs_node = lhs.value();
 
     if (lhs_node->getNodeType() == nodes::BinaryExpr) {
-        NodeT<BinaryExpr> bin_expr = convert_t<BinaryExpr>(lhs_node);
+        NodeT<BinaryExpr> bin_expr = as<BinaryExpr>(lhs_node);
 
         if (bin_expr->lhs->getNodeType() == nodes::IdentExpr &&
             bin_expr->op.token_kind() == __TOKEN_N::OPERATOR_ASSIGN) {
 
             NodeT<NamedArgumentExpr> kwarg =
-                make_node<NamedArgumentExpr>(convert_t<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
+                make_node<NamedArgumentExpr>(as<IdentExpr>(bin_expr->lhs), bin_expr->rhs);
 
             result       = make_node<ArgumentExpr>(kwarg);
             result->type = ArgumentExpr::ArgumentType::Keyword;
@@ -852,13 +851,6 @@ AST_NODE_IMPL_VISITOR(Jsonify, GenericInvokeExpr) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Expression, GenericInvokePathExpr) {
-    IS_NOT_EMPTY;
-    NOT_IMPLEMENTED;
-}
-
-// ---------------------------------------------------------------------------------------------- //
-
 AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope, bool is_import) {
     IS_NOT_EMPTY;
 
@@ -890,7 +882,7 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope, b
             RETURN_IF_ERROR(lhs);
 
             if (lhs.value()->getNodeType() == nodes::PathExpr) {
-                NodeT<PathExpr> path = convert_t<PathExpr>(lhs.value());
+                NodeT<PathExpr> path = as<PathExpr>(lhs.value());
 
                 if (path->type != PathExpr::PathType::Identifier) {
                     return std::unexpected(
@@ -901,7 +893,7 @@ AST_NODE_IMPL(Expression, ScopePathExpr, ParseResult<> lhs, bool global_scope, b
                     PARSE_ERROR_MSG("expected an identifier, but found nothing"));
             }
 
-            first = convert_t<IdentExpr>(lhs.value());
+            first = as<IdentExpr>(lhs.value());
         }
     }
 
