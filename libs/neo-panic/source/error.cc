@@ -365,7 +365,7 @@ Panic::Panic(const CodeError &err)
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
     }
     
-    if ((err_map_at->level >= ERR) && (err.level != NONE && err.level >= ERR)) {
+    if ((err_map_at->level >= ERR) || (err.level != NONE && err.level >= ERR)) {
         HAS_ERRORED = true;
     }
 

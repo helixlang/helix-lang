@@ -148,9 +148,10 @@ class CXIRCompiler {
 
     [[nodiscard]] static ExecResult exec(const std::string &cmd);
 
-    void compile_CXIR(CXXCompileAction &&action) const;
+    void compile_CXIR(CXXCompileAction &&action, bool dry_run = false) const;
 
   private:
+    mutable bool dry_run = false;
     /// (pof, msg, file)
     using ErrorPOFNormalized = std::tuple<token::Token, std::string, std::string>;
 

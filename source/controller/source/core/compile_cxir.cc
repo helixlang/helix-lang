@@ -19,7 +19,8 @@
 #include "controller/include/tooling/tooling.hh"
 #include "parser/preprocessor/include/preprocessor.hh"
 
-void CXIRCompiler::compile_CXIR(CXXCompileAction &&action) const {
+void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
+    this->dry_run = dry_run;
     CompileResult ret;
 #if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
     // try compiling with msvc first
@@ -104,6 +105,10 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         "\"" + action.cc_output.generic_string() + "\""  // output
     );
 
+    if (this->dry_run) {
+        compile_cmd += std::string(cxx::flags::dryRunFlag.clang) + " ";
+    }
+
     // add all the import paths:
     if (!COMPILE_ACTIONS.empty()) {
         for (auto &action : COMPILE_ACTIONS) {
@@ -112,7 +117,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
     }
 
     /// add any additional flags passed into the action
-    for (auto &flag : action.cxx_args) {
+    for (const auto &flag : action.cxx_args) {
         compile_cmd += flag + " ";
     }
 

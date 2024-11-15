@@ -271,10 +271,17 @@ CXXCompileAction _;
 
     helix::log<LogLevel::Info>("compiling");
 
-    compiler.compile_CXIR(std::move(action));
-
     if (error::HAS_ERRORED || parsed_args.lsp_mode) {
         LSP_MODE = parsed_args.lsp_mode;
+        
+        if (LSP_MODE && !parsed_args.emit_ir) {
+            return 0;
+        }
+    }
+
+    compiler.compile_CXIR(std::move(action), LSP_MODE);
+
+    if (LSP_MODE) {
         return 0;
     }
 

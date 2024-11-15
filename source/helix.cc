@@ -24,18 +24,17 @@
 #include "controller/include/tooling/tooling.hh"
 
 int main(int argc, char **argv) {
+    std::vector<neo::json> errors;
     auto compiler = CompilationUnit();
     int  result   = 1;
 
     try {
         result = compiler.compile(argc, argv);
-    } catch (error::Panic &) {  // hard error
-        return 69;              // nice
+    } catch (error::Panic &e) {  // hard error
+        errors.push_back(e.final_err.to_json());
     }
 
-    if (LSP_MODE && error::HAS_ERRORED) {
-        std::vector<neo::json> errors;
-
+    if (LSP_MODE && error::ERRORS.size() > 0) {
         for (const auto &err : error::ERRORS) {
             if (err.line == 0 && err.col == 0) {
                 continue;
