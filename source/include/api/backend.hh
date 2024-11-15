@@ -23,7 +23,7 @@ namespace helix::backend {
 
 //     CodeGen() = default;  // default constructor
 
-//     CodeGen(parser::ast::node::Program ast,
+//     CodeGen(__AST_NODE::Program ast,
 //             ASTResolver                resolved_obj,
 //             BackendAction              action,
 //             string                     out_dest,

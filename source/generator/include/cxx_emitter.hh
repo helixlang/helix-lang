@@ -28,7 +28,7 @@ enum class GenerateMode {
     GENERATE_EXTERN_SIGNATURES,
 };
 
-class CXXGenerator : public parser::ast::visitor::Visitor {
+class CXXGenerator : public __AST_VISITOR::Visitor {
   private:
     bool __generate_signatures        = false;
     bool __generate_implementations   = false;

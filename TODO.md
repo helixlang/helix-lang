@@ -22,6 +22,18 @@
 - [ ] Add panic unwinding support
 - [ ] Parse and add extend support for generic specializations
 
+
+# TODO remaining until standard library can be implemented:
+- [ ] Codegen the missing codgen functions (lambdas, maps, sets, and a couple of others)
+- [ ] Codegen Interfaces
+- [ ] Parse and codegen `extend` syntax
+- [ ] Parse and codegen `...` variadic argument syntax
+- [ ] Parse and codegen `#` compiler directives
+- [ ] Codegen Modifiers and Attributes
+
+
+
+
 # Completed:
 ### Parser:
 - [x] Parse types

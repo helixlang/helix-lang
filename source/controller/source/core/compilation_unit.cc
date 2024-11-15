@@ -184,7 +184,7 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
     helix::log<LogLevel::Info>("parsing ast...");
 
     remove_comments(tokens);
-    ast = parser::ast::make_node<parser::ast::node::Program>(tokens, in_file_path);
+    ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path);
 
     if (!ast) {
         helix::log<LogLevel::Error>("aborting...");
@@ -195,7 +195,7 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
     helix::log<LogLevel::Info>("parsed");
 
     if (parsed_args.emit_ast) {
-        parser::ast::visitor::Jsonify json_visitor;
+        __AST_VISITOR::Jsonify json_visitor;
         ast->accept(json_visitor);
 
         if (parsed_args.lsp_mode) {
