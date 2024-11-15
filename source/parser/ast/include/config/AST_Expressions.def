@@ -25,7 +25,6 @@
     MACRO(ArgumentExpr)          \
     MACRO(ArgumentListExpr)      \
     MACRO(GenericInvokeExpr)     \
-    MACRO(GenericInvokePathExpr) \
     MACRO(ScopePathExpr)         \
     MACRO(DotPathExpr)           \
     MACRO(ArrayAccessExpr)       \

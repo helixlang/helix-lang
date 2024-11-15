@@ -77,7 +77,7 @@ __AST_NODE_BEGIN {
             in_type = as;
 
             if (opd->getNodeType() == nodes::UnaryExpr) {
-                parser::ast::as<UnaryExpr>(opd)->mark_in_type(as);
+                __AST_N::as<UnaryExpr>(opd)->mark_in_type(as);
             }
         }
     };
@@ -224,7 +224,7 @@ __AST_NODE_BEGIN {
 
             switch (type) {
                 case PathType::Scope: {
-                    NodeT<ScopePathExpr> scope = parser::ast::as<ScopePathExpr>(path);
+                    NodeT<ScopePathExpr> scope = __AST_N::as<ScopePathExpr>(path);
                     if (scope->path.empty()) {  // this is a global scope
                         return token::Token(
                             token::tokens::IDENTIFIER, "__/helix$$internal/__", "__global__");
@@ -234,7 +234,7 @@ __AST_NODE_BEGIN {
                     break;
                 }
                 case PathType::Identifier:
-                    return parser::ast::as<parser::ast::node::IdentExpr>(path)->name;
+                    return __AST_N::as<__AST_NODE::IdentExpr>(path)->name;
                     break;
                 default:
                     print("failed default path", (int)type);

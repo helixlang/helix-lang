@@ -914,10 +914,10 @@ AST_NODE_IMPL(Declaration, FFIDecl, const std::shared_ptr<__TOKEN_N::TokenList> 
     if (ext_import.value()->type == ImportState::Type::Single &&
         node->name->value.value() == "\"c++\"") {
         NodeT<SingleImport> single =
-            parser::ast::as<SingleImport>(ext_import.value()->import);
+            __AST_N::as<SingleImport>(ext_import.value()->import);
 
         if (single->type == SingleImport::Type::Module) {
-            NodeT<ScopePathExpr> path = parser::ast::as<ScopePathExpr>(single->path);
+            NodeT<ScopePathExpr> path = __AST_N::as<ScopePathExpr>(single->path);
             token::Token         tok  = path->get_back_name();
 
             if (tok.value() == "__/helix$$internal/__") {

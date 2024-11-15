@@ -25,12 +25,6 @@
 #define __TOKEN_TYPES_N   __TOKEN_N::tokens
 #define __TOKEN_CLASSES_N __TOKEN_N::classes
 
-// #define __TOKEN_NODE_BEGIN namespace parser::ast::node
-// #define __TOKEN_VISITOR_BEGIN namespace parser::ast::visitor
-// #define __TOKEN_N parser::ast
-// #define __TOKEN_NODE parser::ast::node
-// #define __TOKEN_VISITOR parser::ast::visitor
-
 #define MAKE_TOKEN(name, string) name,
 #define MAKE_TOKEN_PAIR(name, string) std::pair{name, string},
 #define MAKE_TOKEN_CLASS(name, string)                            \

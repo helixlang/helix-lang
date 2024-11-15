@@ -174,7 +174,7 @@ class CompilationUnit {
 
   private:
     CXIRCompiler                                           compiler;
-    parser::ast::NodeT<parser::ast::node::Program>         ast;
+    __AST_N::NodeT<__AST_NODE::Program>         ast;
     std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr;
 
     static void remove_comments(__TOKEN_N::TokenList &tokens);

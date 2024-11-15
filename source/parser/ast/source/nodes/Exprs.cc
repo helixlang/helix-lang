@@ -1022,15 +1022,15 @@ AST_NODE_IMPL(Expression, PathExpr, ParseResult<> simple_path) {
 
     NodeT<PathExpr> path = make_node<PathExpr>(simple_path.value());
     switch (simple_path.value()->getNodeType()) {
-        case parser::ast::node::nodes::IdentExpr:
+        case __AST_NODE::nodes::IdentExpr:
             path->type = PathExpr::PathType::Identifier;
             break;
 
-        case parser::ast::node::nodes::ScopePathExpr:
+        case __AST_NODE::nodes::ScopePathExpr:
             path->type = PathExpr::PathType::Scope;
             break;
 
-        case parser::ast::node::nodes::DotPathExpr:
+        case __AST_NODE::nodes::DotPathExpr:
             path->type = PathExpr::PathType::Dot;
             break;
 

@@ -47,14 +47,20 @@
 
 #define CXIR_NOT_IMPLEMENTED throw std::runtime_error(GET_DEBUG_INFO + "Not implemented yet")
 #define ADD_TOKEN(token) tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token))
+#define ADD_TOKEN_AT_LOC(token, tok) tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token, tok))
 #define ADD_TOKEN_AS_VALUE(token, value) \
     tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token, value))
+#define ADD_TOKEN_AS_VALUE_AT_LOC(token, value, tok) \
+    tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::token, value, tok))
+    
 #define ADD_TOKEN_AS_TOKEN(token, token_value) \
     tokens.push_back(std::make_unique<CX_Token>(token_value, cxir_tokens::token))
 
-#define ADD_NODE_PARAM(param)  \
-    if (node.param != nullptr) \
-    ADD_PARAM(node.param)
+#define ADD_NODE_PARAM(param)    \
+    if (node.param != nullptr) { \
+        ADD_PARAM(node.param);    \
+    }
+
 #define ADD_PARAM(param) param->accept(*this)
 
 #define NO_EMIT_FORWARD_DECL  \

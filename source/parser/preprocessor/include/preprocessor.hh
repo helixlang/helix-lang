@@ -101,10 +101,11 @@ __PREPROCESSOR_BEGIN {
         using ImportAlias               = __TOKEN_N::TokenList;
         using SingleImportNormalized    = std::tuple<ImportType, ImportAlias, bool>;
         using MultipleImportsNormalized = std::vector<SingleImportNormalized>;
-        using ASTScopePath              = parser::ast::NodeT<parser::ast::node::ScopePathExpr>;
-        using ASTSpecImport             = parser::ast::NodeT<parser::ast::node::SpecImport>;
+        using ASTScopePath              = __AST_N::NodeT<__AST_NODE::ScopePathExpr>;
+        using ASTSpecImport             = __AST_N::NodeT<__AST_NODE::SpecImport>;
         using Token                     = __TOKEN_N::Token;
         using InstLoc                   = std::pair<u64, Token>;
+
         using InstCXX      = std::variant<std::pair<std::string, std::string>, std::string>;
         using ResolvedPath = std::tuple<std::filesystem::path, size_t, Type>;
 
@@ -128,9 +129,9 @@ __PREPROCESSOR_BEGIN {
 
         /// \return a tuple containing the resolved path, the alias, and a bool indicating if the
         /// import is a wildcard
-        static SingleImportNormalized resolve_single_import(
-            const parser::ast::NodeT<parser::ast::node::SingleImport> &single_import,
-            Token                                                      start_tok);
+        static SingleImportNormalized
+        resolve_single_import(const __AST_N::NodeT<__AST_NODE::SingleImport> &single_import,
+                              Token                                           start_tok);
 
         static MultipleImportsNormalized resolve_spec_import(const ASTSpecImport &spec_import,
                                                              Token                start_tok);
