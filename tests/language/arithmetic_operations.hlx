@@ -1,0 +1,19 @@
+fn main() -> i32 {
+    let a = 5;
+    let b = 3;
+    print(a + b);
+    print(a - b);
+    print(a * b);
+    print(a / b);
+    return 0;
+}
+
+/*
+----------- do not remove this, the script everting below this line to validate the test -----------
+// START TEST
+8
+2
+15
+1
+// END TEST
+*/

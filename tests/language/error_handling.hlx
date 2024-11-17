@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    let x = "Hello" + 5;
+    return 0;
+}
+
+/*
+----------- do not remove this, the script everting below this line to validate the test -----------
+// ERRORS
+Type mismatch: Cannot add string and integer
+*/
