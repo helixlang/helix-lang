@@ -157,6 +157,10 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
         std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
     import_processor->parse();
 
+    if (error::HAS_ERRORED) {
+        return {};
+    }
+
     helix::log_opt<LogLevel::Info>(enable_logging, "preprocessed");
 
     if (parsed_args.emit_tokens) {
@@ -185,6 +189,10 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
 
     std::filesystem::path in_file_path = __CONTROLLER_FS_N::normalize_path(parsed_args.file);
     __TOKEN_N::TokenList  tokens       = pre_process(parsed_args, enable_logging);
+
+    if (tokens.empty()) {
+        return {{}, 1};
+    }
 
     helix::log<LogLevel::Info>("parsing ast...");
 

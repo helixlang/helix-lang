@@ -3,7 +3,8 @@ import sys
 import subprocess
 import re
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Unicode color and emoji definitions
 USE_THREADING = True
@@ -49,7 +50,7 @@ def parse_expected_output(file_path):
     with open(file_path, 'r') as file:
         content = file.read()
     
-    test_match = re.search(r'/\*.*?-----------.*?// START TEST(.*?)// END TEST', content, re.DOTALL)
+    test_match = re.search(r'/\*.*?---------.*?// START TEST(.*?)// END TEST', content, re.DOTALL)
     error_check = '// ERRORS' in content
 
     if test_match:
@@ -179,12 +180,16 @@ def main():
     
     if USE_THREADING:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, compiler_path, folder_path, file) for file in hlx_files]
-            for future in futures:
-                results.append(future.result())
+            futures = {executor.submit(run_test, compiler_path, folder_path, file): file for file in hlx_files}
+            with tqdm(total=len(hlx_files), desc="Processing Tests", unit="file") as pbar:
+                for future in as_completed(futures):
+                    results.append(future.result())
+                    pbar.update(1)
     else:
-        for file in hlx_files:
-            results.append(run_test(compiler_path, folder_path, file))
+        with tqdm(total=len(hlx_files), desc="Running Tests", unit="f") as pbar:
+            for file in hlx_files:
+                results.append(run_test(compiler_path, folder_path, file))
+                pbar.update(1)
 
     # Pretty-print results
     pretty_print_results(results)

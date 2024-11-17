@@ -298,6 +298,19 @@ inline __TOKEN_N::Token Lexer::parse_numeric() {
         switch (peek_forward()) {
             case '.':
                 ++dot_count;
+                
+                if (dot_count == 2) {
+                    /// we might have a range, a range inclusive operator or a ellipsis
+                    /// either we have 2 dots or and the current token is a '=` then we have a range
+
+                    if (current() == '.' /* we know peed_forward is also a '.' */) {
+                        end_loop = true;
+                        is_float = false;
+                        --currentPos; // reverse the last advance
+                        break;
+                    }
+                }
+
                 is_float = true;
             case _non_float_numeric:
                 if (peek_forward() == 'e') {
@@ -317,6 +330,9 @@ inline __TOKEN_N::Token Lexer::parse_numeric() {
     // if theres a . then it is a float
     if (is_float) {
         if (dot_count > 1) {
+            /// we might have a range or a range inclusive operator
+            /// either we have 2 dots or and the current token is a '=` then we have a range
+
             auto bad_token = __TOKEN_N::Token{line,
                                               column - (currentPos - start),
                                               currentPos - start,
