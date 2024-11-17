@@ -13,10 +13,9 @@
 
 #include <array>
 #include <cstddef>
-#include <format>
+#include <optional>
 #include <iomanip>
 #include <numeric>
-#include <optional>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -75,8 +74,12 @@ void string_insert(string &str, const string &insert, i64 pos, size_t str_size =
         pos = 0;
     }
 
+    if (pos > static_cast<i64>(str_size)) {
+        return;  // out of bounds
+    }
+
     for (size_t i = 0; i < insert.size(); i++) {
-        str.insert((str.begin() + pos + i), insert[i]);
+        str.insert((str.begin() + static_cast<i64>(pos + i)), insert[i]);
     }
 }
 }  // namespace std
@@ -285,14 +288,15 @@ return_state:
 }
 
 size_t set_level(string &level, const double &err_level) {
-    size_t level_len = 0;
+    size_t      level_len   = 0;
     std::string __ret_color = "";
 
     switch (ERROR_MAP.at(err_level)->level) {
         case NOTE:
-            level     = string(colors::bold) + string(colors::fg8::cyan) + "note" + __ret_color;
-            level_len = level.size() -
-                        string(string(colors::bold) + string(colors::fg8::cyan) + __ret_color).size();
+            level = string(colors::bold) + string(colors::fg8::cyan) + "note" + __ret_color;
+            level_len =
+                level.size() -
+                string(string(colors::bold) + string(colors::fg8::cyan) + __ret_color).size();
             break;
         case WARN:
             level = string(colors::bold) + string(colors::fg8::yellow) + "warn" + __ret_color;
@@ -301,8 +305,8 @@ size_t set_level(string &level, const double &err_level) {
                 string(string(colors::bold) + string(colors::fg8::yellow) + __ret_color).size();
             break;
         case ERR:
-            level =
-                string(colors::bold) + __ret_color + string(colors::fg8::red) + "error" + __ret_color;
+            level = string(colors::bold) + __ret_color + string(colors::fg8::red) + "error" +
+                    __ret_color;
             level_len = level.size() - string(string(colors::bold) + __ret_color +
                                               string(colors::fg8::red) + __ret_color)
                                            .size();
@@ -320,14 +324,15 @@ size_t set_level(string &level, const double &err_level) {
 }
 
 size_t set_level(string &level, const Level &err_level) {
-    size_t level_len = 0;
+    size_t      level_len   = 0;
     std::string __ret_color = "";
 
     switch (err_level) {
         case NOTE:
-            level     = string(colors::bold) + string(colors::fg8::cyan) + "note" + __ret_color;
-            level_len = level.size() -
-                        string(string(colors::bold) + string(colors::fg8::cyan) + __ret_color).size();
+            level = string(colors::bold) + string(colors::fg8::cyan) + "note" + __ret_color;
+            level_len =
+                level.size() -
+                string(string(colors::bold) + string(colors::fg8::cyan) + __ret_color).size();
             break;
         case WARN:
             level = string(colors::bold) + string(colors::fg8::yellow) + "warn" + __ret_color;
@@ -336,8 +341,8 @@ size_t set_level(string &level, const Level &err_level) {
                 string(string(colors::bold) + string(colors::fg8::yellow) + __ret_color).size();
             break;
         case ERR:
-            level =
-                string(colors::bold) + __ret_color + string(colors::fg8::red) + "error" + __ret_color;
+            level = string(colors::bold) + __ret_color + string(colors::fg8::red) + "error" +
+                    __ret_color;
             level_len = level.size() - string(string(colors::bold) + __ret_color +
                                               string(colors::fg8::red) + __ret_color)
                                            .size();
@@ -354,17 +359,27 @@ size_t set_level(string &level, const Level &err_level) {
     return level_len;
 }
 
+void normalize_namespace(std::string &str) {
+    for (const auto &[key, value] : NAMESPACE_MAP) {
+        std::size_t pos = 0;
+        while ((pos = str.find(key, pos)) != std::string::npos) {
+            str.replace(pos, key.length(), value);
+            pos += value.length();
+        }
+    }
+}
+
 Panic::Panic(const CodeError &err)
     : level_len(err.level == NONE ? set_level(final_err.level, err.err_code)
                                   : set_level(final_err.level, err.level))
     , mark_pof(err.mark_pof) {
-    auto err_map_at = ERROR_MAP.at(err.err_code);
+    auto err_map_at            = ERROR_MAP.at(err.err_code);
     bool internal_core_lib_err = false;
 
     if (err_map_at == std::nullopt) {
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
     }
-    
+
     if ((err_map_at->level >= ERR) || (err.level != NONE && err.level >= ERR)) {
         HAS_ERRORED = true;
     }
@@ -372,12 +387,14 @@ Panic::Panic(const CodeError &err)
     final_err.color_mode = "16bit";
     final_err.error_type = "code";
 
-    // if filename ends with $helix.core.lib remove it and mark the show error to be as a corelib err
+    // if filename ends with $helix.core.lib remove it and mark the show error to be as a corelib
+    // err
     if (err.pof->file_name().ends_with("$helix.core.lib")) {
         std::string recovered_f_name = err.pof->file_name();
-        internal_core_lib_err = true;
+        internal_core_lib_err        = true;
 
-        recovered_f_name.erase(recovered_f_name.size() - std::string("$helix.core.lib").size(), std::string("$helix.core.lib").size());
+        recovered_f_name.erase(recovered_f_name.size() - std::string("$helix.core.lib").size(),
+                               std::string("$helix.core.lib").size());
         final_err.file = recovered_f_name;
     } else {
         final_err.file = err.pof->file_name();
@@ -387,6 +404,9 @@ Panic::Panic(const CodeError &err)
     if (!err.err_fmt_args.empty()) {
         final_err.msg = fmt_string(err_map_at->err, err.err_fmt_args);
     }
+
+    /// iter over NAMESPACE_MAP's keys and see if final_err.msg contains any of the keys if so replace it with the value
+    normalize_namespace(final_err.msg);
 
     final_err.fix = err_map_at->fix;
     if (!err.fix_fmt_args.empty()) {
@@ -458,16 +478,8 @@ void Panic::process_full_line() {
         std::exit(288);
     }
 
-    while (true) {
-        if (full_line->empty()) {
-            break;
-        }
-
-        if (full_line->ends_with(' ')) {
-            full_line->erase(full_line->end());
-        } else {
-            break;
-        }
+    while (!full_line->empty() && full_line->back() == ' ') {  // trim trailing spaces
+        full_line->pop_back();
     }
 
     final_err.full_line = full_line.value();
@@ -549,10 +561,13 @@ void Panic::show_error(bool internal_core_lib_err) {
     }
 
     // add the message
-    formatted_error += A_W + final_err.level + ": " + std::string(colors::reset) + final_err.msg + string(colors::reset) +
-                       "\n";  // fatal: missing semicolon
+    formatted_error += A_W + final_err.level + ": " + std::string(colors::reset) + final_err.msg +
+                       string(colors::reset) + "\n";  // fatal: missing semicolon
     formatted_error += A_W + string(level_len - 1, ' ') + "-->  at " +
-                       format_loc_info((internal_core_lib_err ? "helix.core.lib" : final_err.file), final_err.line, final_err.col) + "\n";
+                       format_loc_info((internal_core_lib_err ? "helix.core.lib" : final_err.file),
+                                       final_err.line,
+                                       final_err.col) +
+                       "\n";
 
     string left_side;
 
@@ -577,7 +592,8 @@ void Panic::show_error(bool internal_core_lib_err) {
     if (!final_err.fix.empty()) {
         formatted_error += A_W + whitespace + "| " + "\n";
         formatted_error += string((A_W.size() + whitespace.size() - 3), ' ') +
-                           string(colors::bold) + string(colors::fg8::green) + "fix" + ": " + std::string(colors::reset) + final_err.fix + "\n";
+                           string(colors::bold) + string(colors::fg8::green) + "fix" + ": " +
+                           std::string(colors::reset) + final_err.fix + "\n";
     }
 
     formatted_error += string(colors::reset);
@@ -585,23 +601,22 @@ void Panic::show_error(bool internal_core_lib_err) {
     // split the formatted_error by \n and add final_err.indent to each line
     if (final_err.indent > 0) {
         std::vector<std::string> lines_to_indent;
-        std::istringstream        iss(formatted_error);
-        std::string               line;
+        std::istringstream       iss(formatted_error);
+        std::string              line;
 
         while (std::getline(iss, line)) {
             lines_to_indent.push_back(line);
         }
 
         for (auto &line : lines_to_indent) {
-            std::string_insert(line, std::string(final_err.indent*4, ' '), 0);
+            std::string_insert(line, std::string(final_err.indent * 4, ' '), 0);
         }
 
-        formatted_error = std::accumulate(lines_to_indent.begin(),
-                                          lines_to_indent.end(),
-                                          std::string(),
-                                          [](const std::string &a, const std::string &b) {
-                                              return a + b + "\n";
-                                          });
+        formatted_error = std::accumulate(
+            lines_to_indent.begin(),
+            lines_to_indent.end(),
+            std::string(),
+            [](const std::string &a, const std::string &b) { return a + b + "\n"; });
 
         formatted_error.pop_back();  // remove the last newline
     }

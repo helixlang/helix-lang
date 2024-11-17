@@ -13,10 +13,8 @@
 #define __ERROR_HH__
 
 #include <cstdio>
-#include <exception>
-#include <map>
-#include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -84,6 +82,7 @@ using errors_rep   = std::vector<_internal_error>;
 inline bool       HAS_ERRORED = false;
 inline bool       SHOW_ERROR  = true;
 inline errors_rep ERRORS;
+inline std::unordered_map<std::string, std::string> NAMESPACE_MAP; // maps the internal namespace representation to a ux friendly name
 
 enum Level {
     NOTE,   ///< Just a Info.
