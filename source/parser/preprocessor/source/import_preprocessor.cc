@@ -113,6 +113,7 @@ __PREPROCESSOR_BEGIN {
         const __AST_N::NodeT<__AST_NODE::SingleImport> &single_import, Token start_tok) {
     
         __TOKEN_N::TokenList final_path;
+
         __TOKEN_N::TokenList alias;
 
         // handle the alias

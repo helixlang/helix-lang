@@ -16,7 +16,7 @@
 #ifndef __KEYWORDS_DEF__
 #define __KEYWORDS_DEF__
 
-#define KEYWORD_TOKENS_COUNT 50
+#define KEYWORD_TOKENS_COUNT 51
 
 /// Key: Val
 /// M  : Modifier
@@ -78,6 +78,7 @@
     /* H */ GENERATE(KEYWORD_DERIVES, "derives")       \
     /* D */ GENERATE(KEYWORD_MODULE, "module")         \
     /* H */ GENERATE(KEYWORD_REQUIRES, "requires")     \
+    /* H */ GENERATE(KEYWORD_EXTEND, "extend")         \
     /*---- M ----*/ GENERATE(KEYWORD_UNSAFE, "unsafe")
 
 // NOTE: IF THIS GENERATION IS CHANGED DO NOT FORGET TO UPDATE COUNT
