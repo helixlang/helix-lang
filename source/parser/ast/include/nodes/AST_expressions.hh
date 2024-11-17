@@ -368,17 +368,17 @@ __AST_NODE_BEGIN {
         BASE_CORE_METHODS(InstOfExpr);
 
         enum class InstanceType {
-            In,
+            Has,
             Derives,
         };
 
-        InstOfExpr(NodeT<> value, NodeT<> type, InstanceType op)
+        InstOfExpr(NodeT<> value, NodeT<Type> type, InstanceType op)
             : value(std::move(value))
             , type(std::move(type))
             , op(op) {}
 
         NodeT<>      value;
-        NodeT<>      type;
+        NodeT<Type>  type;
         InstanceType op;
     };
 

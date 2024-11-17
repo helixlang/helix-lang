@@ -21,7 +21,7 @@
 
 using namespace parser::lexer;
 
-TEST_CASE("Test __TOKEN_N::Token constructor", "[__TOKEN_N::Token]") {
+TEST_CASE("Test __TOKEN_N::Token constructor") {
     SECTION("Testing keyword 'if'") {
         __TOKEN_N::Token token(1, 1, 2, 0, "if", "<main>");
 

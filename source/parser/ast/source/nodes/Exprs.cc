@@ -692,7 +692,6 @@ AST_NODE_IMPL_VISITOR(Jsonify, IdentExpr) { json.section("IdentExpr", node.name)
 
 // ---------------------------------------------------------------------------------------------- //
 
-/* FIXME: use this method, if unused remove */
 // should not be called by `parse` directly as it is a helper function
 AST_NODE_IMPL(Expression, NamedArgumentExpr, bool is_anonymous) {
     IS_NOT_EMPTY;
@@ -1371,7 +1370,6 @@ AST_NODE_IMPL_VISITOR(Jsonify, MapLiteralExpr) {
 
 AST_NODE_IMPL(Expression, ObjInitExpr, bool skip_start_brace, ParseResult<> obj_path) {
     IS_NOT_EMPTY;
-
     // := PATH? '{' (NamedArgumentExpr (',' NamedArgumentExpr)*)? '}'
 
     bool is_anonymous = true;
@@ -1582,15 +1580,17 @@ AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs) {
         RETURN_IF_ERROR(lhs);
     }
 
-#define INST_OF_OPS {__TOKEN_N::KEYWORD_IN, __TOKEN_N::KEYWORD_DERIVES}
+#define INST_OF_OPS {__TOKEN_N::KEYWORD_HAS, __TOKEN_N::KEYWORD_DERIVES}
     IS_IN_EXCEPTED_TOKENS(INST_OF_OPS);
 #undef INST_OF_OPS
 
-    if CURRENT_TOKEN_IS (__TOKEN_N::KEYWORD_IN)
-        op = InstOfExpr::InstanceType::In;
-    iter.advance();  // skip 'in' or 'derives'
+    if CURRENT_TOKEN_IS (__TOKEN_N::KEYWORD_HAS) {
+        op = InstOfExpr::InstanceType::Has;
+    }
 
-    ParseResult<> rhs = parse();
+    iter.advance();  // skip 'has' or 'derives'
+
+    ParseResult<Type> rhs = parse<Type>();
     RETURN_IF_ERROR(rhs);
 
     return make_node<InstOfExpr>(lhs.value(), rhs.value(), op);

@@ -659,11 +659,23 @@ CX_VISIT_IMPL(InstOfExpr) {
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "value");
 
             break;
-        case __AST_NODE::InstOfExpr::InstanceType::In:
-            // In flip flops the type and value
-            ADD_NODE_PARAM(value);
+        case __AST_NODE::InstOfExpr::InstanceType::Has:
+            // we gotta add the value to the generics of type
 
-            ANGLE_DELIMIT(ADD_NODE_PARAM(type););  // TODO: This is temp
+            // see if we need to have value be a type or an expression based on usage
+            // if (node.value->getNodeType() == __AST_NODE::nodes::Type) {
+            if (node.type->generics == nullptr || node.type->generics->args.empty()) {
+                node.type->generics = std::make_shared<__AST_NODE::GenericInvokeExpr>(node.value);
+            } else {
+                node.type->generics->args.insert(node.type->generics->args.begin(), node.value);
+            }
+            // }
+
+            // value 'has' type
+            // T has Foo::<int>
+            // becomes: Foo<T, int>
+
+            ADD_NODE_PARAM(type);
     }
 }
 
@@ -1205,67 +1217,6 @@ CX_VISIT_IMPL(ClassDecl) {
                 }
             }
 
-            /// interface support
-            if (!node.extends.empty()) {
-                /// static_assert(extend<class<gens>>, "... must satisfy ... interface");
-                token::Token loc;
-
-                auto add_token = [&self, &loc](const cxir_tokens &tok) {
-                    self->append(std::make_unique<CX_Token>(tok, loc));
-                };
-
-                /// class Foo::<T> extends Bar::<T> requires <T> {}
-                /// static_assert(Bar<Foo<T>, T>, "Foo<T> must satisfy Bar<T> interface");
-                for (auto &_extend : node.extends) {
-                    auto &extend = std::get<0>(_extend);
-                    loc          = extend->marker;
-
-                    add_token(cxir_tokens::CXX_STATIC_ASSERT);
-                    add_token(cxir_tokens::CXX_LPAREN);
-
-                    if (extend->is_fn_ptr) {
-                        PARSE_ERROR(loc, "Function pointers are not allowed in extends");
-                    } else if (extend->nullable) {
-                        PARSE_ERROR(loc, "Nullable types are not allowed in extends");
-                    }
-
-                    __AST_N::NodeT<__AST_NODE::Type> type_node =
-                        parser::ast::make_node<__AST_NODE::Type>(true);
-                    type_node->value = node.name;
-
-                    __AST_N::NodeV<__AST_NODE::IdentExpr> args;
-
-                    if (node.generics) {
-                        for (auto &arg : node.generics->params->params) {
-                            args.emplace_back(arg->var->path);
-                        }
-
-                        type_node->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
-                            __AST_N::as<>(args));
-                    }
-
-                    /// append the class name and generics to extend
-                    if (extend->generics) {
-                        extend->generics->args.insert(extend->generics->args.begin(),
-                                                      __AST_N::as<__AST_NODE::Node>(type_node));
-                    } else {
-                        extend->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
-                            __AST_N::as<__AST_NODE::Node>(type_node));
-                    }
-
-                    extend->accept(*self);
-                    add_token(cxir_tokens::CXX_COMMA);
-
-                    self->append(std::make_unique<CX_Token>(
-                        cxir_tokens::CXX_CORE_LITERAL,
-                        "\"" + node.name->name.value() + " must satisfy " + extend->marker.value() +
-                            " interface\"",
-                        loc));
-                    add_token(cxir_tokens::CXX_RPAREN);
-                    add_token(cxir_tokens::CXX_SEMICOLON);
-                }
-            }
-
             self->append(cxir_tokens::CXX_RBRACE);
         }
     };
@@ -1287,6 +1238,67 @@ CX_VISIT_IMPL(ClassDecl) {
     }
 
     ADD_TOKEN(CXX_SEMICOLON);
+    
+    /// interface support
+    if (!node.extends.empty()) {
+        /// static_assert(extend<class<gens>>, "... must satisfy ... interface");
+        token::Token loc;
+
+        auto add_token = [this, &loc](const cxir_tokens &tok) {
+            this->append(std::make_unique<CX_Token>(tok, loc));
+        };
+
+        /// class Foo::<T> extends Bar::<T> requires <T> {}
+        /// static_assert(Bar<Foo<T>, T>, "Foo<T> must satisfy Bar<T> interface");
+        for (auto &_extend : node.extends) {
+            auto &extend = std::get<0>(_extend);
+            loc          = extend->marker;
+
+            add_token(cxir_tokens::CXX_STATIC_ASSERT);
+            add_token(cxir_tokens::CXX_LPAREN);
+
+            if (extend->is_fn_ptr) {
+                PARSE_ERROR(loc, "Function pointers are not allowed in extends");
+            } else if (extend->nullable) {
+                PARSE_ERROR(loc, "Nullable types are not allowed in extends");
+            }
+
+            __AST_N::NodeT<__AST_NODE::Type> type_node =
+                parser::ast::make_node<__AST_NODE::Type>(true);
+            type_node->value = node.name;
+
+            __AST_N::NodeV<__AST_NODE::IdentExpr> args;
+
+            if (node.generics) {
+                for (auto &arg : node.generics->params->params) {
+                    args.emplace_back(arg->var->path);
+                }
+
+                type_node->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
+                    __AST_N::as<>(args));
+            }
+
+            /// append the class name and generics to extend
+            if (extend->generics) {
+                extend->generics->args.insert(extend->generics->args.begin(),
+                                                __AST_N::as<__AST_NODE::Node>(type_node));
+            } else {
+                extend->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
+                    __AST_N::as<__AST_NODE::Node>(type_node));
+            }
+
+            extend->accept(*this);
+            add_token(cxir_tokens::CXX_COMMA);
+
+            this->append(std::make_unique<CX_Token>(
+                cxir_tokens::CXX_CORE_LITERAL,
+                "\"" + node.name->name.value() + " must satisfy " + extend->marker.value() +
+                    " interface\"",
+                loc));
+            add_token(cxir_tokens::CXX_RPAREN);
+            add_token(cxir_tokens::CXX_SEMICOLON);
+        }
+    }
 }
 
 CX_VISIT_IMPL(InterDecl) {
@@ -1364,41 +1376,6 @@ CX_VISIT_IMPL(InterDecl) {
             __AST_N::make_node<__AST_NODE::RequiresDecl>(
                 __AST_N::make_node<__AST_NODE::RequiresParamList>(self_tok));
     }
-
-    ADD_TOKEN(CXX_TEMPLATE);
-
-    ADD_TOKEN(CXX_LESS);
-
-    if (!node.generics->params->params.empty()) {
-        for (auto &param : node.generics->params->params) {
-            if (param->var->path->name.value() == "self") {
-                ADD_TOKEN(CXX_TYPENAME);
-                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "self", param->var->path->name);
-            } else {
-                ADD_PARAM(param);
-            }
-
-            ADD_TOKEN(CXX_COMMA);
-        }
-
-        tokens.pop_back();
-    }
-
-    ADD_TOKEN(CXX_GREATER);
-
-    if (node.generics->bounds) {
-        ADD_TOKEN(CXX_REQUIRES);
-        ADD_PARAM(node.generics->bounds);
-    }
-
-    ADD_TOKEN(CXX_CONCEPT);  // concept
-
-    ADD_NODE_PARAM(name);                                                  // FooInterface
-    ADD_TOKEN(CXX_EQUAL);                                                  // =
-    ADD_TOKEN(CXX_REQUIRES);                                               // requires
-    ADD_TOKEN(CXX_LPAREN);                                                 // (
-    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "self", self);          // self
-    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, self_parm_name, self);  // _$_<timestamp>
 
     for (auto &decl : node.body->body->body) {
         switch (decl->getNodeType()) {
@@ -1526,6 +1503,39 @@ CX_VISIT_IMPL(InterDecl) {
         }
     }
 
+    ADD_TOKEN(CXX_TEMPLATE);
+    ADD_TOKEN(CXX_LESS);
+
+    if (!node.generics->params->params.empty()) {
+        for (auto &param : node.generics->params->params) {
+            if (param->var->path->name.value() == "self") {
+                ADD_TOKEN(CXX_TYPENAME);
+                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "self", param->var->path->name);
+            } else {
+                ADD_PARAM(param);
+            }
+
+            ADD_TOKEN(CXX_COMMA);
+        }
+
+        tokens.pop_back();
+    }
+
+    ADD_TOKEN(CXX_GREATER);
+
+    if (node.generics->bounds) {
+        ADD_TOKEN(CXX_REQUIRES);
+        ADD_PARAM(node.generics->bounds);
+    }
+
+    ADD_TOKEN(CXX_CONCEPT);                                                // concept
+    ADD_NODE_PARAM(name);                                                  // FooInterface
+    ADD_TOKEN(CXX_EQUAL);                                                  // =
+    ADD_TOKEN(CXX_REQUIRES);                                               // requires
+    ADD_TOKEN(CXX_LPAREN);                                                 // (
+    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "self", self);          // self
+    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, self_parm_name, self);  // _$_<timestamp>
+
     if (!type_map.empty()) {
         ADD_TOKEN(CXX_COMMA);
 
@@ -1620,18 +1630,18 @@ CX_VISIT_IMPL(InterDecl) {
 
                 auto [$self, $static] = contains_self_static(func_decl);
 
-                ADD_TOKEN(CXX_LBRACE);
+                ADD_TOKEN(CXX_LBRACE);  // {
 
-                if ($self) {
+                if ($self) {  // self_parm_name.
                     ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, self_parm_name);
                     ADD_TOKEN(CXX_DOT);
-                } else {
+                } else {  // self::
                     ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "self");
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                 }
 
-                ADD_PARAM(func_decl->name);
-                ADD_TOKEN(CXX_LPAREN);
+                ADD_PARAM(func_decl->name);  // foo
+                ADD_TOKEN(CXX_LPAREN);       // (
 
                 if (!func_decl->params.empty()) {
                     bool first = $self;
@@ -1647,24 +1657,31 @@ CX_VISIT_IMPL(InterDecl) {
                         ADD_TOKEN(CXX_COMMA);
                     }
 
-                    tokens.pop_back();
+                    // if there is self and the size of the params is 1, then we skip removing the
+                    // comma
+                    if (!$self || func_decl->params.size() != 1) {
+                        tokens.pop_back();
+                    }
                 }
 
-                ADD_TOKEN(CXX_RPAREN);
+                ADD_TOKEN(CXX_RPAREN);  // )
 
-                ADD_TOKEN(CXX_RBRACE);
-                ADD_TOKEN(CXX_PTR_ACC);
+                ADD_TOKEN(CXX_RBRACE);   // }
+                ADD_TOKEN(CXX_PTR_ACC);  // ->
                 ADD_TOKEN_AS_VALUE_AT_LOC(
                     CXX_CORE_IDENTIFIER, "std", func_decl->get_name_t().back());
                 ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                 ADD_TOKEN_AS_VALUE_AT_LOC(
                     CXX_CORE_IDENTIFIER, "same_as", func_decl->get_name_t().back());
+
                 ADD_TOKEN(CXX_LESS_THAN);
 
                 if (func_decl->returns) {
                     if (!is_self_t(func_decl->returns)) {
                         ADD_PARAM(func_decl->returns);
                     }
+                } else {
+                    ADD_TOKEN(CXX_VOID);
                 }
 
                 ADD_TOKEN(CXX_GREATER_THAN);
@@ -1720,7 +1737,9 @@ CX_VISIT_IMPL(InterDecl) {
                             ADD_TOKEN(CXX_COMMA);
                         }
 
-                        tokens.pop_back();
+                        if (!$self || op_decl->func->params.size() != 1) {
+                            tokens.pop_back();
+                        }
                     }
 
                     ADD_TOKEN(CXX_RPAREN);
@@ -1738,6 +1757,8 @@ CX_VISIT_IMPL(InterDecl) {
                         if (!is_self_t(op_decl->func->returns)) {
                             ADD_PARAM(op_decl->func->returns);
                         }
+                    } else {
+                        ADD_TOKEN(CXX_VOID);
                     }
 
                     ADD_TOKEN(CXX_GREATER_THAN);
@@ -1857,7 +1878,9 @@ CX_VISIT_IMPL(InterDecl) {
                                     ADD_TOKEN(CXX_COMMA);
                                 }
 
-                                tokens.pop_back();
+                                if (!$self || op_decl->func->params.size() != 1) {
+                                    tokens.pop_back();
+                                }
                             }
 
                             break;
@@ -1882,6 +1905,8 @@ CX_VISIT_IMPL(InterDecl) {
                         if (!is_self_t(op_decl->func->returns)) {
                             ADD_PARAM(op_decl->func->returns);
                         }
+                    } else {
+                        ADD_TOKEN(CXX_VOID);
                     }
 
                     ADD_TOKEN(CXX_GREATER_THAN);
@@ -1922,6 +1947,33 @@ CX_VISIT_IMPL(InterDecl) {
                         if (!is_self_t(var->var->type)) {
                             ADD_PARAM(var->var->type);
                         }
+
+                        /// now new check, since we are in an interface, we need to make sure that
+                        /// the the checked var type has to be a reference type, so we add a `&` to
+                        /// the type unless it is a reference type
+
+                        auto type = var->var->type;
+
+                        if (var->var->type->value != nullptr &&
+                            !let_decl->modifiers.contains(token::tokens::KEYWORD_STATIC)) {
+
+                            if (type->value->getNodeType() == __AST_NODE::nodes::IdentExpr) {
+                                ADD_TOKEN(CXX_AMPERSAND);
+                            } else if (type->value->getNodeType() == __AST_NODE::nodes::UnaryExpr) {
+                                __AST_N::NodeT<__AST_NODE::UnaryExpr> unary =
+                                    __AST_N::as<__AST_NODE::UnaryExpr>(type->value);
+
+                                if (unary->op == __TOKEN_N::OPERATOR_MUL) {
+                                    ADD_TOKEN(CXX_AMPERSAND);
+                                }
+                            }
+                        } else {
+                            CODEGEN_ERROR(var->var->path->name,
+                                          "bad type for variable declaration in interface");
+                        }
+                    } else {
+                        CODEGEN_ERROR(var->var->path->name,
+                                      "variable declarations in interfaces must have a type.");
                     }
 
                     ADD_TOKEN(CXX_GREATER_THAN);
@@ -2023,9 +2075,36 @@ CX_VISIT_IMPL(TypeDecl) {
 CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     ADD_NODE_PARAM(generics);
 
+    // add the modifiers
+    // 'inline' | 'async' | 'static' | 'const' | 'eval'
+    // codegen:
+    //      inline -> inline
+    //      async -> different codegen (not supported yet)
+    //      static -> static
+    //      const -> special case codegen
+    //      eval -> constexpr
+    //      const eval -> consteval
+
+    if (node.modifiers.contains(token::tokens::KEYWORD_INLINE)) {
+        ADD_TOKEN_AT_LOC(CXX_INLINE, node.modifiers.get(token::tokens::KEYWORD_INLINE));
+    }
+
+    if (node.modifiers.contains(token::tokens::KEYWORD_STATIC)) {
+        ADD_TOKEN_AT_LOC(CXX_STATIC, node.modifiers.get(token::tokens::KEYWORD_STATIC));
+    }
+
+    if (node.modifiers.contains(token::tokens::KEYWORD_CONST) &&
+        node.modifiers.contains(token::tokens::KEYWORD_EVAL)) {
+        ADD_TOKEN_AT_LOC(CXX_CONSTEVAL, node.modifiers.get(token::tokens::KEYWORD_EVAL));
+    } else if (node.modifiers.contains(token::tokens::KEYWORD_EVAL)) {
+        ADD_TOKEN_AT_LOC(CXX_CONSTEXPR, node.modifiers.get(token::tokens::KEYWORD_EVAL));
+    }
+
     if (node.name == nullptr) {
-        print("error");
-        throw std::runtime_error("This is bad");
+        throw std::runtime_error(
+            std::string(colors::fg16::green) + std::string(__FILE__) + ":" +
+            std::to_string(__LINE__) + colors::reset + std::string(" - ") +
+            "Function Declaration is missing the name param (ub), open an issue on github.");
     }
 
     if (!no_return_t) {
@@ -2036,6 +2115,10 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     PAREN_DELIMIT(          //
         COMMA_SEP(params);  // (params)
     );
+
+    if (node.modifiers.contains(token::tokens::KEYWORD_CONST)) {
+        ADD_TOKEN_AT_LOC(CXX_CONST, node.modifiers.get(token::tokens::KEYWORD_CONST));
+    }
 
     if (!no_return_t) {
         ADD_TOKEN(CXX_PTR_ACC);  // ->

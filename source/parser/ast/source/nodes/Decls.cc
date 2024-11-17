@@ -269,9 +269,10 @@ AST_NODE_IMPL_VISITOR(Jsonify, UDTDeriveDecl) {
 
 AST_NODE_IMPL(Declaration, TypeBoundList) {
     IS_NOT_EMPTY;
+    // FIXME: TypeBoundList := InstOfExpr (('||' | '&&') InstOfExpr)*
     // TypeBoundList := InstOfExpr (',' InstOfExpr)*)?
 
-    ParseResult<InstOfExpr> bound = expr_parser.parse<InstOfExpr>(expr_parser.parse_primary());
+    ParseResult<InstOfExpr> bound = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>());
     RETURN_IF_ERROR(bound);
 
     NodeT<TypeBoundList> node = make_node<TypeBoundList>(bound.value());
@@ -279,7 +280,7 @@ AST_NODE_IMPL(Declaration, TypeBoundList) {
     while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
         iter.advance();  // skip ','
 
-        ParseResult<InstOfExpr> next = expr_parser.parse<InstOfExpr>(expr_parser.parse_primary());
+        ParseResult<InstOfExpr> next = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>());
         RETURN_IF_ERROR(next);
 
         node->bounds.emplace_back(next.value());
