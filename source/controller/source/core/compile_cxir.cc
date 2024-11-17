@@ -19,6 +19,13 @@
 #include "controller/include/tooling/tooling.hh"
 #include "parser/preprocessor/include/preprocessor.hh"
 
+#ifndef DEBUG_LOG
+#define DEBUG_LOG(...)                            \
+    if (is_verbose) {                             \
+        helix::log<LogLevel::Debug>(__VA_ARGS__); \
+    }
+#endif
+
 void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
     this->dry_run = dry_run;
     CompileResult ret;
@@ -139,11 +146,15 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
     std::vector<std::string> lines;
     std::istringstream       stream(compile_result.output);
 
+    DEBUG_LOG("parsing compiler output intrinsics");
+
     for (std::string line; std::getline(stream, line);) {
         if (line.starts_with('/')) {
             lines.push_back(line);
         }
     }
+
+    DEBUG_LOG("parsing compiler output, size: " + std::to_string(lines.size()));
 
     for (auto &line : lines) {
         ErrorPOFNormalized err;
@@ -194,6 +205,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
 
         msg = msg.substr(msg.find_first_not_of(' '));
 
+        DEBUG_LOG("showing error: " + msg);
         error::Panic(error::CodeError{
             .pof          = &std::get<0>(err),
             .err_code     = 0.8245,
@@ -202,6 +214,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
             .level        = level,
             .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),
         });
+        DEBUG_LOG("error shown");
     }
 
     if (compile_result.return_code == 0) {
@@ -211,6 +224,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }
 
+    DEBUG_LOG("returning error");
     return {compile_result,
             flag::ErrorType(error::HAS_ERRORED ? flag::types::ErrorType::Error
                                                : flag::types::ErrorType::Success)};

@@ -57,6 +57,7 @@ Thank you for using Helix!
 
         args::Flag verbose(parser, "verbose", "Enable verbose output", {"verbose"});
         args::Flag quiet(parser, "quiet", "Suppress all output", {"quiet"});
+        args::Flag error(parser, "error", "Suppress all output except errors", {"error"});
 
         args::Flag emit_tokens(
             parser, "emit-tokens", "Output tokenized source code", {"emit-tokens"});
@@ -207,6 +208,7 @@ https://helix-lang.com/ for more information.
             this->help        = help;
             this->verbose     = verbose;
             this->quiet       = quiet;
+            this->error       = error;
             this->emit_tokens = emit_tokens;
             this->emit_llvm   = emit_llvm;
             this->lsp_mode    = lsp_mode;

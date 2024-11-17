@@ -66,6 +66,7 @@ options:
 
     --verbose                Show verbose output.
     --quiet                  Show no output.
+    --error                  Show only errors.
 
     --emit-tokens            Show tokens.
     --emit-llvm              Show LLVM IR.
@@ -116,6 +117,7 @@ __CONTROLLER_CLI_BEGIN {
         bool help    = false;
         bool verbose = false;
         bool quiet   = false;
+        bool error   = false;
         bool exit_   = false;
         int  exit_co = 0;
 

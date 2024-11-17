@@ -171,6 +171,11 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
 /// ret codes: 0 - success, 1 - error, 2 - lsp mode
 std::pair<CXXCompileAction, int>
 CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging) {
+    if (parsed_args.error) {
+        NO_LOGS           = true;
+        error::SHOW_ERROR = true;
+    }
+    
     if (parsed_args.quiet || parsed_args.lsp_mode) {
         NO_LOGS           = true;
         error::SHOW_ERROR = false;
