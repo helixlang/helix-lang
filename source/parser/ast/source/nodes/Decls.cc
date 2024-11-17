@@ -53,6 +53,7 @@
 /// [x] * TypeBoundDecl     * 'if' InstOfExpr                                                    ///
 /// [x] * TypeBoundList     * (TypeBoundDecl (',' TypeBoundDecl)*)?                              ///
 /// [x] * RequiresDecl      * 'requires' '<' RequiresParamList '>' TypeBoundList?                ///
+/// [x] * ExtendsDecl       * 'extends' (E.Type (',' E.Type)*)?                                  ///
 /// [x] * EnumMemberDecl    * E.IdentExpr ('=' E)?                                               ///
 /// [x] * UDTDeriveDecl     * 'derives' (E.Type (',' E.Type)*)?                                  ///
 ///                                                                                              ///
@@ -77,9 +78,9 @@
 /// [ ] * OpDecl    *  SharedModifiers? 'op' T FuncDecl[no_SharedModifiers=true]                 ///
 /// [x] * FuncDecl  *  SharedModifiers? 'fn' E.PathExpr '(' VarDecl[true]* ')' RequiresDecl? S.Suite
 /// [x] * StructDecl* 'const'? VisDecl? 'struct'    E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
-/// [x] * ClassDecl * 'const'? VisDecl? 'class'     E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
-/// [x] * InterDecl * 'const'? VisDecl? 'interface' E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
-/// [x] * ModuleDecl* 'inline'? 'module' E.PathExpr S.Suite                                      ///
+/// [x] * ClassDecl * 'const'? VisDecl? 'class' E.IdentExpr UDTDeriveDecl? ExtendsDecl?
+/// RequiresDecl? S.Suite [x] * InterDecl * 'const'? VisDecl? 'interface' E.IdentExpr UDTDeriveDecl?
+/// RequiresDecl? S.Suite [x] * ModuleDecl* 'inline'? 'module' E.PathExpr S.Suite ///
 ///                                                                                              ///
 /// [ ] * ExtDecl   * 'extend' E.PathExpr UDTDeriveDecl? S.Suite       /* TODO: dont forget */   ///
 ///                                                                                              ///
@@ -482,7 +483,40 @@ AST_NODE_IMPL_VISITOR(Jsonify, ConstDecl) {
 
 AST_NODE_IMPL(Declaration, ClassDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
     IS_NOT_EMPTY;
-    // ClassDecl := Modifiers 'class'     E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
+    // ClassDecl := Modifiers 'class'  E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
+    auto parse_extends = [this](NodeT<ClassDecl> &node) -> std::expected<void, ParseError> {
+        // ExtendsDecl := 'extends' (VisDecl? E.Type (',' VisDecl? E.Type)*)?
+        IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_EXTEND);
+        iter.advance();  // skip 'extends'
+
+        AccessSpecifier access = AccessSpecifier(
+            __TOKEN_N::Token(__TOKEN_N::KEYWORD_PUBLIC, "HZL_CMPILER_INL.ACCESS_SPECIFIER__.tmp"));
+        if (AccessSpecifier::is_access_specifier(CURRENT_TOK)) {
+            access = AccessSpecifier(CURRENT_TOK);
+        }
+
+        ParseResult<Type> type = expr_parser.parse<Type>();
+        RETURN_IF_ERROR(type);
+
+        node->extends.emplace_back(type.value(), access);
+
+        while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
+            iter.advance();  // skip ','
+
+            AccessSpecifier access = AccessSpecifier(__TOKEN_N::Token(
+                __TOKEN_N::KEYWORD_PUBLIC, "HZL_CMPILER_INL.ACCESS_SPECIFIER__.tmp"));
+            if (AccessSpecifier::is_access_specifier(CURRENT_TOK)) {
+                access = AccessSpecifier(CURRENT_TOK);
+            }
+
+            ParseResult<Type> next = expr_parser.parse<Type>();
+            RETURN_IF_ERROR(next);
+
+            node->extends.emplace_back(next.value(), access);
+        }
+
+        return {};
+    };
 
     NodeT<ClassDecl> node = make_node<ClassDecl>(true);
 
@@ -512,6 +546,10 @@ AST_NODE_IMPL(Declaration, ClassDecl, const std::shared_ptr<__TOKEN_N::TokenList
         RETURN_IF_ERROR(derives);
 
         node->derives = derives.value();
+    }
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_EXTEND)) {
+        RETURN_IF_ERROR(parse_extends(node));
     }
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_REQUIRES)) {
@@ -704,18 +742,70 @@ AST_NODE_IMPL_VISITOR(Jsonify, EnumDecl) {
 
 // ---------------------------------------------------------------------------------------------- //
 
+// type Foo requires <T> = Bar::<T>;
+
 AST_NODE_IMPL(Declaration, TypeDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
     IS_NOT_EMPTY;
-    // TypeDecl := Modifiers 'type'  E.IdentExpr RequiresDecl? '=' E ';'
+    // TypeDecl := Modifiers 'type' E.IdentExpr RequiresDecl? '=' E ';'
 
-    NOT_IMPLEMENTED;
+    NodeT<TypeDecl> node = make_node<TypeDecl>(true);
+
+    if (modifiers != nullptr) {
+        for (auto &tok : *modifiers) {
+            if (!node->vis.find_add(tok.current().get())) {
+                return std::unexpected(
+                    PARSE_ERROR(tok.current().get(), "invalid modifier for type"));
+            }
+        }
+    } else {
+        while (node->vis.find_add(CURRENT_TOK)) {
+            iter.advance();  // skip modifier
+        }
+    }
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_TYPE);
+    iter.advance();  // skip 'type'
+
+    ParseResult<IdentExpr> name = expr_parser.parse<IdentExpr>();
+    RETURN_IF_ERROR(name);
+
+    node->name = name.value();
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_REQUIRES)) {
+        ParseResult<RequiresDecl> generics = parse<RequiresDecl>();
+        RETURN_IF_ERROR(generics);
+
+        node->generics = generics.value();
+    }
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::OPERATOR_ASSIGN);
+    iter.advance();  // skip '='
+
+    ParseResult<Type> type = expr_parser.parse<Type>();
+    RETURN_IF_ERROR(type);
+
+    node->type = type.value();
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
+    iter.advance();  // skip ';'
+
+    return node;
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, TypeDecl) { json.section("TypeDecl"); }
+AST_NODE_IMPL_VISITOR(Jsonify, TypeDecl) {
+    json.section("TypeDecl")
+        .add("name", get_node_json(node.name))
+        .add("generics", get_node_json(node.generics))
+        .add("type", get_node_json(node.type))
+        .add("vis", node.vis.to_json());
+}
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Declaration, FuncDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
+AST_NODE_IMPL(Declaration,
+              FuncDecl,
+              const std::shared_ptr<__TOKEN_N::TokenList> &modifiers,
+              bool                                         force_name) {
     IS_NOT_EMPTY;
     // FuncDecl :=  Modifiers 'fn' E.PathExpr '(' VarDecl[true]* ')' RequiresDecl? ('->'
     // E.TypeExpr)? (S.Suite | ';' | '=' ('default' | 'delete'))
@@ -740,16 +830,28 @@ AST_NODE_IMPL(Declaration, FuncDecl, const std::shared_ptr<__TOKEN_N::TokenList>
     }
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_FUNCTION);
+    node->marker = CURRENT_TOK; // save 'fn' token
     iter.advance();  // skip 'fn'
 
-    ParseResult<PathExpr> name = expr_parser.parse<PathExpr>();
-    RETURN_IF_ERROR(name);
+    bool has_name = true;
 
-    if (name.value()->type == PathExpr::PathType::Dot) {
-        return std::unexpected(PARSE_ERROR(CURRENT_TOK, "invalid function name"));
+    if (!force_name &&
+        !(CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) || CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE))) {
+        has_name = false;
     }
 
-    node->name = name.value();
+    if (has_name) {
+        ParseResult<PathExpr> name = expr_parser.parse<PathExpr>();
+        RETURN_IF_ERROR(name);
+
+        if (name.value()->type == PathExpr::PathType::Dot) {
+            return std::unexpected(PARSE_ERROR(CURRENT_TOK, "invalid function name"));
+        }
+
+        node->name = name.value();
+    } else {
+        node->name = nullptr;
+    }
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_OPEN_PAREN);
     iter.advance();  // skip '('
@@ -913,8 +1015,7 @@ AST_NODE_IMPL(Declaration, FFIDecl, const std::shared_ptr<__TOKEN_N::TokenList> 
     node->value = ext_import.value();
     if (ext_import.value()->type == ImportState::Type::Single &&
         node->name->value.value() == "\"c++\"") {
-        NodeT<SingleImport> single =
-            __AST_N::as<SingleImport>(ext_import.value()->import);
+        NodeT<SingleImport> single = __AST_N::as<SingleImport>(ext_import.value()->import);
 
         if (single->type == SingleImport::Type::Module) {
             NodeT<ScopePathExpr> path = __AST_N::as<ScopePathExpr>(single->path);
@@ -1043,8 +1144,9 @@ AST_NODE_IMPL(Declaration, OpDecl, const std::shared_ptr<__TOKEN_N::TokenList> &
     while (iter.advance().get().token_kind() != token::KEYWORD_FUNCTION) {
         node->op.push_back(CURRENT_TOK);  // skip token and push it
     }
-    ParseResult<FuncDecl> fn = parse<FuncDecl>();
 
+    /// 'fn' here, so we now need to parse the function in name optional mode
+    ParseResult<FuncDecl> fn = parse<FuncDecl>(nullptr, false);
     RETURN_IF_ERROR(fn);
 
     // NodeT<FuncDecl> fn_node = make_node<FuncDecl>();

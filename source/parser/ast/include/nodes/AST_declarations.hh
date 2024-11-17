@@ -31,6 +31,8 @@ __AST_NODE_BEGIN {
 
         // RequiresParamDecl := 'const'? (S.NamedVarSpecifier) ('=' E)?
         explicit RequiresParamDecl(bool /* unused */) {}
+        explicit RequiresParamDecl(NodeT<NamedVarSpecifier> var)
+            : var(std::move(var)) {}
 
         NodeT<NamedVarSpecifier> var;
         NodeT<>                  value;
@@ -134,12 +136,14 @@ __AST_NODE_BEGIN {
 
         explicit ClassDecl(bool /* unused */) {}
 
+        std::vector<std::pair<NodeT<Type>, AccessSpecifier>> extends;
         Modifiers            modifiers = Modifiers(Modifiers::ExpectedModifier::ClassSpec,
                                         Modifiers::ExpectedModifier::AccessSpec);
         NodeT<IdentExpr>     name;
         NodeT<UDTDeriveDecl> derives;
         NodeT<RequiresDecl>  generics;
-        NodeT<SuiteState>    body;
+
+        NodeT<SuiteState> body;
     };
 
     class InterDecl final : public Node {
@@ -173,12 +177,13 @@ __AST_NODE_BEGIN {
     class TypeDecl final : public Node {
         BASE_CORE_METHODS(TypeDecl);
 
-        // TypeDecl :=  VisDecl? 'type'  E.IdentExpr RequiresDecl? '=' E ';'
+        // TypeDecl :=  VisDecl? 'type'  E.IdentExpr RequiresDecl? '=' Type ';'
+        explicit TypeDecl(bool /* unused */) {}
 
         Modifiers           vis = Modifiers(Modifiers::ExpectedModifier::AccessSpec);
         NodeT<IdentExpr>    name;
         NodeT<RequiresDecl> generics;
-        NodeT<>             value;
+        NodeT<Type>         type;
     };
 
     class FuncDecl final : public Node {
@@ -192,6 +197,11 @@ __AST_NODE_BEGIN {
         token::TokenList get_name_t() const {
             /// normalize the func name
             token::TokenList result;
+
+            if (!name) {
+                result.emplace_back(marker);
+                return result;
+            }
 
             switch (name->type) {
                 case PathExpr::PathType::Identifier: {
@@ -209,16 +219,20 @@ __AST_NODE_BEGIN {
                     break;
                 }
 
-                default: break;
+                default:
+                    break;
             }
 
             return result;
         }
 
+        // op + fn ();
+
         Modifiers modifiers  = Modifiers(Modifiers::ExpectedModifier::FuncSpec,
                                         Modifiers::ExpectedModifier::AccessSpec);
         Modifiers qualifiers = Modifiers(Modifiers::ExpectedModifier::FuncQual);
 
+        token::Token marker;
         NodeT<PathExpr>     name;
         NodeV<VarDecl>      params;
         NodeT<RequiresDecl> generics;

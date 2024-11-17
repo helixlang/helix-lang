@@ -103,7 +103,7 @@ __AST_NODE_BEGIN {
         NodeV<>                       annotations;
         bool                          has_errored = false;
         std::string filename;
-        std::string entry = "main";
+        std::string entry;
 
       private:
         __TOKEN_N::TokenList &source_tokens;

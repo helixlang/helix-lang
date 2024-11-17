@@ -141,6 +141,9 @@ __AST_NODE_BEGIN {
             }
         }
 
+        explicit GenericInvokeExpr(NodeV<> args)
+            : args(std::move(args)) {}
+
         NodeV<> args;
     };
 
@@ -173,7 +176,7 @@ __AST_NODE_BEGIN {
         DotPathExpr(NodeT<> lhs, NodeT<> rhs)
             : lhs(std::move(lhs))
             , rhs(std::move(rhs)) {}
-        
+
         [[nodiscard]] NodeT<> get_back() const {
             NodeT<> current = rhs;
 
@@ -388,8 +391,7 @@ __AST_NODE_BEGIN {
             : value(std::move(value)) {}
         explicit Type(bool /* unused */) {}
 
-        
-
+        token::Token             marker;
         NodeT<>                  value;
         NodeT<GenericInvokeExpr> generics;
         bool                     nullable   = false;

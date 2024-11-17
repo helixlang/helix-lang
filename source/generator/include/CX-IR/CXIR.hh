@@ -20,7 +20,6 @@
 #include <llvm/ADT/StringRef.h>
 
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <regex>
@@ -32,8 +31,6 @@
 #include "generator/include/config/Gen_config.def"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/AST.hh"
-#include "parser/preprocessor/include/private/utils.hh"
-#include "token/include/Token.hh"
 
 const std::regex
     double_semi_regexp(R"(;\r?\n\s*?;)");  // Matches any whitespace around the semicolons
@@ -175,6 +172,24 @@ __CXIR_CODEGEN_BEGIN {
             , file_name("_H1HJA9ZLO_17.helix-compiler.cxir")
             , value(std::move(value)) {}
 
+        CX_Token(cxir_tokens type, const token::Token &loc)
+            : line(loc.line_number())
+            , column(loc.column_number())
+            , length(1)
+            , type(type)
+            , file_name(std::filesystem::path(loc.file_name()).generic_string())
+            , value(cxir_tokens_map.at(type).has_value()
+                        ? std::string(cxir_tokens_map.at(type).value())
+                        : " /* Unknown Token */ ") {}
+
+        CX_Token(cxir_tokens type, std::string value, const token::Token &loc)
+            : line(loc.line_number())
+            , column(loc.column_number())
+            , length(value.length())
+            , type(type)
+            , file_name(std::filesystem::path(loc.file_name()).generic_string())
+            , value(std::move(value)) {}
+
         CX_Token(const CX_Token &)            = default;
         CX_Token(CX_Token &&)                 = delete;
         CX_Token &operator=(const CX_Token &) = default;
@@ -241,6 +256,9 @@ __CXIR_CODEGEN_BEGIN {
 
             return std::nullopt;
         }
+
+        void append(std::unique_ptr<CX_Token> token) { tokens.push_back(std::move(token)); }
+        void append(cxir_tokens type) { tokens.push_back(std::make_unique<CX_Token>(type)); }
 
         template <const bool add_core = true>
         [[nodiscard]] std::string to_CXIR() const {
@@ -363,8 +381,8 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::ArgumentExpr &node) override;
         void visit(const parser ::ast ::node ::ArgumentListExpr &node) override;
         void visit(const parser ::ast ::node ::GenericInvokeExpr &node) override;
-        void visit(const parser ::ast ::node ::GenericInvokePathExpr &node) override;
-        void visit(const parser ::ast ::node ::ScopePathExpr &node) override;
+        void visit(const parser ::ast ::node ::ScopePathExpr &node) override { visit(node, true); }
+        void visit(const parser ::ast ::node ::ScopePathExpr &node, bool access);
         void visit(const parser ::ast ::node ::DotPathExpr &node) override;
         void visit(const parser ::ast ::node ::ArrayAccessExpr &node) override;
         void visit(const parser ::ast ::node ::PathExpr &node) override;

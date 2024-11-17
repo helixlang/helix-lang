@@ -110,8 +110,11 @@ __AST_NODE_BEGIN {
         parse_EnumDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
         ParseResult<TypeDecl>
         parse_TypeDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
+
         ParseResult<FuncDecl>
-        parse_FuncDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
+        parse_FuncDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers  = nullptr,
+                       bool                                         force_name = true);
+
         ParseResult<VarDecl> parse_VarDecl(bool force_type = false, bool force_value = false);
         ParseResult<FFIDecl>
         parse_FFIDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);

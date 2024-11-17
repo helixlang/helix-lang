@@ -68,9 +68,31 @@ __AST_BEGIN {
         return NodeT<T>(ptr, static_cast<typename NodeT<T>::element_type *>(ptr.get()));
     }
 
-    template <class T, class U>
+    template <class T = __AST_NODE::Node, class U>
     inline NodeT<T> as(NodeT<U> && ptr) noexcept {
         return NodeT<T>(std::move(ptr), static_cast<typename NodeT<T>::element_type *>(ptr.get()));
+    }
+
+    template <class T = __AST_NODE::Node, class U>
+    inline NodeV<T> as(NodeV<U> &&vec) noexcept {
+        NodeV<T> result;
+        result.reserve(vec.size());
+
+        for (auto &&ptr : vec) {
+            result.push_back(as<T>(std::move(ptr)));
+        }
+
+        return result;
+    }
+
+    template <class T = __AST_NODE::Node, class U>
+    inline NodeV<T> as(const NodeV<U> &vec) noexcept {
+        NodeV<T> result;
+        result.reserve(vec.size());
+        for (const auto &ptr : vec) {
+            result.push_back(as<T>(std::shared_ptr<U>(ptr)));
+        }
+        return result;
     }
 
     /// make_node is a helper function to create a new node with perfect forwarding
@@ -82,7 +104,7 @@ __AST_BEGIN {
         // return a heap-alloc unique pointer to the new node with
         // perfect forwarding of the arguments allowing the caller
         // to identify any errors in the arguments at compile time
-        return NodeT<T>(std::make_shared<T>(std::forward<Args>(args)...));
+        return std::make_shared<T>(std::forward<Args>(args)...);
     }
 }  // namespace __AST_BEGIN
 

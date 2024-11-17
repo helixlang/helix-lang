@@ -154,6 +154,13 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
         node = parse<LiteralExpr>();
     } else if (is_excepted(tok, IS_IDENTIFIER)) {
         node = parse<IdentExpr>();
+        /// if the next token is a '::' then its a scope path
+        /// or a dot path, so we need to check if the next token
+        if (CURRENT_TOK == __TOKEN_N::OPERATOR_SCOPE) {
+            node = parse<ScopePathExpr>(node);
+        } else if (CURRENT_TOK == __TOKEN_N::PUNCTUATION_DOT) {
+            node = parse<DotPathExpr>(node);
+        }
     } else if (is_excepted(tok, IS_UNARY_OPERATOR)) {
         node = parse<UnaryExpr>();
     } else if (is_excepted(tok, IS_PUNCTUATION)) {
@@ -224,7 +231,7 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
                             __TOKEN_N::KEYWORD_SPAWN,
                             __TOKEN_N::KEYWORD_AWAIT})) {
         node = parse<AsyncThreading>();
-    } else if (tok.token_kind() == __TOKEN_N::OPERATOR_SCOPE) {  // global scope access
+    } else if (tok.token_kind() == __TOKEN_N::OPERATOR_SCOPE) {
         node = parse<ScopePathExpr>(nullptr, true);
     } else {
         return std::unexpected(
@@ -1646,6 +1653,8 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
         return tuple;
     };
 
+    node->marker = CURRENT_TOK;
+    
     ParseResult<> EXPR;
     switch (CURRENT_TOK.token_kind()) {
         case __TOKEN_N::OPERATOR_MUL:

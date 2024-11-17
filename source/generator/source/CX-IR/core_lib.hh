@@ -3,6 +3,7 @@
 #include <concepts>
 #include <coroutine>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -145,7 +146,12 @@ namespace std {
             ss << arg;
             return ss.str();
         } else if constexpr (libcxx::is_arithmetic_v<Expr>) {
-            return libcxx::to_string(arg);
+            if constexpr (libcxx::is_floating_point_v<Expr>) {
+                helix::libcxx::cout << "floating point\n";
+                return libcxx::to_string(arg);
+            } else {
+                return libcxx::to_string(arg);
+            }
         } else {
             libcxx::stringstream ss;
 
@@ -312,6 +318,36 @@ class generator {
     Handle m_coroutine;
     Iter  *m_iter = nullptr;
 };
+
+
+/// \include belongs to the helix standard library.
+/// \brief function to forward arguments
+///
+/// \code {.cpp}
+/// int main() {
+///     int* a = (int*)malloc(sizeof(int) * 10);
+///     $finally _([&] { free(a); });
+/// }
+class $finally {
+    public:
+        $finally() = default;
+        $finally(const $finally &) = delete;
+        $finally($finally &&)      = delete;
+        $finally &operator=(const $finally &) = delete;
+        $finally &operator=($finally &&) = delete;
+        ~$finally() {
+            if (m_fn) {
+                m_fn();
+            }
+        }
+    
+        template <typename Fn>
+        explicit $finally(Fn &&fn)
+            : m_fn{libcxx::forward<Fn>(fn)} {}
+    
+    private:
+        libcxx::function<void()> m_fn;
+};
 }  // namespace helix
 
 /// next function to advance a generator manually and return the current value
@@ -328,7 +364,7 @@ inline constexpr void print(Args &&...args) {
         return;
     };
 
-    (helix::libcxx::cout << ... << args);
+    (helix::libcxx::cout << ... << helix::std::any_to_string(helix::libcxx::forward<Args>(args)));
 
     if constexpr (sizeof...(args) > 0) {
         if constexpr (!helix::libcxx::is_same_v<
