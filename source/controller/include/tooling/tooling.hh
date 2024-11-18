@@ -166,15 +166,17 @@ class CXIRCompiler {
 
 class CompilationUnit {
   public:
-    int                              compile(int argc, char **argv);
-    int                              compile(__CONTROLLER_CLI_N::CLIArgs &);
-    std::pair<CXXCompileAction, int> build_unit(__CONTROLLER_CLI_N::CLIArgs &, bool = true);
-    generator::CXIR::CXIR            generate_cxir(bool);
-    __TOKEN_N::TokenList             pre_process(__CONTROLLER_CLI_N::CLIArgs &, bool);
+    int                                 compile(int argc, char **argv);
+    int                                 compile(__CONTROLLER_CLI_N::CLIArgs &);
+    std::pair<CXXCompileAction, int>    build_unit(__CONTROLLER_CLI_N::CLIArgs &, bool = true, bool = false);
+    generator::CXIR::CXIR               generate_cxir(bool);
+    __TOKEN_N::TokenList                pre_process(__CONTROLLER_CLI_N::CLIArgs &, bool);
+    __AST_N::NodeT<__AST_NODE::Program> parse_ast(__TOKEN_N::TokenList &tokens,
+                                                  std::filesystem::path in_file_path);
 
   private:
     CXIRCompiler                                           compiler;
-    __AST_N::NodeT<__AST_NODE::Program>         ast;
+    __AST_N::NodeT<__AST_NODE::Program>                    ast;
     std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr;
 
     static void remove_comments(__TOKEN_N::TokenList &tokens);

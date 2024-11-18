@@ -1377,6 +1377,7 @@ CX_VISIT_IMPL(InterDecl) {
     token::Token self           = node.name->name;
     std::string  self_parm_name = generate_unique_name();
     std::unordered_map<__AST_N::NodeT<__AST_NODE::VarDecl> *, std::string> type_map;
+
     auto self_tok = __AST_N::make_node<__AST_NODE::RequiresParamDecl>(
         __AST_N::make_node<__AST_NODE::NamedVarSpecifier>(__AST_N::make_node<__AST_NODE::IdentExpr>(
             __TOKEN_N::Token(self.line_number(),

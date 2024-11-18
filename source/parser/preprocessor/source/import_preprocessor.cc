@@ -111,7 +111,7 @@ __PREPROCESSOR_BEGIN {
     /// is a wildcard
     ImportProcessor::SingleImportNormalized ImportProcessor::resolve_single_import(
         const __AST_N::NodeT<__AST_NODE::SingleImport> &single_import, Token start_tok) {
-    
+
         __TOKEN_N::TokenList final_path;
 
         __TOKEN_N::TokenList alias;
@@ -132,10 +132,8 @@ __PREPROCESSOR_BEGIN {
             }
 
             if (single_import->alias->getNodeType() == __AST_NODE::nodes::IdentExpr) {
-                alias.emplace_back(
-                    __AST_N::as<__AST_NODE::IdentExpr>(single_import->alias)->name);
-            } else if (single_import->alias->getNodeType() ==
-                       __AST_NODE::nodes::ScopePathExpr) {
+                alias.emplace_back(__AST_N::as<__AST_NODE::IdentExpr>(single_import->alias)->name);
+            } else if (single_import->alias->getNodeType() == __AST_NODE::nodes::ScopePathExpr) {
                 /// TODO
                 // ASTScopePath path =
                 //     __AST_N::as<__AST_NODE::ScopePathExpr>(
@@ -319,8 +317,8 @@ __PREPROCESSOR_BEGIN {
 
     void ImportProcessor::parse() {
         /// make an ast parser
-        __TOKEN_N::TokenList::TokenListIter                      iter = tokens.begin();
-        __AST_NODE::Statement                             ast_parser(iter);
+        __TOKEN_N::TokenList::TokenListIter           iter = tokens.begin();
+        __AST_NODE::Statement                         ast_parser(iter);
         __AST_N::NodeT<__AST_NODE::ImportState>       import;
         __AST_N::ParseResult<__AST_NODE::ImportState> import_result;
 
@@ -492,14 +490,14 @@ __PREPROCESSOR_BEGIN {
         MultipleImportsNormalized          resolved_imports;
 
         if (import->type == __AST_NODE::ImportState::Type::Single) {
-            SingleImportNormalized imports = resolve_single_import(
-                __AST_N::as<__AST_NODE::SingleImport>(import->import), start);
+            SingleImportNormalized imports =
+                resolve_single_import(__AST_N::as<__AST_NODE::SingleImport>(import->import), start);
 
             resolved_imports.emplace_back(imports);
 
         } else if (import->type == __AST_NODE::ImportState::Type::Spec) {
-            auto imports = resolve_spec_import(
-                __AST_N::as<__AST_NODE::SpecImport>(import->import), start);
+            auto imports =
+                resolve_spec_import(__AST_N::as<__AST_NODE::SpecImport>(import->import), start);
 
             resolved_imports.insert(resolved_imports.end(), imports.begin(), imports.end());
         }
@@ -663,13 +661,16 @@ __PREPROCESSOR_BEGIN {
                 /// and if it matches the source file, use the compiled file, if not recompile
 
                 auto [action, ec] = unit.build_unit(parsed_args, false);
-
+                
                 if (ec == 1) {  /// if there was an error, skip this import
                     continue;
                 }
 
                 COMPILE_ACTIONS.emplace_back(std::move(action));  /// this needs to be included in
                                                                   /// the final compile action list
+
+                // reset the unit to get teh forward decls
+                unit.build_unit(parsed_args, false, true);
 
                 generator::CXIR::CXIR forward_decls = unit.generate_cxir(true);
                 this->imports.push_back(std::move(forward_decls));  /// this gets passed as an ptr

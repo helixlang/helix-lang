@@ -171,10 +171,19 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
     return tokens;
 }
 
+__AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenList &tokens, std::filesystem::path in_file_path) {
+    helix::log<LogLevel::Info>("parsing ast...");
+
+    remove_comments(tokens);
+    ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path);
+
+    return ast;
+}
+
 /// compile and return the path of the compiled file without calling the linker
 /// ret codes: 0 - success, 1 - error, 2 - lsp mode
 std::pair<CXXCompileAction, int>
-CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging) {
+CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging, bool no_unit) {
     if (parsed_args.error) {
         NO_LOGS           = true;
         error::SHOW_ERROR = true;
@@ -194,10 +203,7 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
         return {{}, 1};
     }
 
-    helix::log<LogLevel::Info>("parsing ast...");
-
-    remove_comments(tokens);
-    ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path);
+    ast = parse_ast(tokens, in_file_path);
 
     if (!ast) {
         helix::log<LogLevel::Error>("aborting...");
@@ -222,6 +228,10 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
     if (error::HAS_ERRORED) {
         LSP_MODE = parsed_args.lsp_mode;
         return {{}, 2};
+    }
+
+    if (no_unit) {
+        return {{}, 0};
     }
 
     generator::CXIR::CXIR emitter = generate_cxir(false);

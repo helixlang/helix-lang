@@ -346,8 +346,22 @@ target("helix") -- target config defined in the config seciton
     before_build(function (target)
         print_all_info()
     end)
+
     set_kind("binary")
     set_languages(cxx_standard)
+
+    -- after build copy all the folders and files from libhelix to the target directory
+    after_build(function(target)
+        -- determine the target output directory
+        local target_dir = path.directory(target:targetfile())
+
+        -- basicly copy all the stuff inside the libhelix folder to the parent of the target directory 1:1
+        -- do not copy the libhelix folder itself
+        os.cp("libhelix/*", path.join(target_dir, ".."))
+
+        -- remove the readme file
+        os.rm(path.join(target_dir, "..", "README.md"))
+    end)
 target_end() -- empty target
 
 -- rule("helix")
