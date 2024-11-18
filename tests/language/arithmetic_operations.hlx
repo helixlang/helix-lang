@@ -9,7 +9,7 @@ fn main() -> i32 {
 }
 
 /*
------------ do not remove this, the script everting below this line to validate the test -----------
+--------- do not remove this comment, it is used by the test script to validate the output ---------
 // START TEST
 8
 2

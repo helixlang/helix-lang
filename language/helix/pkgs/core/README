@@ -1,9 +1,0 @@
-# Helix Compiler Prelude
-
-This folder contains essential source files and modules for the Helix language, automatically included in every Helix project without the need for an explicit import statement.
-
-## Overview
-
-- **Automatic Inclusion**: The modules in this folder are included by default in all Helix projects, providing fundamental functionalities and definitions.
-- **Essential Prelude**: This prelude is imported implicitly, ensuring that every Helix project has access to the necessary basic components and utilities.
-- **Runtime Support**: The folder also includes the `libcxx` and `libunwind` runtime libraries, crucial for compiling the Intermediate Representation (IR) of Helix programs.

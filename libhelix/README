@@ -1,0 +1,53 @@
+libhelix
+========
+
+
+overview
+========
+
+`libhelix` is the standard library for the helix programming language, designed to provide essential functionality and utilities for building robust applications in helix. this library serves as both a functional foundation and a reference point for developers working with the helix language.
+
+written primarily in helix, `libhelix` encapsulates core capabilities and integrates seamlessly with helix-based projects. additionally, it includes unit tests and comprehensive documentation in mdx format, ensuring reliability and ease of use.
+
+
+directory structure
+===================
+
+the library is organized into the following directories:
+
+- `docs`: contains the mdx documentation files for the standard library. use these as a reference for understanding and leveraging helix's capabilities.
+
+- `pkgs`: houses the helix standard library functions. this is the core of `libhelix` and contains the implementations of various utilities and features.
+
+- `scripts`: includes utility scripts such as the test runner (`test.py`) and other tools to streamline development and debugging.
+
+- `libs`: contains c++ headers that are used internally to extend helix's functionality. these are not part of the public api and are used to overcome current limitations in helix's feature set.
+
+
+running tests
+=============
+
+to validate the library, use the testing script provided:
+```bash
+python3 scripts/test.py
+```
+
+
+contributing
+============
+
+contributions are welcome! if you have ideas for new features, improvements, or bug fixes, please submit a pull request. be sure to follow the contribution guidelines outlined in the [`CONTRIBUTING`](../.github/CONTRIBUTING.md) file.
+
+for discussions or questions, please open an issue on github.
+
+
+license
+=======
+
+this project is licensed under the creative commons attribution 4.0 international license. for more information, see the [`License`](../LICENSE) file.
+
+
+Acknowledgments
+===============
+
+`libhelix` is a collaborative effort by the helix development community. special thanks to all contributors who help make this library robust, reliable, and easy to use.

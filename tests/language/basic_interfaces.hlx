@@ -1,0 +1,40 @@
+// Test: Basic Interfaces with and without generics
+
+// Basic interface with a generic
+interface Foo requires <U> {
+    fn foo(self) -> U;
+}
+
+// Interface without generics
+interface Foo_basic {
+    fn foo(self) -> i32;
+}
+
+// A class implementing Foo and Foo_basic
+class Bar extend Foo::<int>, Foo_basic {
+    fn foo(self) -> int {
+        return self.x;
+    }
+
+    static fn bar() {
+        print("Bar");
+    }
+
+    let x: i32 = 10;
+}
+
+fn main() -> i32 {
+    // Test Foo and Foo_basic functionality
+    let bar_instance = Bar{};
+    print(bar_instance.foo()); // Should print 10
+    Bar::bar(); // Should print "Bar"
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+10
+Bar
+// END TEST
+*/

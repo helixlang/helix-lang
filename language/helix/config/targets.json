@@ -1,6 +1,0 @@
-{
-    "targets": {
-        "x86_64-windows-gnu": "x86_64-w64-windows-gnu",
-        "x86_64-windows-msvc": "x86_64-pc-windows-msvc"
-    }
-}

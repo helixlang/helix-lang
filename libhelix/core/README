@@ -1,0 +1,47 @@
+helix prelude
+=============
+
+overview
+========
+
+the `helix prelude` is a foundational component of the helix programming language, providing a set of core functionalities and definitions that are automatically included in every helix project. this ensures a consistent and robust starting point for all helix developers.
+
+designed to streamline the development experience, the prelude eliminates the need for explicit imports of basic utilities and definitions, allowing you to focus on writing expressive and efficient code without repetitive boilerplate.
+
+features
+========
+
+- **automatic inclusion**: the prelude is implicitly included in all helix projects, providing essential functionality without requiring explicit import statements.
+- **comprehensive foundation**: includes core modules and utilities, ensuring that all helix projects start with the necessary building blocks.
+- **seamless integration**: integrates smoothly with your codebase, offering a reliable and unobtrusive foundation for development.
+
+directory structure
+===================
+
+this folder contains the following key components:
+
+- `core_modules`: the primary definitions and utilities that make up the helix prelude.
+- `internals`: internal files used to support prelude functionality. these are not directly accessible to the user.
+- `docs`: detailed documentation explaining the components of the prelude and how they are used.
+
+usage
+=====
+
+the helix prelude is automatically available in all projects. you do not need to import it manually or configure anything to use its features. simply start coding, and the prelude will ensure your project has the necessary tools and definitions.
+
+contributing
+============
+
+we welcome contributions to the helix prelude! if you have suggestions for improving the prelude or find a bug, please submit a pull request or open an issue on github. be sure to follow the contribution guidelines outlined in the [`CONTRIBUTING`](../../.github/CONTRIBUTING.md) file.
+
+for discussions or questions, feel free to join our community forums or reach out via the helix github repository.
+
+license
+=======
+
+this project is licensed under the creative commons attribution 4.0 international license. for more details, see the [`LICENSE`](../../LICENSE) file.
+
+Acknowledgments
+===============
+
+the helix prelude is made possible through the collaborative efforts of the helix development community. a special thanks to all contributors for their dedication to enhancing the helix ecosystem.

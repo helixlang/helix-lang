@@ -1,0 +1,34 @@
+// Test: Invalid implementations (should cause compile-time errors)
+
+// Basic interface with a generic
+interface Foo requires <U> {
+    fn foo(self) -> U;
+}
+
+// Invalid class with mismatched return type
+class InvalidBar extend Foo::<String> {
+    fn foo(self) -> i64 { // Mismatched return type
+        return 0;
+    }
+}
+
+// Invalid class missing required method
+class MissingMethodBar extend Foo::<int> {
+    // Missing `fn foo(self) -> int`
+}
+
+fn foo() requires <T> if T has Foo::<int> { // function must be defined so the check is done
+    let instance: T;
+    print(instance.foo());
+}
+
+fn main() -> i32 {
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// ERRORS
+error: class 'InvalidBar' must return type 'String' as required by interface 'Foo'
+error: class 'MissingMethodBar' must implement method 'foo' as required by interface 'Foo'
+*/

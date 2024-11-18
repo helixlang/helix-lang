@@ -2,7 +2,7 @@ interface Addable {
     op + fn (self, other: self) -> self;
 }
 
-fn add(a: T, b: T) -> T requires <T> if Addable in T {
+fn add(a: T, b: T) -> T requires <T> if T has Addable {
     return a + b;
 }
 
@@ -13,7 +13,7 @@ fn main() -> i32 {
 }
 
 /*
------------ do not remove this, the script everting below this line to validate the test -----------
+--------- do not remove this comment, it is used by the test script to validate the output ---------
 // START TEST
 30
 // END TEST

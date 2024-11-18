@@ -10,8 +10,8 @@
 //                                                                                                //
 //===------------------------------------------------------------------------------------------===//
 
-#[link-time] import types::Allocator;
-#[link-time] import alloc::DefaultAllocator;
+import types::Allocator;
+import alloc::DefaultAllocator;
 
 class IntNode {
     let data: int;

@@ -1,0 +1,47 @@
+// Test: Interfaces with generics and constraints
+
+interface Foo_basic {
+    fn foo(self) -> i32;
+}
+
+interface Constrained requires <U> if U has Foo_basic {
+    fn baz(self, other: U) -> bool;
+}
+
+// A class implementing Foo_basic
+class Bar extend Foo_basic {
+    fn foo(self) -> int {
+        return self.x;
+    }
+
+    let x: i32 = 10;
+}
+
+// A class implementing constrained interface
+class ConstrainedBar extend Constrained::<Bar> {
+    fn baz(self, other: Bar) -> bool {
+        return self.x > other.x;
+    }
+
+    let x: i32 = 15;
+}
+
+// Function that uses constrained interfaces
+fn use_constrained() requires <T, U> if T has Constrained::<U>, U has Foo_basic {
+    let instance: T;
+    print(instance.baz(U()));
+}
+
+fn main() -> i32 {
+    // Test constrained interface
+    let constrained_instance = ConstrainedBar{};
+    use_constrained::<ConstrainedBar, Bar>(); // Should execute without errors
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+1
+// END TEST
+*/
