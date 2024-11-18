@@ -19,14 +19,12 @@
 - [x] Convert msvc errors into the helix error msg format.
 - [ ] Fix ast error messages, where the message tells a fix to also add a quick fix to the error
 - [x] Add support for global scopes in the parser
-- [ ] Add panic unwinding support
-- [ ] Parse and add extend support for generic specializations
 
 
 # TODO remaining until standard library can be implemented:
 - [ ] Codegen the missing codgen functions (lambdas, maps, sets, and a couple of others)
 - [x] Codegen Interfaces
-- [ ] Parse and codegen `extend` syntax
+- [ ] Parse and codegen `extend` syntax for generic specializations
 - [ ] Parse and codegen `...` variadic argument syntax
 - [ ] Parse and codegen `#` compiler directives
 - [ ] Codegen Modifiers and Attributes (partly done - only functions is done)
