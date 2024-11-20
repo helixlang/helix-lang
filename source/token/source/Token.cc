@@ -54,7 +54,7 @@ __TOKEN_BEGIN {
     // Default Constructor
     Token::Token()
         : kind(__TOKEN_TYPES_N::WHITESPACE)
-        , val("<<WHITE_SPACE>>") {}
+        , val(" ") {}
 
     // custom intrinsics constructor
     Token::Token(tokens token_type, const std::string &filename, std::string value)

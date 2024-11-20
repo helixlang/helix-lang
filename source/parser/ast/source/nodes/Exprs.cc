@@ -336,7 +336,7 @@ AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-com
                 RETURN_IF_ERROR(expr);
                 break;
 
-            case __TOKEN_N::KEYWORD_IN:
+            case __TOKEN_N::KEYWORD_HAS:
             case __TOKEN_N::KEYWORD_DERIVES:
                 expr = parse<InstOfExpr>(expr);
                 RETURN_IF_ERROR(expr);

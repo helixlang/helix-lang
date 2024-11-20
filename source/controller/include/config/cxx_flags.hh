@@ -32,6 +32,7 @@ constexpr CF noOptimization{"-fno-inline", "-fno-inline", "/Ob0", "-fno-inline"}
 constexpr CF defineFlag{"-D", "-D", "/D", "-D"};
 constexpr CF includeFlag{"-I", "-I", "/I", "-I"};
 constexpr CF linkFlag{"-l", "-l", "/link", "-l"};
+constexpr CF linkTimeOptimizationFlag{"-flto", "-flto", "/LTCG", "-flto"};
 constexpr CF outputFlag{"-o", "-o", "/Fe:", "-o"};
 constexpr CF inputFlag{"-i", "-i", "/Fi:", "-i"};
 constexpr CF precompiledHeaderFlag{"-include", "-include", "/FI", "-include"};

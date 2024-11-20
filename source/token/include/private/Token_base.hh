@@ -59,6 +59,16 @@ __TOKEN_BEGIN {
         Token();
 
         explicit Token(tokens token_type, const std::string &filename, std::string value = "");
+
+        Token(tokens token_type, std::string value, const Token &loc) :
+            line(loc.line),
+            column(loc.column),
+            len(value.length()),
+            _offset(loc.offset()),
+            kind(token_type),
+            val(std::move(value)),
+            filename(loc.filename) {}
+
         ~Token();
 
         /* ====-------------------------- getters ---------------------------==== */
