@@ -230,7 +230,8 @@ __CXIR_CODEGEN_BEGIN {
       private:
         std::vector<std::unique_ptr<CX_Token>> tokens;
         std::vector<generator::CXIR::CXIR>     imports;
-        const bool                             forward_only = false;
+        std::filesystem::path                  core_dir;
+        bool                                   forward_only = false;
 
       public:
         explicit CXIR(bool forward_only = false, std::vector<generator::CXIR::CXIR> imports = {})
@@ -242,6 +243,8 @@ __CXIR_CODEGEN_BEGIN {
         CXIR &operator=(const CXIR &) = delete;
         CXIR &operator=(CXIR &&)      = delete;
         ~CXIR() override              = default;
+
+        void set_core_dir(const std::filesystem::path &dir) { core_dir = dir; }
 
         [[nodiscard]] std::optional<std::string> get_file_name() const {
             if (tokens.empty()) {
@@ -452,9 +455,13 @@ __CXIR_CODEGEN_BEGIN {
         void visit(const parser ::ast ::node ::FuncDecl &node, bool no_return_t);
         void visit(const parser ::ast ::node ::VarDecl &node) override;
         void visit(const parser ::ast ::node ::FFIDecl &node) override;
+        
         void visit(const parser ::ast ::node ::LetDecl &node) override { visit(node, false); };
         void visit(const parser ::ast ::node ::LetDecl &node, bool is_in_statement);
-        void visit(const parser ::ast ::node ::OpDecl &node) override;
+
+        void visit(const parser ::ast ::node ::OpDecl &node) override { visit(node, false); };
+        void visit(const parser ::ast ::node ::OpDecl &node, bool in_udt);
+
         /// REMOVED: void visit(const parser ::ast ::node ::OpDecl &node, bool remove_self) {};
         void visit(const parser ::ast ::node ::Program &node) override {
             visit(const_cast<parser ::ast ::node ::Program &>(node));

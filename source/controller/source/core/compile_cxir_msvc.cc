@@ -115,7 +115,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         // cxx::flags::noCXXSTDIncludesFlag,
         // cxx::flags::noBuiltinIncludesFlag,
         // FIXME: add these later
-        cxx::flags::dryRunFlag,
+        cxx::flags::linkTimeOptimizationFlag,
         cxx::flags::warnAllFlag,
         cxx::flags::outputFlag,
         "\"" + action.cc_output.generic_string() + "\""  // output

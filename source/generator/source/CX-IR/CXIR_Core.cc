@@ -16,7 +16,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <vector>
 
+#include "controller/include/Controller.hh"
+#include "controller/include/shared/logger.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "generator/include/config/Gen_config.def"
 
@@ -32,6 +35,41 @@ std::string read_core_lib() {
                              std::istreambuf_iterator<char>());
 
     return std::string(core_lib_str);
+}
+
+// TODO, do we want to add c++ includes or just read the files and paste them instead?
+std::vector<std::string>
+read_core_includes(const std::filesystem::path &core_dir =
+                       __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core") {
+    std::vector<std::string> includes;
+
+    if (!std::filesystem::exists(core_dir)) {
+        helix::log<LogLevel::Warning>("core directory does not exist: \'" +
+                                      core_dir.generic_string() + "\'");
+        return includes;
+    }
+
+    // find all .h files in the core directory
+    // read the file and format them as so:
+    // #line 1 "file.h"
+    // ... file.h content ...
+    for (const auto &entry : std::filesystem::directory_iterator(core_dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".h") {
+            std::ifstream file(entry.path());
+            std::string   line;
+            std::string   include;
+
+            include += "#line 1 \"" + entry.path().filename().string() + "\"\n";
+
+            while (std::getline(file, line)) {
+                include += line + "\n";
+            }
+
+            includes.push_back(include);
+        }
+    }
+
+    return includes;
 }
 
 std::string __CXIR_CODEGEN_N::CXIR::get_core() {
@@ -54,11 +92,21 @@ std::string __CXIR_CODEGEN_N::CXIR::get_core() {
         R"( [unix-timestamp]
 ///
 ///*--- Helix ---*
+
+#if __cplusplus < 202002L
+static_assert(false, "helix requires c++20 or higher");
+#endif
+
 )";
+    // auto includes = read_core_includes();
 
-    std::string core_lib = read_core_lib();
+    // if (!includes.empty()) {
+    //     for (std::string &include : includes) {
+    //         start += include + "\n";
+    //     }
+    // }
 
-    return start + core_lib + R"(
+    return start + read_core_lib() + R"(
 #endif
 )";
 }

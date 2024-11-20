@@ -220,11 +220,6 @@
     GENERATE(CXX_XOR_ASSIGN,        "^="                ) \
     GENERATE(CXX_INLINE_CODE,       "/* inline code */" )
 
-
-
-    
-
-
-// NOTE: IF THIS GENERATION IS CHANGED DO NOT FORGET TO UPDATE COUNT
+// NOTE: IF THIS GENERATION IS CHANGED DO NOT FORGET TO UPDATE COUNT (line 20)
 
 #endif  // __CXX_TOKENS_DEF__

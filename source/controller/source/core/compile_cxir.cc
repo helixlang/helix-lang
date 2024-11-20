@@ -101,6 +101,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         cxx::flags::noDiagnosticsShowOptionFlag,
         cxx::flags::caretDiagnosticsMaxLinesFlag,
         cxx::flags::noElideTypeFlag,
+        cxx::flags::linkTimeOptimizationFlag,
 
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \

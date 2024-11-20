@@ -61,9 +61,6 @@ using set = ::std::set<Args...>;
 template <typename... Args>
 using map = ::std::map<Args...>;
 
-#if __cplusplus < 202002L
-static_assert(false, "helix requires c++20 or higher");
-#endif
 
 /// \include belongs to the helix standard library.
 /// \brief namespace for helix standard library in c++
@@ -81,6 +78,21 @@ namespace std {
         constexpr                  operator value_type() const { return value; }
         constexpr value_type       operator()() const { return value; }
     };
+
+    template <class _Tp>
+    _Tp&& __declval(int);
+    template <class _Tp>
+    _Tp __declval(long);
+
+    template <class _Tp>
+    _LIBCPP_HIDE_FROM_ABI decltype(__declval<_Tp>(0)) declval() _NOEXCEPT {
+    static_assert(!__is_same(_Tp, _Tp),
+                    "std::declval can only be used in an unevaluated context. "
+                    "It's likely that your current usage is trying to extract a value from the function.");
+    }
+
+    template <class _From, class _To>
+    concept convertible_to = __is_convertible(_From, _To) && requires { static_cast<_To>(declval<_From>()); };
 
     template <class _Tp, class _Up>
     concept same_as = integral_constant<bool, __is_same(_Tp, _Up)>::value &&
@@ -281,6 +293,8 @@ class generator {
         if (m_coroutine) {
             m_coroutine.destroy();
         }
+
+        delete m_iter;
     }
 
     class Iter {
@@ -340,11 +354,11 @@ class $finally {
                 m_fn();
             }
         }
-    
+
         template <typename Fn>
         explicit $finally(Fn &&fn)
             : m_fn{libcxx::forward<Fn>(fn)} {}
-    
+
     private:
         libcxx::function<void()> m_fn;
 };
