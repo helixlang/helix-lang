@@ -64,13 +64,14 @@ const helix::CompTimeMap<float, Errors, 150> ERROR_MAP({
     MP(0.2003, Errors{"incorrect variable declaration", "correct the syntax of the variable declaration.", error::ERR}),
 
     // Function Definition Errors
-    MP(0.3001, Errors{"missing return type in function definition", "add a return type to the function definition.", error::ERR}),
-    MP(0.3002, Errors{"incorrect function signature", "ensure the function signature matches the expected format.", error::ERR}),
+    MP(0.3001, Errors{"class using extends also has requires, the extends will not be checked until instantiation, this behavior will change in the v1.", "", error::NOTE}),
+    MP(0.3002, Errors{"invalid function signature {}", "", error::ERR}),
     MP(0.3003, Errors{"invalid use of lambda or inline functions", "ensure correct usage of lambda or inline functions.", error::ERR}),
     MP(0.3004, Errors{"add static to function specifier", "add static to the function specifier.", error::WARN}),
     MP(0.3005, Errors{"cant use static with self", "remove static from the function specifier.", error::ERR}),
     MP(0.3006, Errors{"self cant contain a type or a value", "remove the type or value from self.", error::ERR}),
-    
+    MP(0.3007, Errors{"class constructor must have a self parameter, and cannot have a return type or be static", "", error::ERR}),
+
     // Async, Await, Spawn, Thread errors
     MP(0.4001, Errors{"incorrect usage of async", "ensure correct usage of the async keyword.", error::ERR}),
     MP(0.4002, Errors{"invalid usage of await", "ensure correct usage of the await keyword.", error::ERR}),

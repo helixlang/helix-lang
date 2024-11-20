@@ -660,19 +660,20 @@ __PREPROCESSOR_BEGIN {
                 /// compiled file, and the path to the source file, on each compile check the hash
                 /// and if it matches the source file, use the compiled file, if not recompile
 
-                auto [action, ec] = unit.build_unit(parsed_args, false);
-                
+                /// this does not work right now since stuff like templates can not be instantiated
+                /// from another file and be defined in another.
+
+                // auto [action, ec] = unit.build_unit(parsed_args, false);
+                // COMPILE_ACTIONS.emplace_back(std::move(action));  /// this needs to be included in
+                                                                     /// the final compile action list
+
+                auto [action, ec] = unit.build_unit(parsed_args, false, true);
+
                 if (ec == 1) {  /// if there was an error, skip this import
                     continue;
                 }
 
-                COMPILE_ACTIONS.emplace_back(std::move(action));  /// this needs to be included in
-                                                                  /// the final compile action list
-
-                // reset the unit to get teh forward decls
-                unit.build_unit(parsed_args, false, true);
-
-                generator::CXIR::CXIR forward_decls = unit.generate_cxir(true);
+                generator::CXIR::CXIR forward_decls = unit.generate_cxir(false);
                 this->imports.push_back(std::move(forward_decls));  /// this gets passed as an ptr
                                                                     /// during cxir generation
 

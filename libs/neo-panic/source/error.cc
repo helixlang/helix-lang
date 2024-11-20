@@ -468,6 +468,10 @@ Panic::Panic(const CompilerError &err)
     final_err.offset = 0;
 
     ERRORS.push_back(final_err);
+
+    if (SHOW_ERROR) {
+        show_error(false);
+    }
 }
 
 void Panic::process_full_line() {
@@ -621,7 +625,7 @@ void Panic::show_error(bool internal_core_lib_err) {
         formatted_error.pop_back();  // remove the last newline
     }
 
-    print(formatted_error);
+    std::cerr << formatted_error << "\n";
 }
 }  // namespace error
 
