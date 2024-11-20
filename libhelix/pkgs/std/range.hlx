@@ -12,31 +12,170 @@
 ///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
+///
+/// ### Overview
+///
+/// This module is part of the **Helix Core** library, meaning its functionality is natively
+/// available to all Helix programs without requiring explicit imports. It provides the
+/// foundational constructs for defining and working with ranges, integral to many idiomatic
+/// Helix operations.
+///
+/// A notable feature of this module is its integration with the range operators (`..` and `..=`),
+/// which implicitly leverage the `range` functions defined here. These operators offer a concise
+/// and expressive way to generate ranges, making them suitable for iteration, slicing, and other
+/// operations that require sequential values.
+///
+/// ### Examples
+///
+/// ```helix
+/// for x in range(10) {
+///     print(x); // Prints 0 through 9
+/// }
+///
+/// for x in range(2, 10, 2) {
+///     print(x); // Prints 2, 4, 6, 8
+/// }
+///
+/// let inclusive_range = [x for x in ..=10];
+/// print(inclusive_range); // Prints [0, 1, 2, ..., 10]
+///
+/// let exclusive_range = [x for x in 5..15];
+/// print(exclusive_range); // Prints [5, 6, 7, ..., 14]
+/// ```
+///
+/// ### Implicit Integration with Range Operators
+///
+/// The range operators `..` (exclusive) and `..=` (inclusive) automatically invoke the
+/// corresponding `range` functions defined in this module:
+///
+/// - `..` generates a range from the default value `T()` to an exclusive upper bound.
+/// - `..=` generates a range from the default value `T()` to an inclusive upper bound.
+///
+/// For example:
+/// ```helix
+/// for x in 0..5 { // Equivalent to range(5)
+///     print(x);
+/// }
+///
+/// for x in 1..=5 { // Equivalent to range(1, 6)
+///     print(x);
+/// }
+/// ```
+///
+/// ### Interface: RangeIncrementable
+///
+/// The `RangeIncrementable` interface defines the following requirements:
+///
+/// ```helix
+/// interface RangeIncrementable {
+///     op ++ fn (self)              -> self;  // Increment operation.
+///     op <  fn (self, other: self) -> bool;  // Less-than comparison.
+/// }
+/// ```
+///
+/// Implementing this interface ensures that the type can be used with `range` functions and
+/// range operators, facilitating seamless integration across custom and core types.
+///
+/// ### Function: range(last)
+///
+/// Generates values from `T()` (the default constructor) up to, but not including, `last`.
+///
+/// ```helix
+/// fn range(last: T) -> yield T
+///   requires <T> if T has RangeIncrementable;
+/// ```
+///
+/// **Parameters:**
+/// - `last`: The exclusive upper bound of the range.
+///
+/// **Requirements:**
+/// - `T` must satisfy the `RangeIncrementable` interface.
+///
+/// **Behavior:**
+/// - Starts from `T()` and increments the value until `first < last` is false.
+/// - Uses the `++` operator for incrementing.
+///
+/// ### Function: range(first, last, step)
+///
+/// Generates values from `first` to, but not including, `last`, with a customizable step value.
+///
+/// ```helix
+/// fn range(first: T, last: T, step: T = 1) -> yield T
+///   requires <T> if T has RangeIncrementable;
+/// ```
+///
+/// **Parameters:**
+/// - `first`: The inclusive lower bound of the range.
+/// - `last`: The exclusive upper bound of the range.
+/// - `step`: The increment applied to `first` in each iteration. Defaults to 1.
+///
+/// **Requirements:**
+/// - `T` must satisfy the `RangeIncrementable` interface.
+///
+/// **Behavior:**
+/// - Starts from `first` and increments it by `step` until `first < last` is false.
+/// - If `step` is specified, the function iterates over the range to increment `first` accordingly.
+///
+/// ### Design Philosophy
+///
+/// By integrating with the core Helix operators and adhering to Helix's trait-based type system,
+/// this module provides a robust and extensible solution for generating and working with ranges.
+/// It exemplifies Helix's commitment to type safety, expressiveness, and seamless interoperability.
+///
+/// ### Contributing
+///
+/// Contributions to enhance the `range` API or extlast its functionality are welcome.
+/// Please adhere to the Helix Project's contribution guidelines and ensure that all additions
+/// maintain consistency with the project's coding standards.
+///
+/// For questions or discussions about this module, join the community forums at:
+/// https://helix-lang.org/community
+///
+///------------------------------------------------------------------------------------ Helix ---///
 
 interface RangeIncrementable {
     op ++ fn (self)              -> self;
     op <  fn (self, other: self) -> bool;
 }
 
-fn range(end: T) -> yield T
+class Range
   requires <T> if T has RangeIncrementable {
+    let first: T;
+    let last:  T;
+    let step:  T;
 
-    let start = T();
+    fn Range(self, first: T, last: T, step: T = 1) {
+        self.first = first;
+        self.last  = last;
+        self.step  = step;
+    }
 
-    while start < end {
-        yield start;
-        ++start;
+    fn Range(self, last: T) {
+        self.first = T();
+        self.last  = last;
+        self.step  = T(1);
+    }
+
+    op in fn iter(self) -> yield T {
+        let current = self.first;
+
+        while current < self.last {
+            yield current;
+            current += self.step;
+        }
+    }
+
+    op in fn contains(self, value: T) -> bool {
+        return value >= self.first && value < self.last;
     }
 }
 
-fn range(start: T, end: T, step: T = 1) -> yield T
+fn range(last: T) -> Range::<T>
+ requires <T> if T has RangeIncrementable {
+    return Range::<T>(last);
+}
+
+fn range(first: T, last: T, step: T = 1) -> Range::<T>
   requires <T> if T has RangeIncrementable {
-
-    while start < end {
-        yield start;
-
-        for _ in range(step) {
-            ++start;
-        }
-    }
+    return Range::<T>(first, last, step);
 }

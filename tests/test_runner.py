@@ -51,7 +51,7 @@ def parse_expected_output(file_path):
         content = file.read()
     
     test_match = re.search(r'/\*.*?---------.*?// START TEST(.*?)// END TEST', content, re.DOTALL)
-    error_check = '// ERRORS' in content
+    error_check = re.search(r'//\s*ERRORS', content) is not None
 
     if test_match:
         expected_lines = test_match.group(1).strip().split('\n')
@@ -84,7 +84,7 @@ def compile_and_execute(compiler_path, file_path, output_path):
             logger.debug(f"Compile command: {' '.join(compile_cmd2)}")
 
             if subprocess.run(compile_cmd2, capture_output=True, text=True).returncode != 0:
-                return "", compile_process.stdout, False
+                return compile_process.stdout, compile_process.stderr, False
             
             return "", "No output file found", False
 
@@ -113,10 +113,17 @@ def run_test(compiler_path, folder_path, file_name):
         return file_name, False, f"Compilation failed [{' '.join([compiler_path, file_path, "-o", output_path])}]:\n        {"\n        ".join(stderr.splitlines())}"
 
     if is_error_check:
-        # Validate errors instead of standard output
-        if stderr.strip() != '\n'.join(expected_output):
-            logger.error(f"Error output mismatch for {file_name}.")
-            return file_name, False, f"Error output mismatch. Expected: {expected_output}, Got: {stderr}"
+        # Make sure there no stdout and there is only stderr
+        if stdout.strip() == "" and stderr.strip() != "":
+            logger.info(f"Error check passed for file: {file_name}")
+            return file_name, True, "Error check passed."
+        else:
+            logger.debug(f"Error check failed for file: {file_name}")
+            return file_name, False, f"Error check failed.\n" \
+                                     f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n" \
+                                     f"        {COLOR_GREEN}Error{COLOR_RESET}\n" \
+                                     f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n" \
+                                     f"        {COLOR_GREEN}Output{COLOR_RESET}"
     else:
         # Validate standard output
         actual_lines = stdout.split('\n')

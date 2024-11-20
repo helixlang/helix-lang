@@ -2,8 +2,8 @@ import std::range::*;
 
 fn main() -> i32 {
     // Test: Simple for loop
-    for i in 0..5 {
-        print(i); // Prints 0 through 4
+    for i in range(5) {
+        print(i);
     }
 
     // Test: while loop with break

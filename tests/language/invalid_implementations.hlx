@@ -6,7 +6,7 @@ interface Foo requires <U> {
 }
 
 // Invalid class with mismatched return type
-class InvalidBar extend Foo::<String> {
+class InvalidBar extend Foo::<string> {
     fn foo(self) -> i64 { // Mismatched return type
         return 0;
     }
@@ -29,6 +29,6 @@ fn main() -> i32 {
 /*
 --------- do not remove this comment, it is used by the test script to validate the output ---------
 // ERRORS
-error: class 'InvalidBar' must return type 'String' as required by interface 'Foo'
+error: class 'InvalidBar' must return type 'string' as required by interface 'Foo'
 error: class 'MissingMethodBar' must implement method 'foo' as required by interface 'Foo'
 */
