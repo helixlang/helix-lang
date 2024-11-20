@@ -1210,17 +1210,32 @@ CX_VISIT_IMPL(CastExpr) {
     // a as &int;         // static_cast              - reference cast (safe, returns a reference if the memory is allocated else &null)
     // a as unsafe *int;  // reintreprit_cast         - unsafe pointer cast (c style)
     // a as const int;    // const_cast               - const cast (makes the value immutable)
+    // avaliable fucntions: std::as_remove_const
+    //                      a as const int  -> std::as_const
+    //                      a as float      -> std::as_cast
+    //                      a as *int       -> std::as_pointer
+    //                      a as unsafe int -> std::as_unsafe
+
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "helix");
+    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "std");
+    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
 
     if (node.type->specifiers.contains(token::tokens::KEYWORD_UNSAFE)) {
-        ADD_TOKEN(CXX_REINTERPRET_CAST);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "as_unsafe");
     } else if (node.type->specifiers.contains(token::tokens::KEYWORD_CONST)) {
-        ADD_TOKEN(CXX_CONST_CAST);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "as_const");
     } else {
-        ADD_TOKEN(CXX_STATIC_CAST);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "as_cast");
     }
 
     ANGLE_DELIMIT(             //
         ADD_NODE_PARAM(type);  //
+        ADD_TOKEN(CXX_COMMA);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "decltype");
+        PAREN_DELIMIT(              //
+            ADD_NODE_PARAM(value);  //
+        );
     );
 
     PAREN_DELIMIT(              //
@@ -1854,6 +1869,32 @@ CX_VISIT_IMPL(ClassDecl) {
                     add_visibility(self, op_decl->func);
 
                     self->visit(*op_decl, true);
+                } else if (child->getNodeType() == __AST_NODE::nodes::LetDecl) {
+                    auto let_decl = __AST_N::as<__AST_NODE::LetDecl>(child);
+
+                    if (let_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (let_decl->vis.contains(token::tokens::KEYWORD_PUBLIC)) {
+                        add_public(self);
+                    } else {
+                        add_private(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                } else if (child->getNodeType() == __AST_NODE::nodes::ConstDecl) {
+                    auto const_decl = __AST_N::as<__AST_NODE::ConstDecl>(child);
+
+                    if (const_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (const_decl->vis.contains(token::tokens::KEYWORD_PUBLIC)) {
+                        add_public(self);
+                    } else {
+                        add_private(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
                 } else {
                     add_visibility(self, child);
                     child->accept(*self);

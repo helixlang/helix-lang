@@ -1,0 +1,42 @@
+class Base {
+    pub let val: i32;
+}
+
+class Derived derives Base {
+    let val: i32 = 42;
+
+    fn Derived(self) {
+        Base::val = 50; // shadowed val
+        self.val = 42;  // val in Derived
+    }
+
+    fn get_val(self) -> i32 {
+        return self.val;
+    }
+}
+
+fn main() -> i32 {
+    // Test 1: remove constness
+    const const_val: i32 = 42;
+    let non_const_val = const_val as i32;
+    print(f"{non_const_val}\n");
+
+    // Test 2: upcast
+    let derived = Derived();
+    let base = derived as Base;
+    print(f"{base.val}\n");
+
+    // Test 3: downcast
+    // subpoint s;
+
+    // point & a = s;
+    // subpoint & b1 = static_cast<subpoint&>(a);
+    // subpoint & b2 = dynamic_cast<subpoint&>(a);
+
+    let d = Derived();
+
+    let a: *Base = &d;
+    let b1: *Derived = a as *Derived;
+
+    print(f"{(*b1).get_val()}\n");
+}

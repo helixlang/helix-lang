@@ -61,11 +61,40 @@ using set = ::std::set<Args...>;
 template <typename... Args>
 using map = ::std::map<Args...>;
 
-
 /// \include belongs to the helix standard library.
 /// \brief namespace for helix standard library in c++
 namespace helix {
 namespace libcxx::std = ::std;
+
+namespace std::ref::utils {
+    template <typename T>
+    struct remove {
+        using t = T;
+    };
+
+    template <typename T>
+    struct remove<T &> {
+        using t = T;
+    };
+
+    template <typename T>
+    struct remove<T &&> {
+        using t = T;
+    };
+}  // namespace std::ref::utils
+
+namespace std {
+    template <class _Tp>
+    struct remove_qualifiers {
+        using t _LIBCPP_NODEBUG = __remove_cvref(_Tp);
+    };
+
+    template <typename T>
+    T &&forward(typename ref::utils::remove<T>::t &t) noexcept {
+        return static_cast<T &&>(t);
+    }
+
+}  // namespace std
 
 /// \include belongs to the helix standard library.
 /// \brief namespace for helix standard library
@@ -80,19 +109,21 @@ namespace std {
     };
 
     template <class _Tp>
-    _Tp&& __declval(int);
+    _Tp &&__declval(int);
     template <class _Tp>
     _Tp __declval(long);
 
     template <class _Tp>
     _LIBCPP_HIDE_FROM_ABI decltype(__declval<_Tp>(0)) declval() _NOEXCEPT {
-    static_assert(!__is_same(_Tp, _Tp),
-                    "std::declval can only be used in an unevaluated context. "
-                    "It's likely that your current usage is trying to extract a value from the function.");
+        static_assert(
+            !__is_same(_Tp, _Tp),
+            "std::declval can only be used in an unevaluated context. "
+            "It's likely that your current usage is trying to extract a value from the function.");
     }
 
     template <class _From, class _To>
-    concept convertible_to = __is_convertible(_From, _To) && requires { static_cast<_To>(declval<_From>()); };
+    concept convertible_to =
+        __is_convertible(_From, _To) && requires { static_cast<_To>(declval<_From>()); };
 
     template <class _Tp, class _Up>
     concept same_as = integral_constant<bool, __is_same(_Tp, _Up)>::value &&
@@ -107,6 +138,9 @@ namespace std {
 
     template <class _Bp, class _Dp>
     inline constexpr bool is_base_of_v = __is_base_of(_Bp, _Dp);
+
+    template <class _Tp>
+    struct _LIBCPP_TEMPLATE_VIS is_const : integral_constant<bool, __is_const(_Tp)> {};
 
     /// \include belongs to the helix standard library.
     /// \brief namespace for internal interfaces
@@ -138,6 +172,16 @@ namespace std {
         ///
         template <typename T>
         concept CanConvertToStringForm = ToString<T> || OStream<T>;
+
+        template <typename T, typename U>
+        concept SafeCastable = requires(T t, U *u) {
+            { t.$cast(u) } -> std::same_as<U>;
+        };
+
+        template <typename _Ty, typename _Up>
+        concept PointerCastable = requires(_Ty from) {
+            dynamic_cast<_Up>(from);  // Dynamic cast requirement
+        };
     }  // namespace __internal_interfaces
 
     /// \include belongs to the helix standard library.
@@ -333,7 +377,6 @@ class generator {
     Iter  *m_iter = nullptr;
 };
 
-
 /// \include belongs to the helix standard library.
 /// \brief function to forward arguments
 ///
@@ -343,24 +386,24 @@ class generator {
 ///     $finally _([&] { free(a); });
 /// }
 class $finally {
-    public:
-        $finally() = default;
-        $finally(const $finally &) = delete;
-        $finally($finally &&)      = delete;
-        $finally &operator=(const $finally &) = delete;
-        $finally &operator=($finally &&) = delete;
-        ~$finally() {
-            if (m_fn) {
-                m_fn();
-            }
+  public:
+    $finally()                            = default;
+    $finally(const $finally &)            = delete;
+    $finally($finally &&)                 = delete;
+    $finally &operator=(const $finally &) = delete;
+    $finally &operator=($finally &&)      = delete;
+    ~$finally() {
+        if (m_fn) {
+            m_fn();
         }
+    }
 
-        template <typename Fn>
-        explicit $finally(Fn &&fn)
-            : m_fn{libcxx::forward<Fn>(fn)} {}
+    template <typename Fn>
+    explicit $finally(Fn &&fn)
+        : m_fn{libcxx::forward<Fn>(fn)} {}
 
-    private:
-        libcxx::function<void()> m_fn;
+  private:
+    libcxx::function<void()> m_fn;
 };
 }  // namespace helix
 
@@ -390,6 +433,72 @@ inline constexpr void print(Args &&...args) {
         }
     }
 }
+
+namespace helix::std {
+// as_const
+// as_cast
+// as_pointer
+// as_unsafe
+
+// ----- as_cast ----- //
+template <typename _Ty, typename _Up>
+constexpr _Ty as_cast(_Up &value) noexcept {
+    if constexpr (libcxx::is_const_v<libcxx::remove_reference_t<_Up>> &&
+                  libcxx::is_same_v<libcxx::remove_const_t<_Up>, _Ty>) {
+        // Remove const if only differing in constness
+        return const_cast<_Ty>(value);
+    } else if constexpr (libcxx::is_pointer_v<_Ty>) {
+        // If _Ty is a pointer, try static_cast first, fallback _Ty dynamic_cast
+        if constexpr (__internal_interfaces::PointerCastable<_Up, _Ty>) {
+            return dynamic_cast<_Ty>(value);
+        } else {
+            return static_cast<_Ty>(value);
+        }
+    } else if constexpr (libcxx::is_reference_v<_Ty>) {
+        // If _Ty is a reference, static_cast it
+        return static_cast<_Ty>(value);
+    } else if constexpr (__internal_interfaces::SafeCastable<_Up, _Ty>) {
+        // Call cus_Tym op as if _Up satisfies SafeCastable
+        return value.$cast(static_cast<_Ty *>(nullptr));
+    } else {
+        // Default _Ty static_cast
+        return static_cast<_Ty>(value);
+    }
+}
+
+template <typename _Ty, typename _Up>
+constexpr _Ty as_cast(const _Up &value) noexcept {
+    // Delegate _Ty non-const version (const_cast value)
+    return as_cast<_Ty>(const_cast<_Up &>(value));
+}
+
+// ----- as_const ----- //
+template <typename _Ty, typename _Up>
+constexpr const _Ty &as_const(_Up &value) noexcept {
+    // Always const the value
+    return const_cast<const _Ty &>(value);
+}
+
+template <typename _Ty, typename _Up>
+constexpr const _Ty &as_const(const _Up &value) noexcept {
+    // Already const, no need _Ty cast
+    return static_cast<const _Ty &>(value);
+}
+
+// ----- as_unsafe ----- //
+template <typename _Ty, typename _Up>
+constexpr _Ty *as_unsafe(_Up *value) noexcept {
+    // Always use reinterpret_cast
+    return reinterpret_cast<_Ty *>(value);
+}
+
+template <typename _Ty, typename _Up>
+constexpr const _Ty *as_unsafe(const _Up *value) noexcept {
+    // Always use reinterpret_cast on const pointers
+    return reinterpret_cast<const _Ty *>(value);
+}
+
+}  // namespace helix::std
 
 #define _new(type, ...) new type(__VA_ARGS__)
 

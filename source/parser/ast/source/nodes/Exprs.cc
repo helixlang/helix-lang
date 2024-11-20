@@ -87,7 +87,7 @@
 /// [ ] * GenericInvokeExpr         * GI -> '<' TY? ( ',' TY )* '>'                              ///
 ///                                                                                              ///
 ///                                                                                              ///
-/// [x] * Type    * TY -> ID | PT                                                                ///
+/// [x] * Type    * TY -> ID | PA | SE | TL | OI | AE | PAE                                      ///
 ///                                                                                              ///
 ///    /* complete parser */                                                                     ///
 /// [x] * PE -> LE | ID | AE | SE | TL | OI | PA | PAE                                           ///
