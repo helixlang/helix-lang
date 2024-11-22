@@ -355,14 +355,31 @@ target("helix") -- target config defined in the config seciton
 
     -- after build copy all the folders and files from libhelix to the target directory
     after_build(function(target)
-        -- determine the target output directory
+        -- Determine the target output directory
         local target_dir = path.directory(target:targetfile())
 
-        -- basicly copy all the stuff inside the libhelix folder to the parent of the target directory 1:1
-        -- do not copy the libhelix folder itself
-        os.cp("libhelix/*", path.join(target_dir, ".."))
+        -- Traverse the libhelix folder to find all files
+        for _, filepath in ipairs(os.files("libhelix/**/*")) do
+            -- Get the file extension and relative path
+            local ext = path.extension(filepath)
+            local relative_path = path.relative(filepath, "libhelix")
+            local target_path = path.join(target_dir, "..", relative_path)
 
-        -- remove the readme file
+            if ext == ".h" or ext == ".hh" then
+                -- Process header files: prepend #line directive
+                local content = io.readfile(filepath)
+                local line_directive = string.format('#line 1 "%s"\n', path.absolute(filepath))
+                content = line_directive .. content
+
+                -- Write the modified header to the target location
+                io.writefile(target_path, content)
+            else
+                -- Copy other files without modification
+                os.cp(filepath, target_path)
+            end
+        end
+
+        -- Remove the README.md file
         os.rm(path.join(target_dir, "..", "README.md"))
     end)
 target_end() -- empty target
