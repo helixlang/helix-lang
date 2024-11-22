@@ -17,6 +17,8 @@ EMOJI_PASS = "✅"
 EMOJI_FAIL = "❌"
 EMOJI_ERROR = "✖"
 EMOJI_SEPARATOR = "🔹"
+NEW_LINE_CHAR = '\n'
+
 
 # Initialize logging
 logger = logging.getLogger("helix_tester")
@@ -110,7 +112,7 @@ def run_test(compiler_path, folder_path, file_name):
 
     if not compiled:
         logger.debug(f"Test failed during compilation: {stderr}")
-        return file_name, False, f"Compilation failed [{' '.join([compiler_path, file_path, "-o", output_path])}]:\n        {"\n        ".join(stderr.splitlines())}"
+        return file_name, False, f"Compilation failed [{' '.join([compiler_path, file_path, '-o', output_path])}]:\n        {NEW_LINE_CHAR + '        '.join(stderr.splitlines())}"
 
     if is_error_check:
         # Make sure there no stdout and there is only stderr
@@ -130,11 +132,15 @@ def run_test(compiler_path, folder_path, file_name):
         for exp_line, act_line in zip(expected_output, actual_lines):
             if exp_line != act_line:
                 logger.debug(f"Output mismatch for {file_name}.")
-                return file_name, False, f"Output mismatch.\n" \
-                                         f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n" \
-                                         f"        {",\n        ".join((COLOR_GREEN + '\"' + x + '\"' + COLOR_RESET) for x in expected_output)},\n" \
-                                         f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n" \
-                                         f"        {",\n        ".join((COLOR_GREEN + '\"' + x + '\"' + COLOR_RESET) for x in actual_lines)}"
+                string_char = '"'
+                return file_name, False, (
+                    f"Output mismatch.\n"
+                    f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n"
+                    f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in expected_output)},\n"
+                    f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n"
+                    f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in actual_lines)}"
+                )
+
 
     logger.info(f"Test passed for file: {file_name}")
     return file_name, True, "Test passed."

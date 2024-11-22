@@ -63,10 +63,10 @@
         .pof      = marker,              \
         .err_code = 0.0123,              \
         .mark_pof = true,                \
-        .level    = error::ERR,          \
         .fix_fmt_args{},                 \
         .err_fmt_args{msg},              \
         .opt_fixes{},                    \
+        .level    = error::ERR,          \
     })
 #ifndef WARN_PANIC_FIX
 #define WARN_PANIC_FIX(msg, fix, marker) \
@@ -74,10 +74,10 @@
         .pof      = marker,              \
         .err_code = 0.0126,              \
         .mark_pof = true,                \
-        .level    = error::WARN,         \
         .fix_fmt_args{fix},              \
         .err_fmt_args{msg},              \
         .opt_fixes{},                    \
+        .level    = error::WARN,         \
     })
 #endif
 #endif

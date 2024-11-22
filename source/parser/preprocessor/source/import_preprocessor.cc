@@ -584,17 +584,9 @@ __PREPROCESSOR_BEGIN {
                 if (alias.empty()) {
                     if (what_was_imported.index() == 0) {
                         /// get the stem since thats the alias
-                        std::string elem =
-                            std::get<std::filesystem::path>(what_was_imported).stem();
+                        std::string elem = std::get<std::filesystem::path>(what_was_imported).stem().generic_string();
 
-                        alias.push_back(
-                            {start.line_number(),
-                             start.column_number(),
-                             elem.length(),
-                             start.offset() + elem.length(),
-                             elem,
-                             start.file_name(),
-                             __TOKEN_N::tokens_map.at(__TOKEN_N::tokens::IDENTIFIER).value()});
+                        alias.push_back({__TOKEN_N::tokens::IDENTIFIER, elem, start});
                     } else {
                         alias.push_back(
                             std::move(std::get<__TOKEN_N::TokenList>(what_was_imported).back()));
@@ -715,11 +707,11 @@ __PREPROCESSOR_BEGIN {
                             .pof      = &marker,
                             .err_code = 0.0123,
                             .mark_pof = true,
-                            .level    = error::WARN,
                             .fix_fmt_args{},
                             .err_fmt_args{"path found in multiple locations: " +
                                           (import_dirs[index] / path).generic_string()},
                             .opt_fixes{},
+                            .level    = error::WARN,
                         });
                     }
 
@@ -767,10 +759,10 @@ __PREPROCESSOR_BEGIN {
                     .pof      = &marker,
                     .err_code = 0.0123,
                     .mark_pof = true,
-                    .level    = error::ERR,
                     .fix_fmt_args{},
                     .err_fmt_args{"import path could not be resolved"},
                     .opt_fixes{},
+                    .level    = error::ERR,
                 });
             }
 
@@ -924,10 +916,10 @@ __PREPROCESSOR_BEGIN {
                 .pof      = &marker,
                 .err_code = 0.0123,
                 .mark_pof = true,
-                .level    = error ::ERR,
                 .fix_fmt_args{},
                 .err_fmt_args{"could not locate import"},
                 .opt_fixes{},
+                .level    = error ::ERR,
             });
         }
 
