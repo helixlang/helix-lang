@@ -1,4 +1,4 @@
-///--- Helix Core: Types ------------------------------------------------------------------------///
+///--- The Helix Project ------------------------------------------------------------------------///
 ///                                                                                              ///
 ///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
 ///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
@@ -11,23 +11,12 @@
 ///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
 ///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
 ///                                                                                              ///
-///----------------------------------------------------------------------------------------------///
-///                                                                                              ///
-///   This file defines type aliases for fundamental types used throughout the Helix runtime.    ///
-///   These types ensure cross-platform compatibility and align with modern C++ conventions.     ///
-///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
-#ifndef HELIX_TYPES_H
-#define HELIX_TYPES_H
+#ifndef __$LIBHELIX_TYPES__
+#define __$LIBHELIX_TYPES__
 
 #include <cstddef>
-#include <cstdint>
-#include <string>
-#include <vector>
-#include <map>
-#include <set>
-#include <tuple>
 
 using u8  = unsigned char;
 using i8  = signed char;
@@ -47,19 +36,7 @@ using f32 = float;
 using f64 = double;
 using f80 = long double;
 
-using usize = ::std::size_t;
-using isize = ::std::ptrdiff_t;
+using usize = std::size_t;
+using isize = std::ptrdiff_t;
 
-using byte   = ::std::byte;
-using string = ::std::string;
-
-template <typename... Args>
-using tuple = ::std::tuple<Args...>;
-template <typename... Args>
-using list = ::std::vector<Args...>;
-template <typename... Args>
-using set = ::std::set<Args...>;
-template <typename... Args>
-using map = ::std::map<Args...>;
-
-#endif // HELIX_TYPES_H
+#endif
