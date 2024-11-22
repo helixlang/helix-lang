@@ -1,3 +1,0 @@
-fn add(a: int, b: string) -> string {
-    return "this added something";
-}
