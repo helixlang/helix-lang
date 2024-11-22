@@ -94,9 +94,19 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
     DEBUG_LOG("msvc tools path: " + msvc_tools_path.generic_string());
     compile_cmd = "cmd.exe /c \"call \"" + msvc_tools_path.string() + "\" >nul 2>&1 && cl ";
 
+    // get the path to the core lib
+    auto core = __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core" / "include" / "core.h";
+
+    if (!std::filesystem::exists(core)) {
+        helix::log<LogLevel::Error>("core lib not found, verify the installation");
+        return {compile_result, flag::ErrorType(flag::types::ErrorType::NotFound)};
+    }
+
     /// start with flags we know are going to be present
     compile_cmd += make_command(  // ...
         flag::types::Compiler::MSVC,
+
+        "/FI\"" + core.generic_string() + "\" ",
         ((action.flags.contains(flag::types::CompileFlags::Debug))
              ? cxx::flags::debugModeFlag
              : cxx::flags::optimizationLevel3),
@@ -107,7 +117,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
 
         "/nologo",
         "/Zc:__cplusplus",
-        "/FASTLINK",
+        ((action.flags.contains(flag::types::CompileFlags::Debug)) ? "/RTC1" : ""),
 
 
         // cxx::flags::noDefaultLibrariesFlag,
@@ -115,7 +125,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         // cxx::flags::noCXXSTDIncludesFlag,
         // cxx::flags::noBuiltinIncludesFlag,
         // FIXME: add these later
-        cxx::flags::linkTimeOptimizationFlag,
+        // cxx::flags::linkTimeOptimizationFlag,
         cxx::flags::warnAllFlag,
         cxx::flags::outputFlag,
         "\"" + action.cc_output.generic_string() + "\""  // output
@@ -177,15 +187,24 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         lines.push_back(line);
     }
 
-    DEBUG_LOG("parsing compiler output intrinsics");
-    for (auto &line : lines) {
-        ErrorPOFNormalized err = CXIRCompiler::parse_msvc_err(line);
+    for (auto & line : lines) {
+         ErrorPOFNormalized err = CXIRCompiler::parse_msvc_err(line);
 
         if (std::get<0>(err).token_kind() == __TOKEN_N::WHITESPACE) {
             continue;
         }
 
         if (!std::filesystem::exists(std::get<2>(err))) {
+            if (std::get<2>(err).empty()) {
+                continue;
+            }
+
+            continue;
+
+            // FIXME: for some fucking reason this causes some sort of memory corruption
+            //        and caused the compiler to exit prematurely with a exit code of 0
+            //        this is a temporary fix until I can figure out what is causing it
+            //        to crash, this shit took 3 fucking hours of debugging to figure out.
             error::Panic _(error::CompilerError{
                 .err_code     = 0.8245,
                 .err_fmt_args = {"error at: " + std::get<2>(err) + std::get<1>(err)},

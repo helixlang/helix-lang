@@ -17,6 +17,7 @@
 #include "controller/include/shared/eflags.hh"
 #include "controller/include/shared/logger.hh"
 #include "controller/include/tooling/tooling.hh"
+#include "neo-panic/include/error.hh"
 #include "parser/preprocessor/include/preprocessor.hh"
 
 #ifndef DEBUG_LOG
@@ -40,7 +41,14 @@ void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
                 action.cxx_compiler = "c++";
                 ret                 = CXIR_CXX(action);
             }
-        } catch (...) { helix::log<LogLevel::Error>("failed to compile using msvc or clang"); }
+        } catch (...) {
+            if (error::HAS_ERRORED) {
+                helix::log<LogLevel::Error>("aborting... due to previous errors");
+                return;
+            }
+
+            helix::log<LogLevel::Error>("failed to compile using msvc or clang");
+        }
 
         action.cleanup();
         return;
@@ -77,9 +85,20 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
 
     std::string compile_cmd = action.cxx_compiler + " ";
 
+    // get the path to the core lib
+    auto core = __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core" / "include" / "core.h";
+
+    if (!std::filesystem::exists(core)) {
+        helix::log<LogLevel::Error>("core lib not found, verify the installation");
+        return {compile_result, flag::ErrorType(flag::types::ErrorType::NotFound)};
+    }
+
     /// start with flags we know are going to be present
     compile_cmd += make_command(  // ...
         compiler,
+
+        "-include \"" + core.generic_string() + "\" ",
+
         ((action.flags.contains(flag::types::CompileFlags::Debug))
              ? cxx::flags::debugModeFlag
              : cxx::flags::optimizationLevel3),
@@ -102,6 +121,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         cxx::flags::caretDiagnosticsMaxLinesFlag,
         cxx::flags::noElideTypeFlag,
         cxx::flags::linkTimeOptimizationFlag,
+        
 
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \

@@ -441,6 +441,7 @@ Panic::Panic(const CompilerError &err)
     auto err_map_at = ERROR_MAP.at(err.err_code);
 
     if (err_map_at == std::nullopt) {
+        print("err code \'" + std::to_string(err.err_code) + "\' not found");
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
     }
 

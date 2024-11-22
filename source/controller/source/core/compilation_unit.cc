@@ -93,7 +93,7 @@ void process_paths(std::vector<T>                     &paths,
     // add the remaining paths
     if (!normalized_input.empty()) {
         for (const auto &dir : normalized_input) {
-            auto path = __CONTROLLER_FS_N::resolve_path(dir, false);
+            auto path = __CONTROLLER_FS_N::resolve_path(dir.generic_string(), false);
 
             if (path.has_value() && !std::filesystem::is_directory(path.value())) {
                 helix::log<LogLevel::Warning>(
@@ -175,7 +175,7 @@ __AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenL
     helix::log<LogLevel::Info>("parsing ast...");
 
     remove_comments(tokens);
-    ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path);
+    ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path.generic_string());
 
     return ast;
 }
