@@ -19,7 +19,6 @@ EMOJI_ERROR = "✖"
 EMOJI_SEPARATOR = "🔹"
 NEW_LINE_CHAR = '\n'
 
-
 # Initialize logging
 logger = logging.getLogger("helix_tester")
 
@@ -53,19 +52,29 @@ def parse_expected_output(file_path):
         content = file.read()
     
     test_match = re.search(r'/\*.*?---------.*?// START TEST(.*?)// END TEST', content, re.DOTALL)
-    error_check = re.search(r'//\s*ERRORS', content) is not None
+    basic_error_check = re.search(r'//\s*ERRORS', content) is not None # no checking for any specific error
+    more_errors = re.search(r'/\*.*?---------.*?// START ERRORS(.*?)// END ERRORS', content, re.DOTALL)
 
+    if (basic_error_check and more_errors):
+        logger.error(f"File '{file_path}' contains both basic error check and more detailed error check.")
+        return [], False
+    
     if test_match:
         expected_lines = test_match.group(1).strip().split('\n')
         filtered_lines = [line for line in expected_lines if line.strip() != '/-ignore-/']
-        logger.debug(f"Extracted expected lines: {filtered_lines}, error check: {error_check}")
-        return filtered_lines, error_check
-    elif error_check:
+        logger.debug(f"Extracted expected lines: {filtered_lines}, error check: {basic_error_check or more_errors}")
+        return filtered_lines, basic_error_check or more_errors
+    elif basic_error_check:
         logger.debug(f"Error check only (no expected output).")
         return [], True
+    elif more_errors:
+        expected_lines = more_errors.group(1).strip().split('\n')
+        filtered_lines = [line for line in expected_lines if line.strip() != '/-ignore-/']
+        logger.debug(f"Extracted expected lines: {filtered_lines}, error check: {basic_error_check or more_errors}")
+        return filtered_lines, True
     else:
         logger.error(f"File '{file_path}' does not contain valid test markers.")
-        raise ValueError(f"File '{file_path}' does not contain valid test markers.")
+        return [], False
 
 def compile_and_execute(compiler_path, file_path, output_path):
     """Compile and execute the .hlx file."""
@@ -110,11 +119,34 @@ def run_test(compiler_path, folder_path, file_name):
     expected_output, is_error_check = parse_expected_output(file_path)
     stdout, stderr, compiled = compile_and_execute(compiler_path, file_path, output_path)
 
-    if not compiled:
-        logger.debug(f"Test failed during compilation: {stderr}")
-        return file_name, False, f"Compilation failed [{' '.join([compiler_path, file_path, '-o', output_path])}]:\n        {NEW_LINE_CHAR + '        '.join(stderr.splitlines())}"
-
     if is_error_check:
+        if (expected_output): # more detailed error check
+            # in this case we check if all the lines in expected_output are in stderr
+            # but not all the lines in stderr are in expected_output
+
+            ansi_escape_pattern = re.compile(
+                r'(?:\x1b|\033|\\001b|\u001b)'  # Matches ESC sequences: \x1b, \033, \u001b, or \001b
+                r'(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'  # Matches the rest of the ANSI escape sequence
+            )
+
+            def remove_all_unicode_colors(text):
+                return ansi_escape_pattern.sub('', text)
+
+            # check if all the lines in expected_output are in stderr
+            stderr_lines    = [remove_all_unicode_colors(x.strip()) for x in stderr.split('\n')]
+            expected_output = [remove_all_unicode_colors(x.strip()) for x in expected_output]
+
+            for line in expected_output:
+                if line not in stderr_lines:
+                    logger.debug(f"Error check failed for file: {file_name}")
+                    return file_name, False, f"Error check failed.\n" \
+                                             f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n" \
+                                             f"        {COLOR_GREEN}\"{line}\"{COLOR_RESET}\n" \
+                                             f"      {COLOR_YELLOW}Output:{COLOR_RESET}\n" \
+                                             f"        {(NEW_LINE_CHAR + '        ').join(stderr.splitlines())}"
+
+
+
         # Make sure there no stdout and there is only stderr
         if stdout.strip() == "" and stderr.strip() != "":
             logger.info(f"Error check passed for file: {file_name}")
@@ -124,22 +156,27 @@ def run_test(compiler_path, folder_path, file_name):
             return file_name, False, f"Error check failed.\n" \
                                      f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n" \
                                      f"        {COLOR_GREEN}Error{COLOR_RESET}\n" \
-                                     f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n" \
-                                     f"        {COLOR_GREEN}Output{COLOR_RESET}"
-    else:
-        # Validate standard output
-        actual_lines = stdout.split('\n')
-        for exp_line, act_line in zip(expected_output, actual_lines):
-            if exp_line != act_line:
-                logger.debug(f"Output mismatch for {file_name}.")
-                string_char = '"'
-                return file_name, False, (
-                    f"Output mismatch.\n"
-                    f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n"
-                    f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in expected_output)},\n"
-                    f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n"
-                    f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in actual_lines)}"
-                )
+                                     f"      {COLOR_YELLOW}Output:{COLOR_RESET}\n" \
+                                     f"        {(NEW_LINE_CHAR + '        ').join(stderr.splitlines())}"
+        
+    
+    if not compiled:
+        logger.debug(f"Test failed during compilation: {stderr}")
+        return file_name, False, f"Compilation failed [{' '.join([compiler_path, file_path, '-o', output_path])}]:\n        {(NEW_LINE_CHAR + '        ').join(stderr.splitlines())}"
+
+    # Validate standard output
+    actual_lines = stdout.split('\n')
+    for exp_line, act_line in zip(expected_output, actual_lines):
+        if exp_line != act_line:
+            logger.debug(f"Output mismatch for {file_name}.")
+            string_char = '"'
+            return file_name, False, (
+                f"Output mismatch.\n"
+                f"      {COLOR_YELLOW}Expected:{COLOR_RESET}\n"
+                f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in expected_output)},\n"
+                f"      {COLOR_YELLOW}Got:{COLOR_RESET}\n"
+                f"        {(NEW_LINE_CHAR + ',        ').join((COLOR_GREEN + string_char + x + string_char + COLOR_RESET) for x in actual_lines)}"
+            )
 
 
     logger.info(f"Test passed for file: {file_name}")

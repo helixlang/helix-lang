@@ -19,24 +19,36 @@ fn main() -> i32 {
     // Test 1: remove constness
     const const_val: i32 = 42;
     let non_const_val = const_val as i32;
-    print(f"{non_const_val}\n");
+    print(f"{non_const_val}");
 
     // Test 2: upcast
     let derived = Derived();
     let base = derived as Base;
-    print(f"{base.val}\n");
-
-    // Test 3: downcast
-    // subpoint s;
-
-    // point & a = s;
-    // subpoint & b1 = static_cast<subpoint&>(a);
-    // subpoint & b2 = dynamic_cast<subpoint&>(a);
+    print(f"{base.val}");
 
     let d = Derived();
 
     let a: *Base = &d;
     let b1: *Derived = a as *Derived;
 
-    print(f"{(*b1).get_val()}\n");
+    print(f"{(*b1).get_val()}");
+
+    let unsafe_cast: *i32 = 0x7FF000000000 as unsafe *i32;
+    print(f"{unsafe_cast}");
+
+    // missing tests for const cast
+    // missing tests for downcast
+    // idk what else to test
+
+    return 0;
 }
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+42
+50
+42
+0x7ff000000000
+// END TEST
+*/

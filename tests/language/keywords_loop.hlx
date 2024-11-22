@@ -6,6 +6,14 @@ fn main() -> i32 {
         print(i);
     }
 
+    print();
+
+    for i in 0..5 {
+        print(i);
+    }
+
+    print();
+
     // Test: while loop with break
     let x = 0;
     while x < 5 {
@@ -15,6 +23,8 @@ fn main() -> i32 {
         print(x);
         x = x + 1;
     }
+
+    print();
 
     // Test: continue in loop
     for i in 0..=5 {
@@ -35,9 +45,17 @@ fn main() -> i32 {
 2
 3
 4
+
 0
 1
 2
+3
+4
+
+0
+1
+2
+
 0
 1
 3

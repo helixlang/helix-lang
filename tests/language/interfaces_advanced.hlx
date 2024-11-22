@@ -1,0 +1,70 @@
+interface Foe requires <U> {
+    fn flip(self) -> U;
+}
+
+interface Advanced requires <U> if U has Foe::<i32> {
+    fn advanced_method(self) -> U;
+    static fn advanced_static_method(value: U) -> U;
+    let advanced_field: U;
+}
+
+// A class implementing Foe
+class Tavern extend Foe::<i32> {
+    fn flip(self) -> i32 {
+        return self.x;
+    }
+
+    let x: i32 = 10;
+}
+
+class Achoo {
+    let none: int;
+}
+
+// A class implementing Advanced
+class AdvancedTavern extend Advanced::<Tavern>
+  requires <U> if U has Foe::<i32> {
+    pub let advanced_field: U;
+
+    fn advanced_method(self) -> U {
+        return self.advanced_field;
+    }
+
+    static fn advanced_static_method(value: U) -> U {
+        return value;
+        
+    }
+}
+
+// A class implementing Advanced with invalid type for U but doesn't explicitly extend it
+class InvalidTavern {
+    fn advanced_method(self) -> Tavern {
+        return Tavern{};
+    }
+
+    static fn advanced_static_method(value: Tavern) -> Tavern {
+        return value;
+    }
+
+    let advanced_field: Achoo = Achoo{};
+}
+
+fn main() -> i32 {
+    // Test Advanced interface
+    let advanced_instance = AdvancedTavern::<Tavern>{advanced_field = Tavern{}};
+    print(advanced_instance.advanced_method().flip()); // Should print 10
+
+    print("true" if (InvalidTavern has Advanced::<Tavern>) else "false"); // Should print false
+    
+    // TODO: Fix scope path for generics before enabling this test
+    // print(AdvancedTavern::<Tavern>::advanced_static_method(Tavern{}).flip());
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+10
+false
+// END TEST
+*/

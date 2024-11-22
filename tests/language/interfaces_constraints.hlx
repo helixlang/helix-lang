@@ -1,0 +1,47 @@
+// Test: Interfaces with generics and constraints
+
+interface SimpleI {
+    fn innit(self) -> i32;
+}
+
+interface ConstrainedI requires <U> if U has SimpleI {
+    fn mandem(self, other: U) -> bool;
+}
+
+// A class implementing SimpleI
+class Bar extend SimpleI {
+    fn innit(self) -> int {
+        return self.x;
+    }
+
+    pub let x: i32 = 10;
+}
+
+// A class implementing constrained interface
+class ConstrainedPub extend ConstrainedI::<Bar> {
+    fn mandem(self, other: Bar) -> bool {
+        return self.x > other.x;
+    }
+
+    pub let x: i32 = 15;
+}
+
+// Function that uses constrained interfaces
+fn use_constrained() requires <T, U> if T has ConstrainedI::<U>, U has SimpleI {
+    let instance: T;
+    print(instance.mandem(U()));
+}
+
+fn main() -> i32 {
+    // Test constrained interface
+    let constrained_instance = ConstrainedPub{};
+    use_constrained::<ConstrainedPub, Bar>(); // Should execute without errors
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+1
+// END TEST
+*/

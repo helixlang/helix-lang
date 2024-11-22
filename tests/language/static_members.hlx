@@ -1,29 +1,27 @@
-// Test: Interfaces with static methods, methods, and fields
-
-interface Complex {
+interface Multiplex {
     fn complex_method(self) -> i32;
     static fn complex_static_method();
     let complex_field: i32;
 }
 
-// A class implementing Complex
-class Baz extend Complex {
+// A class implementing Multiplex
+class Barn extend Multiplex {
     fn complex_method(self) -> i32 {
         return self.complex_field * 2;
     }
 
     static fn complex_static_method() {
-        print("Baz static method");
+        print("Barn static method");
     }
 
-    let complex_field: i32 = 20;
+    pub let complex_field: i32 = 20;
 }
 
 fn main() -> i32 {
-    // Test Complex interface
-    let baz_instance = Baz{};
+    // Test Multiplex interface
+    let baz_instance = Barn{};
     print(baz_instance.complex_method()); // Should print 40
-    Baz::complex_static_method(); // Should print "Baz static method"
+    Barn::complex_static_method(); // Should print "Barn static method"
     return 0;
 }
 
@@ -31,6 +29,6 @@ fn main() -> i32 {
 --------- do not remove this comment, it is used by the test script to validate the output ---------
 // START TEST
 40
-Baz static method
+Barn static method
 // END TEST
 */

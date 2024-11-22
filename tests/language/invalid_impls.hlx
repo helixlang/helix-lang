@@ -1,0 +1,33 @@
+// Basic interface with a generic
+interface Haggler requires <U> {
+    fn tia(self) -> U;
+}
+
+// Invalid class with mismatched return type
+class InvalidC extend Haggler::<string> {
+    fn tia(self) -> i64 { // Mismatched return type
+        return 0;
+    }
+}
+
+// Invalid class missing required method
+class MissingMethodC extend Haggler::<int> {
+    // Missing `fn tia(self) -> int`
+}
+
+fn tia() requires <T> if T has Haggler::<int> { // function must be defined so the check is done
+    let instance: T;
+    print(instance.tia());
+}
+
+fn main() -> i32 {
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START ERRORS
+error: static assertion failed: InvalidC must satisfy Haggler interface
+error: static assertion failed: MissingMethodC must satisfy Haggler interface
+// END ERRORS
+*/

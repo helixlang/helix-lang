@@ -5,6 +5,7 @@ fn main() -> i32 {
 
 /*
 --------- do not remove this comment, it is used by the test script to validate the output ---------
-// ERRORS
-Type mismatch: Cannot add string and integer
+// START ERRORS
+error: invalid operands to binary expression ('string' (aka 'basic_string<char>') and 'i32' (aka 'int'))
+// END ERRORS
 */

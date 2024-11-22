@@ -239,7 +239,7 @@ op == fn equals(a: Fraction, b: Fraction) -> bool {
 // }
 // TODO: references do not work - THEY DO NOW!!!!
 // Overload the stream insertion operator (for printing)
-// op << fn stream_insert(out: ::std::ostream , a: Fraction) -> ::std::ostream {
+// op << fn stream_insert(out: libcxx::ostream , a: Fraction) -> libcxx::ostream {
 //     return out << a.n << "/" << a.d;
 // }
 
@@ -255,7 +255,7 @@ fn factorial(n: i32) -> i32 {
     return n * factorial(n - 1);
 }
 
-const eval fn range(n: i32) -> list::<i32> {
+eval fn range(n: i32) -> list::<i32> {
     let v: list::<i32>;
 
     for (let i: i32 = 0; i < n; i++) {
@@ -280,7 +280,7 @@ class Fuzz {
 
 
 
-class Fish requires <T> if Bar in T, T derives Fuzz {
+class Fish requires <T> if T has Bar, T derives Fuzz {
     let fish: T;
 }
 
@@ -346,10 +346,12 @@ fn call_function() -> u32 {
 ffi "c++" import "chrono";
 
 fn main() -> i32 {
-    let start = ::std::chrono::high_resolution_clock::now();
+    let start = libcxx::chrono::high_resolution_clock::now();
     // Adding two numbers
     let sum = add(5, 7);
     const x: i32 = 10;
+    const y: i32 = 10;
+    const z: i32 = 10;
     print(f"Sum: {sum}");
 
     // Calculating factorial
@@ -368,7 +370,7 @@ fn main() -> i32 {
     let bp: *i32 = &a;
 
     let xy = hi_there();
-    print(f"x: {::std::get::<0>(xy)}, y: {::std::get::<1>(xy).c_str()}");
+    print(f"x: {libcxx::get::<0>(xy)}, y: {libcxx::get::<1>(xy).c_str()}");
     print(f"numbers = {numbers}");
 
     let primitive_numbers: *u32 = alloca(5 * sizeof(u32)) as *u32;
@@ -396,9 +398,9 @@ fn main() -> i32 {
     // Printing vector elements
     print_vector(numbers);
 
-    // Using C++ ::std::string
-    let greeting = ::std::string("Hello from Helix and C++!");
-    ::std::cout << greeting << ::std::endl;
+    // Using C++ libcxx::string
+    let greeting = libcxx::string("Hello from Helix and C++!");
+    libcxx::cout << greeting << libcxx::endl;
 
     // Conditional check
     if sum > fact {
@@ -437,7 +439,7 @@ fn main() -> i32 {
 
     print(f"testing \{ wooo \} {call_function() + 182 + 21991} hhhjjj ");
 
-    let end = ::std::chrono::high_resolution_clock::now();
+    let end = libcxx::chrono::high_resolution_clock::now();
 
 
     /// in ns
