@@ -64,7 +64,7 @@ __AST_BEGIN {
     using NodeV = std::vector<NodeT<T>>;
 
     template <class T, class U>
-    inline NodeT<T> as(const NodeT<U> &ptr) _NOEXCEPT {
+    inline NodeT<T> as(const NodeT<U> &ptr) noexcept {
         return NodeT<T>(ptr, static_cast<typename NodeT<T>::element_type *>(ptr.get()));
     }
 

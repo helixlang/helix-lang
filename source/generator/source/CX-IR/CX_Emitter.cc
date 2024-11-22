@@ -701,6 +701,7 @@ CX_VISIT_IMPL(LiteralExpr) {
         /// numerics should be size checked and casted to the correct type
         /// bools, nulls, and compiler directives have no special handling
         bool inference = false;
+        bool heap_int  = false;
         switch (tok.token_kind()) {
             case token::LITERAL_STRING:
                 inference = true;
@@ -741,8 +742,8 @@ CX_VISIT_IMPL(LiteralExpr) {
 
                 switch (Int(tok.value()).determineRange()) {
                     case Int::IntRange::NONE:
-                        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "int", tok);
-                        ADD_TOKEN(CXX_LPAREN);
+                        inference = false;
+                        heap_int = true;
                         break;
 
                     // never infer unsigned types for literals
@@ -787,16 +788,18 @@ CX_VISIT_IMPL(LiteralExpr) {
 
         if (inference) {
             ADD_TOKEN(CXX_RPAREN);
+        } else if (heap_int) {
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "i", tok);
         }
     };
 
     if (node.contains_format_args) {
-        // helix::std::format_string(node.value, (format_arg)...)
+        // helix::std::stringf(node.value, (format_arg)...)
         ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "helix");
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
         ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "std");
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "format_string");
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "stringf");
         ADD_TOKEN(CXX_LPAREN);
         add_literal(node.value);
         ADD_TOKEN(CXX_COMMA);
@@ -974,6 +977,11 @@ CX_VISIT_IMPL(IdentExpr) {
         ADD_TOKEN(CXX_ASTERISK);
         ADD_TOKEN(CXX_THIS);
         ADD_TOKEN(CXX_RPAREN);
+        return;
+    }
+    
+    if (node.name.value() == "int") {
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$int", node.name);
         return;
     }
 
@@ -2373,6 +2381,9 @@ CX_VISIT_IMPL(InterDecl) {
                     CXX_CORE_IDENTIFIER, "std", func_decl->get_name_t().back());
                 ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                 ADD_TOKEN_AS_VALUE_AT_LOC(
+                    CXX_CORE_IDENTIFIER, "traits", func_decl->get_name_t().back());
+                ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+                ADD_TOKEN_AS_VALUE_AT_LOC(
                     CXX_CORE_IDENTIFIER, "same_as", func_decl->get_name_t().back());
 
                 ADD_TOKEN(CXX_LESS_THAN);
@@ -2447,8 +2458,9 @@ CX_VISIT_IMPL(InterDecl) {
 
                     ADD_TOKEN(CXX_RBRACE);
                     ADD_TOKEN(CXX_PTR_ACC);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(
-                        CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
+                    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
@@ -2598,6 +2610,8 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
+                    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_LESS_THAN);
@@ -2640,6 +2654,8 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN(CXX_RBRACE);
                     ADD_TOKEN(CXX_PTR_ACC);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", var->var->path->name);
+                    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "convertible_to", var->var->path->name);
                     ADD_TOKEN(CXX_LESS_THAN);
@@ -2703,6 +2719,8 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN(CXX_RBRACE);
                     ADD_TOKEN(CXX_PTR_ACC);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", var->var->path->name);
+                    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "same_as", var->var->path->name);
                     ADD_TOKEN(CXX_LESS_THAN);
@@ -3223,7 +3241,7 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
                         make_token(token::tokens::IDENTIFIER, "__inline_cpp"),
                         make_token(token::tokens::PUNCTUATION_OPEN_PAREN, "("),
                         make_token(token::tokens::LITERAL_STRING,
-                                   "\"using namespace helix:: " + _namespace + "\""),
+                                   "\"using namespace helix; using namespace helix:: " + _namespace + "\""),
                         make_token(token::tokens::PUNCTUATION_CLOSE_PAREN, ")"),
                         make_token(token::tokens::PUNCTUATION_SEMICOLON, ";"),
                         make_token(token::tokens::EOF_TOKEN, "")};

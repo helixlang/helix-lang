@@ -55,7 +55,9 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_o
     std::string message;
 
     std::istringstream stream(msvc_out);
-    std::getline(stream, filePath, '(');  // Extract file path
+    if (!std::getline(stream, filePath, '(')) {
+        return {token::Token(), "", ""};
+    }
 
     bool isFile = false;
 

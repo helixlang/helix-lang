@@ -19,6 +19,8 @@
 #include <vector>
 
 #include "controller/include/Controller.hh"
+#include "controller/include/config/Controller_config.def"
+#include "controller/include/shared/file_system.hh"
 #include "controller/include/shared/logger.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "generator/include/config/Gen_config.def"
@@ -106,7 +108,7 @@ static_assert(false, "helix requires c++20 or higher");
     //     }
     // }
 
-    return start + read_core_lib() + R"(
+    return start + R"(
 #endif
 )";
 }
