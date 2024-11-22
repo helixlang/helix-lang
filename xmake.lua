@@ -81,6 +81,9 @@ function setup_windows()
 	add_rules("plugin.vsxmake.autoupdate")
 
 	add_syslinks("ntdll", "version")
+    -- add /EHsc and /RTC1 flags
+    set_policy("check.auto_ignore_flags", false)
+    add_cxflags("/EHsc", "/RTC1", "/STACK:10485760")
 
 	add_includedirs(".\\libs\\llvm-18.1.9-src\\llvm\\include")
 	add_linkdirs(".\\libs\\llvm-18.1.9-src\\llvm\\lib")
