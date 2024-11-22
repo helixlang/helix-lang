@@ -16,8 +16,8 @@
 #ifndef __$LIBHELIX_CAST__
 #define __$LIBHELIX_CAST__
 
-#include "config.h"
 #include "concepts.h"
+#include "config.h"
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN
@@ -26,7 +26,7 @@ H_STD_NAMESPACE_BEGIN
 template <typename _Ty, typename _Up>
 constexpr _Ty as_cast(_Up &value) noexcept {
     if constexpr (libcxx::is_const_v<libcxx::remove_reference_t<_Up>> &&
-                    libcxx::is_same_v<libcxx::remove_const_t<_Up>, _Ty>) {
+                  libcxx::is_same_v<libcxx::remove_const_t<_Up>, _Ty>) {
         return const_cast<_Ty>(value);
     } else if constexpr (libcxx::is_pointer_v<_Ty>) {
         if constexpr (std::concepts::SupportsPointerCast<_Up, _Ty>) {
@@ -61,13 +61,16 @@ constexpr const _Ty &as_const(const _Up &value) noexcept {
 
 // ----- as_unsafe ----- //
 template <typename _Ty, typename _Up>
-constexpr _Ty *as_unsafe(_Up *value) noexcept {
-    return reinterpret_cast<_Ty *>(value);
+constexpr _Ty as_unsafe(_Up value) noexcept {
+    return reinterpret_cast<_Ty>(value);
 }
 
 template <typename _Ty, typename _Up>
-constexpr const _Ty *as_unsafe(const _Up *value) noexcept {
-    return reinterpret_cast<const _Ty *>(value);
+constexpr const _Ty as_unsafe(const _Up value) noexcept
+    requires(std::traits::_const::utils::is_const_v<_Up> ||
+             std::traits::_const::utils::is_const_v<_Ty>)
+{
+    return reinterpret_cast<const _Ty>(value);
 }
 
 H_STD_NAMESPACE_END

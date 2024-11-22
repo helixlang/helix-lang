@@ -27,6 +27,7 @@
 #include "refs.h"
 
 H_NAMESPACE_BEGIN
+H_STD_NAMESPACE_BEGIN
 
 template <libcxx::movable T>
 class generator {
@@ -117,10 +118,11 @@ class generator {
 };
 
 template <helix::libcxx::movable T>
-inline T next(helix::generator<T> &gen) {
+inline T next(generator<T> &gen) {
     auto iter = gen.begin();
     return *iter;
 }
 
+H_STD_NAMESPACE_END
 H_NAMESPACE_END
 #endif
