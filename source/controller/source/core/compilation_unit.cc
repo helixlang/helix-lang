@@ -125,7 +125,7 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
                                    in_file_path.generic_string()};
     __TOKEN_N::TokenList tokens = __TOKEN_N::TokenList(lexer.tokenize());
 
-    helix::log_opt<LogLevel::Info>(enable_logging, "tokenized");
+    helix::log_opt<LogLevel::Progress>(enable_logging, "tokenized");
 
     process_paths(parsed_args.library_dirs,
                   link_dirs,
@@ -151,7 +151,7 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
         helix::log_opt<LogLevel::Debug>(enable_logging, "]");
     }
 
-    helix::log_opt<LogLevel::Info>(enable_logging, "preprocessing");
+    helix::log_opt<LogLevel::Progress>(enable_logging, "preprocessing");
 
     import_processor =
         std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
@@ -161,7 +161,7 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
         return {};
     }
 
-    helix::log_opt<LogLevel::Info>(enable_logging, "preprocessed");
+    helix::log_opt<LogLevel::Progress>(enable_logging, "preprocessed");
 
     if (parsed_args.emit_tokens) {
         helix::log_opt<LogLevel::Debug>(enable_logging, tokens.to_json());
@@ -172,7 +172,7 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
 }
 
 __AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenList &tokens, std::filesystem::path in_file_path) {
-    helix::log<LogLevel::Info>("parsing ast...");
+    helix::log<LogLevel::Progress>("parsing ast...");
 
     remove_comments(tokens);
     ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path.generic_string());
@@ -211,7 +211,7 @@ CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enabl
     }
 
     ast->parse();
-    helix::log<LogLevel::Info>("parsed");
+    helix::log<LogLevel::Progress>("parsed");
 
     if (parsed_args.emit_ast) {
         __AST_VISITOR::Jsonify json_visitor;
@@ -271,7 +271,7 @@ generator::CXIR::CXIR CompilationUnit::generate_cxir(bool forward_only) {
     generator::CXIR::CXIR emitter(forward_only, std::move(imports));
 
     ast->accept(emitter);
-    helix::log<LogLevel::Info>("emitted cx-ir");
+    helix::log<LogLevel::Progress>("emitted cx-ir");
 
     return emitter;
 }
@@ -292,7 +292,7 @@ CXXCompileAction _;
             return 0;
     }
 
-    helix::log<LogLevel::Info>("compiling");
+    helix::log<LogLevel::Progress>("compiling");
 
     if (error::HAS_ERRORED || parsed_args.lsp_mode) {
         LSP_MODE = parsed_args.lsp_mode;

@@ -49,14 +49,12 @@ void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
 
             helix::log<LogLevel::Error>("failed to compile using msvc or clang");
         }
-
-        action.cleanup();
-        return;
-
-        return;
     } else {
         ret = CXIR_CXX(action);
     }
+    
+    action.cleanup();
+    return;
 #else
     ret = CXIR_CXX(action);
 #endif
@@ -193,9 +191,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
             helix::log<LogLevel::Info>("<------------ output");
 
             if (compile_result.return_code == 0) {
-                helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() +
+                helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
                                            " and compiled cxir");
-                helix::log<LogLevel::Info>("compiled successfully to " +
+                helix::log<LogLevel::Progress>("compiled successfully to " +
                                            action.cc_output.generic_string());
                 return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
             }
@@ -239,9 +237,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
     }
 
     if (compile_result.return_code == 0) {
-        helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() +
+        helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
                                    " and compiled cxir");
-        helix::log<LogLevel::Info>("compiled successfully to " + action.cc_output.generic_string());
+        helix::log<LogLevel::Progress>("compiled successfully to " + action.cc_output.generic_string());
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }
 

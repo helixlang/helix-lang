@@ -251,9 +251,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
     }
 
     if (compile_result.return_code == 0) {
-        helix::log<LogLevel::Info>("lowered " + action.helix_src.generic_string() +
+        helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
                                    " and compiled cxir");
-        helix::log<LogLevel::Info>("compiled successfully to " + action.cc_output.generic_string());
+        helix::log<LogLevel::Progress>("compiled successfully to " + action.cc_output.generic_string());
 
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }

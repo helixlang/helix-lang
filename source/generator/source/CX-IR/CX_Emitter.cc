@@ -110,7 +110,7 @@ void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::FuncDecl> &func_decl,
                 token::Token(token::tokens::KEYWORD_STATIC, "helix_internal.file")));
         }
     } else if (has_self) {
-        throw error::Panic(error::CodeError{.pof = &pof, .err_code = 0.3005});
+        error::Panic(error::CodeError{.pof = &pof, .err_code = 0.3005});
     }
 
     if (has_self) {
@@ -118,9 +118,19 @@ void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::FuncDecl> &func_decl,
     }
 }
 
-void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::OpDecl> &op_decl, token::Token &pof) {
+void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::OpDecl> &op_decl, token::Token &pof, bool in_udt = true) {
     auto &func_decl      = op_decl->func;
     func_decl->modifiers = op_decl->modifiers;
+
+    if (!in_udt) { // free fucntion, cannot have self
+        auto [has_self, has_static] = contains_self_static(func_decl);
+
+        if (has_self) {
+            CODEGEN_ERROR(pof, "cannot have 'self' in a free function");
+        }
+
+        return; // free function, no need to do any processing or checks
+    }
 
     handle_static_self_fn_decl(func_decl, pof);
 }
@@ -1011,6 +1021,8 @@ CX_VISIT_IMPL_VA(ScopePathExpr, bool access) {
 
     if (node.global_scope) {
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "helix");
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
     }
 
     for (const __AST_N::NodeT<__AST_NODE::IdentExpr> &ident : node.path) {
@@ -1259,7 +1271,9 @@ CX_VISIT_IMPL(InstOfExpr) {
             /// std::is_base_of<A, B>::value
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "std");
             ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "is_base_of");
+            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "traits");
+            ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "is_derived_of");
             ANGLE_DELIMIT(              //
                 ADD_NODE_PARAM(type);   //
                 ADD_TOKEN(CXX_COMMA);   //
@@ -1307,7 +1321,9 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
         auto marker = node.specifiers.get(token::tokens::KEYWORD_YIELD);
 
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "helix", marker);
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
 
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", marker);
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
 
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "generator", marker);
@@ -2963,7 +2979,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         }
     }
 
-    handle_static_self_fn_decl(_node, tok);
+    handle_static_self_fn_decl(_node, tok, in_udt);
 
     // ---------------------------- add generator state ---------------------------- //
     if (in_udt && op_t.type == OpType::GeneratorOp) {
@@ -2983,71 +2999,6 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
 
         ADD_TOKEN(CXX_PUBLIC);
         ADD_TOKEN(CXX_COLON);
-    }
-
-    // ---------------------------- function declaration ---------------------------- //
-
-    // add the alias function first if it has a name
-    if (node.func->name != nullptr) {
-        if (node.func->generics) {  //
-            ADD_NODE_PARAM(func->generics);
-        };
-
-        add_func_modifers(this, node.modifiers);
-
-        ADD_TOKEN(CXX_AUTO);
-
-        ADD_NODE_PARAM(func->name);
-
-        PAREN_DELIMIT(                //
-            COMMA_SEP(func->params);  //
-        );
-
-        add_func_specifiers(this, node.modifiers);
-
-        ADD_TOKEN(CXX_PTR_ACC);
-        if (node.func->returns) {  //
-            ADD_NODE_PARAM(func->returns);
-        } else {
-            ADD_TOKEN(CXX_VOID);
-        }
-
-        BRACE_DELIMIT(
-            ADD_TOKEN(CXX_RETURN);       //
-
-            if (in_udt && op_t.type != OpType::None) {
-                if (op_t.type == OpType::GeneratorOp) {
-                    /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
-                }
-                else if (op_t.type == OpType::ContainsOp) {
-                    /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$contains", *op_t.tok);
-                }
-                else if (op_t.type == OpType::CastOp) {
-                    /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
-                }
-            } else {
-                ADD_TOKEN(CXX_OPERATOR);     //
-                for (auto &tok : node.op) {  //
-                    ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, tok.value());
-                }
-            }
-
-            ADD_TOKEN(CXX_LPAREN);
-            if (!node.func->params.empty()) {
-                for (auto &param : node.func->params) {
-                    ADD_PARAM(param->var->path);
-                    ADD_TOKEN(CXX_COMMA);
-                }
-
-                this->tokens.pop_back();
-            }
-            ADD_TOKEN(CXX_RPAREN);
-
-            ADD_TOKEN(CXX_SEMICOLON); //
-        );
     }
 
     // ---------------------------- operator declaration ---------------------------- //
@@ -3141,6 +3092,73 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
     }
 
     ADD_NODE_PARAM(func->body);
+
+    // ---------------------------- function declaration ---------------------------- //
+
+    // add the alias function first if it has a name
+    if (node.func->name != nullptr) {
+        if (node.func->generics) {  //
+            ADD_NODE_PARAM(func->generics);
+        };
+
+        add_func_modifers(this, node.modifiers);
+
+        ADD_TOKEN(CXX_AUTO);
+
+        ADD_NODE_PARAM(func->name);
+
+        PAREN_DELIMIT(                //
+            COMMA_SEP(func->params);  //
+        );
+
+        add_func_specifiers(this, node.modifiers);
+
+        ADD_TOKEN(CXX_PTR_ACC);
+        if (node.func->returns) {  //
+            ADD_NODE_PARAM(func->returns);
+        } else {
+            ADD_TOKEN(CXX_VOID);
+        }
+
+        BRACE_DELIMIT(
+            ADD_TOKEN(CXX_RETURN);       //
+
+            if (in_udt && op_t.type != OpType::None) {
+                if (op_t.type == OpType::GeneratorOp) {
+                    /// add the fucntion
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
+                }
+                else if (op_t.type == OpType::ContainsOp) {
+                    /// add the fucntion
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$contains", *op_t.tok);
+                }
+                else if (op_t.type == OpType::CastOp) {
+                    /// add the fucntion
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
+                }
+            } else {
+                ADD_TOKEN(CXX_OPERATOR);     //
+                for (auto &tok : node.op) {  //
+                    ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, tok.value());
+                }
+            }
+
+            ADD_TOKEN(CXX_LPAREN);
+            if (!node.func->params.empty()) {
+                for (auto &param : node.func->params) {
+                    ADD_PARAM(param->var->path);
+                    ADD_TOKEN(CXX_COMMA);
+                }
+
+                this->tokens.pop_back();
+            }
+            ADD_TOKEN(CXX_RPAREN);
+
+            ADD_TOKEN(CXX_SEMICOLON); //
+        );
+    }
+
+    // ---------------------------- add generator functions ---------------------------- //
 
     if (in_udt && op_t.type == OpType::GeneratorOp) {
         /// add the fucntions
