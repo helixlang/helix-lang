@@ -6,7 +6,7 @@
 
 inline bool NO_LOGS = false;
 
-enum class LogLevel { Debug, Info, Warning, Error };
+enum class LogLevel { Debug, Info, Warning, Error, Progress };
 
 namespace helix {
 template <LogLevel l, typename... Args>
@@ -25,10 +25,14 @@ void log(Args &&...args) {
         prefix = std::string(colors::fg16::yellow) + "warning: ";
     } else if constexpr (l == LogLevel::Error) {
         prefix = std::string(colors::fg16::red) + "error: ";
+    } else if constexpr (l == LogLevel::Progress) {
+        prefix = std::string(colors::fg16::cyan) + "[" + std::string(colors::reset);
+        std::string postfix = std::string(colors::fg16::cyan) + "]" + std::string(colors::reset);
+        print_pinned(prefix, std::forward<Args>(args)..., postfix);
+        return;
     }
 
-    std::cout << std::flush;
-    print("\r", prefix, std::string(colors::reset), std::forward<Args>(args)..., "\r");
+    print(prefix, std::string(colors::reset), std::forward<Args>(args)...);
 }
 
 template <LogLevel l, typename... Args>
@@ -47,9 +51,13 @@ void log_opt(bool enable, Args &&...args) {
         prefix = std::string(colors::fg16::yellow) + "warning: ";
     } else if constexpr (l == LogLevel::Error) {
         prefix = std::string(colors::fg16::red) + "error: ";
+    } else if constexpr (l == LogLevel::Progress) {
+        prefix = std::string(colors::fg16::cyan) + "[" + std::string(colors::reset);
+        std::string postfix = std::string(colors::fg16::cyan) + "]" + std::string(colors::reset);
+        print_pinned(prefix, std::forward<Args>(args)..., postfix);
+        return;
     }
 
-    std::cout << std::flush;
     print("\r", prefix, std::string(colors::reset), std::forward<Args>(args)..., "\r");
 }
 }  // namespace helix

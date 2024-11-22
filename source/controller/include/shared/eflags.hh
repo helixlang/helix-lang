@@ -27,6 +27,8 @@ class EFlags {
         return *this;
     }
 
+    bool operator==(EFlags other) const { return value_ == other.value_; }
+
     template <typename... Flags>
     bool contains(Flags... flags) const {
         return (has(EFlags(flags)) || ...);

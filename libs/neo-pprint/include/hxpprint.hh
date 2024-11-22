@@ -13,22 +13,16 @@
 #define __PRINT_V2_HH__
 
 #include <iostream>
+#include <sstream>
 
 namespace sysIO {
-using endl = struct endl {
+inline size_t __currentLine = 2;
+
+struct endl {
     std::string end_l = "\n";
-    endl() = default;
+    endl()            = default;
     explicit endl(std::string end)
         : end_l(std::move(end)) {}
-    explicit endl(const char *end)
-        : end_l(end) {}
-    explicit endl(const char end)
-        : end_l(std::string(1, end)) {}
-    endl(const endl &end) = default;
-    endl(endl &&) = default;                  // Add move constructor
-    endl &operator=(const endl &) = default;  // Add copy assignment operator
-    endl &operator=(endl &&) = default;       // Add move assignment operator
-    ~endl() = default;                        // Add destructor
     friend std::ostream &operator<<(std::ostream &oss, const endl &end) {
         oss << end.end_l;
         return oss;
@@ -36,20 +30,67 @@ using endl = struct endl {
 };
 }  // namespace sysIO
 
+template <typename T>
+inline std::string to_string(const T &obj) {
+    std::ostringstream oss;
+    if constexpr (requires { std::cout << obj; }) {
+        oss << obj;
+    } else if constexpr (requires { obj.to_string(); }) {
+        return obj.to_string();
+    } else if constexpr (requires { std::to_string(obj); }) {
+        return std::to_string(obj);
+    } else {
+        return static_cast<std::string>(obj);
+    }
+    return oss.str();
+}
+
+template <typename... Args>
+inline constexpr void print_pinned(Args &&...args) {
+    std::cout << "\033[?25l";  // Hide cursor
+    std::cout << "\033[0;0H";  // Move to top-left corner
+    std::cout << "\033[2K";    // Clear the line
+
+    std::string str = (to_string(args) + ...);
+    std::cout << str << "\n" << std::flush;
+
+    std::cout << "\033[?25h";                               // Show cursor
+    std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+}
+
 template <typename... Args>
 inline constexpr void print(Args &&...args) {
-    if constexpr (sizeof...(args) == 0) {
-        std::cout << sysIO::endl('\n');
-        return;
-    };
-    (std::cout << ... << args);
-    if constexpr (sizeof...(args) > 0) {
-        if constexpr (!std::is_same_v<std::remove_cv_t<std::remove_reference_t<
-                                          decltype(std::get<sizeof...(args) - 1>(
-                                              std::tuple<Args...>(args...)))>>,
-                                      sysIO::endl>) {
-            std::cout << sysIO::endl('\n');
-        }
+    std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+    std::cout << "\033[2K";                                 // Clear the line
+
+    std::string str = (to_string(args) + ...);  // Concatenate all arguments
+    std::cout << str << std::flush;
+
+    // Count lines in the printed message
+    int newLines = std::count(str.begin(), str.end(), '\n') + 1;
+    sysIO::__currentLine += newLines;
+
+    // Ensure line increments for implicit newline
+    if (!str.empty() && str.back() != '\n') {
+        std::cout << "\n" << std::flush;
+    }
+}
+
+template <typename... Args>
+inline constexpr void print_err(Args &&...args) {
+    std::cerr << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+    std::cerr << "\033[2K";                                 // Clear the line
+
+    std::string str = (to_string(args) + ...);  // Concatenate all arguments
+    std::cerr << str << std::flush;
+
+    // Count lines in the printed message
+    int newLines = std::count(str.begin(), str.end(), '\n') + 1;
+    sysIO::__currentLine += newLines;
+
+    // Ensure line increments for implicit newline
+    if (!str.empty() && str.back() != '\n') {
+        std::cerr << "\n" << std::flush;
     }
 }
 

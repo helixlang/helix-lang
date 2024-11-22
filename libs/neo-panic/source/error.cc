@@ -13,9 +13,9 @@
 
 #include <array>
 #include <cstddef>
-#include <optional>
 #include <iomanip>
 #include <numeric>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -287,36 +287,39 @@ return_state:
     return marking;
 }
 
-size_t set_level(string &level, const double &err_level) {
-    size_t      level_len   = 0;
-    std::string __ret_color = "";
+size_t set_level(string &level, const double &err_code) {
+    size_t      level_len  = 0;
+    std::string _ret_color = "";
 
-    switch (ERROR_MAP.at(err_level)->level) {
+    switch (ERROR_MAP.at(static_cast<float>(err_code))->level) {
         case NOTE:
-            level = string(colors::bold) + string(colors::fg8::cyan) + "note" + __ret_color;
+            level = string(colors::bold) + string(colors::fg8::cyan) + "note" + _ret_color;
             level_len =
                 level.size() -
-                string(string(colors::bold) + string(colors::fg8::cyan) + __ret_color).size();
+                string(string(colors::bold) + string(colors::fg8::cyan) + _ret_color).size();
             break;
         case WARN:
-            level = string(colors::bold) + string(colors::fg8::yellow) + "warn" + __ret_color;
+            level = string(colors::bold) + string(colors::fg8::yellow) + "warn" + _ret_color;
             level_len =
                 level.size() -
-                string(string(colors::bold) + string(colors::fg8::yellow) + __ret_color).size();
+                string(string(colors::bold) + string(colors::fg8::yellow) + _ret_color).size();
             break;
         case ERR:
-            level = string(colors::bold) + __ret_color + string(colors::fg8::red) + "error" +
-                    __ret_color;
-            level_len = level.size() - string(string(colors::bold) + __ret_color +
-                                              string(colors::fg8::red) + __ret_color)
+            level =
+                string(colors::bold) + _ret_color + string(colors::fg8::red) + "error" + _ret_color;
+            level_len = level.size() - string(string(colors::bold) + _ret_color +
+                                              string(colors::fg8::red) + _ret_color)
                                            .size();
             break;
         case FATAL:
-            level = string(colors::bold) + __ret_color + string(colors::fg8::red) + "fatal" +
-                    string(colors::reset) + __ret_color;
-            level_len = level.size() - string(string(colors::bold) + __ret_color +
-                                              string(colors::fg8::red) + __ret_color)
+            level = string(colors::bold) + _ret_color + string(colors::fg8::red) + "fatal" +
+                    string(colors::reset) + _ret_color;
+            level_len = level.size() - string(string(colors::bold) + _ret_color +
+                                              string(colors::fg8::red) + _ret_color)
                                            .size();
+            break;
+
+        case NONE:
             break;
     }
 
@@ -373,7 +376,7 @@ Panic::Panic(const CodeError &err)
     : level_len(err.level == NONE ? set_level(final_err.level, err.err_code)
                                   : set_level(final_err.level, err.level))
     , mark_pof(err.mark_pof) {
-    auto err_map_at            = ERROR_MAP.at(err.err_code);
+    auto err_map_at            = ERROR_MAP.at(static_cast<float>(err.err_code));
     bool internal_core_lib_err = false;
 
     if (err_map_at == std::nullopt) {
@@ -405,7 +408,8 @@ Panic::Panic(const CodeError &err)
         final_err.msg = fmt_string(err_map_at->err, err.err_fmt_args);
     }
 
-    /// iter over NAMESPACE_MAP's keys and see if final_err.msg contains any of the keys if so replace it with the value
+    /// iter over NAMESPACE_MAP's keys and see if final_err.msg contains any of the keys if so
+    /// replace it with the value
     normalize_namespace(final_err.msg);
 
     final_err.fix = err_map_at->fix;
@@ -438,7 +442,7 @@ Panic::Panic(const CodeError &err)
 
 Panic::Panic(const CompilerError &err)
     : level_len(set_level(final_err.level, err.err_code)) {
-    auto err_map_at = ERROR_MAP.at(err.err_code);
+    auto err_map_at = ERROR_MAP.at(static_cast<float>(err.err_code));
 
     if (err_map_at == std::nullopt) {
         print("err code \'" + std::to_string(err.err_code) + "\' not found");
@@ -453,12 +457,12 @@ Panic::Panic(const CompilerError &err)
     final_err.error_type = "compiler";
 
     final_err.msg = err_map_at->err;
-    if (err.err_fmt_args.empty()) {
+    if (!err.err_fmt_args.empty()) {
         final_err.msg = fmt_string(err_map_at->err, err.err_fmt_args);
     }
 
     final_err.fix = err_map_at->fix;
-    if (err.fix_fmt_args.empty()) {
+    if (!err.fix_fmt_args.empty()) {
         final_err.fix = fmt_string(err_map_at->fix, err.fix_fmt_args);
     }
 
@@ -503,6 +507,25 @@ u32 Panic::calculate_addition_pos(i64 pos) const {
 }
 
 void Panic::show_error(bool internal_core_lib_err) {
+    if (final_err.error_type == "compiler") {
+        /// needs to print: level: msg
+        std::string formatted_error;
+
+        formatted_error += final_err.level + ": " + final_err.msg + string(colors::reset);
+
+        if (!final_err.fix.empty()) {
+            formatted_error += "\n" + string(colors::bold) + string(colors::fg8::green) + "fix" + ": " +
+                               std::string(colors::reset) + final_err.fix;
+        }
+
+        formatted_error += string(colors::reset);
+
+        print_err(formatted_error);
+        std::exit(1);
+        
+        return;
+    }
+
     lines_vec lines = get_surrounding_lines(final_err.file, final_err.line);
     string    markings;
     string    formatted_error;
@@ -626,7 +649,7 @@ void Panic::show_error(bool internal_core_lib_err) {
         formatted_error.pop_back();  // remove the last newline
     }
 
-    std::cerr << formatted_error << "\n";
+    print_err(formatted_error);
 }
 }  // namespace error
 

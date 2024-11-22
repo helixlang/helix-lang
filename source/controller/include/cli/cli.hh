@@ -20,6 +20,7 @@
 #include <string>
 
 #include "controller/include/config/Controller_config.def"
+#include "neo-pprint/include/hxpprint.hh"
 #include "neo-types/include/hxint.hh"
 #include "taywee-args/include/args.hh"
 
@@ -161,7 +162,7 @@ __CONTROLLER_CLI_BEGIN {
         }
 
         if (obj.file.empty()) {
-            std::cout << "no files provided run \"helix -h\" for help." << std::endl;
+            print("no files provided run \"helix -h\" for help.");
             std::exit(0);
         }
     }

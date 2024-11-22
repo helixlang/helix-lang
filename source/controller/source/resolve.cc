@@ -21,7 +21,8 @@
 
 __CONTROLLER_FS_BEGIN {
     std::optional<std::filesystem::path> resolve_path(const std::string &resolve,
-                                                      const bool         must_exist) {
+                                                      const bool         must_exist,
+                                                      const bool         is_file) {
         std::filesystem::path path(resolve);
 
         if (!path.is_absolute()) {
@@ -34,9 +35,11 @@ __CONTROLLER_FS_BEGIN {
             return path;
         }
 
-        std::filesystem::path parent_path = path.parent_path();
-        if (std::filesystem::exists(parent_path)) {
-            return path;
+        if (!is_file) {
+            std::filesystem::path parent_path = path.parent_path();
+            if (std::filesystem::exists(parent_path)) {
+                return path;
+            }
         }
 
         if (!must_exist) {

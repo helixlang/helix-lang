@@ -16,13 +16,13 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
-#include <print>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "neo-pprint/include/ansi_colors.hh"
+#include "neo-pprint/include/hxpprint.hh"
 #include "neo-types/include/hxint.hh"
 #include "token/include/Token.hh"
 #include "token/include/config/Token_config.def"
@@ -76,7 +76,7 @@ __TOKEN_BEGIN {
         return {this->filename, this->cbegin() + start_index, this->cbegin() + end_index};
     }
 
-    void TokenList::remove(const token::Token& start, const token::Token& end) {
+    void TokenList::remove(const token::Token &start, const token::Token &end) {
         auto start_it = std::find(this->cbegin(), this->cend(), start);
         auto end_it   = std::find(this->cbegin(), this->cend(), end);
 
@@ -159,30 +159,46 @@ __TOKEN_BEGIN {
                 tok->token_kind() == __TOKEN_TYPES_N::PUNCTUATION_CLOSE_BRACE ||
                 tok->token_kind() == __TOKEN_TYPES_N::PUNCTUATION_SINGLE_LINE_COMMENT) {
                 if (tok->token_kind() != __TOKEN_TYPES_N::PUNCTUATION_CLOSE_BRACE) {
-                    std::cout << "(" << colors::fg16::red
-                              << __TOKEN_N::tokens_map.at(tok->token_kind()).value()
-                              << colors::reset << ", " << colors::fg16::green << tok->value()
-                              << colors::reset << ") ";
+                    print("(",
+                          colors::fg16::red,
+                          __TOKEN_N::tokens_map.at(tok->token_kind()).value(),
+                          colors::reset,
+                          ", ",
+                          colors::fg16::green,
+                          tok->value(),
+                          colors::reset,
+                          ") ");
                 }
 
-                std::cout << "\n";
-                std::cout << std::string(static_cast<u16>(indent * 4), ' ');
+                print("\n");
+                print(std::string(static_cast<u16>(indent * 4), ' '));
 
                 if (tok->token_kind() == __TOKEN_TYPES_N::PUNCTUATION_CLOSE_BRACE) {
-                    std::cout << "(" << colors::fg16::red
-                              << __TOKEN_N::tokens_map.at(tok->token_kind()).value()
-                              << colors::reset << ", " << colors::fg16::green << tok->value()
-                              << colors::reset << ") ";
+                    print("(",
+                          colors::fg16::red,
+                          __TOKEN_N::tokens_map.at(tok->token_kind()).value(),
+                          colors::reset,
+                          ", ",
+                          colors::fg16::green,
+                          tok->value(),
+                          colors::reset,
+                          ") ");
                 }
 
                 continue;
             }
-            std::cout << "(" << colors::fg16::red
-                      << __TOKEN_N::tokens_map.at(tok->token_kind()).value() << colors::reset
-                      << ", " << colors::fg16::green << tok->value() << colors::reset << ") ";
+            print("(",
+                  colors::fg16::red,
+                  __TOKEN_N::tokens_map.at(tok->token_kind()).value(),
+                  colors::reset,
+                  ", ",
+                  colors::fg16::green,
+                  tok->value(),
+                  colors::reset,
+                  ") ");
         }
 
-        std::cout << "\n";
+        print("\n");
     }
 
     bool TokenList::operator==(const TokenList &rhs) const {

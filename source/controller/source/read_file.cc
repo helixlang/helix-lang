@@ -121,7 +121,7 @@ __CONTROLLER_FS_BEGIN {
     }
 
     std::string read_file(std::string & filename) {
-        std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename);
+        std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename, true, false);
         if (!path.has_value()) {
             error::Panic(error::CompilerError{2.1001, {}, std::vector<string>{filename}});
             std::exit(1);
@@ -136,7 +136,7 @@ __CONTROLLER_FS_BEGIN {
     ///          readfile("../file3.hlx") -> /path/to/file3.hlx
 
     std::string read_file(const std::string &filename) {
-        std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename);
+        std::optional<fs_path> path = __CONTROLLER_FS_N::resolve_path(filename, true, false);
         if (!path.has_value()) {
             error::Panic(error::CompilerError{2.1001, {}, std::vector<string>{filename}});
             std::exit(1);

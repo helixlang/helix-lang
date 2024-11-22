@@ -20,6 +20,7 @@
 #include <string>
 
 #include "neo-pprint/include/ansi_colors.hh"
+#include "neo-pprint/include/hxpprint.hh"
 #include "taywee-args/include/args.hh"
 
 __CONTROLLER_CLI_BEGIN {
@@ -147,19 +148,19 @@ Thank you for using Helix!
             parser.ParseCLI(argc, argv);
 
             if (help) {
-                std::cout << parser;
+                print(parser);
                 this->exit_   = true;
                 this->exit_co = 0;
                 return;
             }
             if (version) {
-                std::cout << "Helix Compiler Version: " << _version << std::endl;
+                print("Helix Compiler Version: ", _version);
                 this->exit_   = true;
                 this->exit_co = 0;
                 return;
             }
             if (license) {
-                std::cout << R"(
+                print(R"(
 Helix Language Project - License Information
 
 This software is part of the Helix Language Project and is licensed under the Attribution 4.0 International license (CC BY 4.0).
@@ -179,7 +180,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 This software is provided by the creators of Helix. Visit our website at:
 https://helix-lang.com/ for more information.
-    )" << std::endl;
+    )");
                 this->exit_   = true;
                 this->exit_co = 0;
                 return;
@@ -220,8 +221,8 @@ https://helix-lang.com/ for more information.
             
 
             if (verbose && quiet) {
-                std::cerr << colors::fg16::red << "Error:" << colors::reset
-                          << " Cannot specify both verbose and quiet options." << '\n';
+                print_err(colors::fg16::red, "Error:", colors::reset
+                        , " Cannot specify both verbose and quiet options.");
                 this->exit_   = true;
                 this->exit_co = 1;
                 return;
@@ -337,13 +338,13 @@ https://helix-lang.com/ for more information.
 
             this->get_all_flags += "    ]";
 
-        } catch (args::Help) { std::cout << parser; } catch (args::ParseError &e) {
-            std::cerr << e.what() << std::endl << parser;
+        } catch (args::Help) { print(parser); } catch (args::ParseError &e) {
+            print_err(e.what(), "\n", parser);
             this->exit_   = true;
             this->exit_co = 1;
             return;
         } catch (args::ValidationError &e) {
-            std::cerr << e.what() << std::endl << parser;
+            print_err(e.what(), "\n", parser);
             this->exit_   = true;
             this->exit_co = 1;
             return;

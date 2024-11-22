@@ -36,7 +36,8 @@ __CONTROLLER_FS_BEGIN {
     fs_path                              normalize_path(std::string & filename);
     fs_path                              normalize_path_no_check(std::string & filename);
     std::optional<std::filesystem::path> resolve_path(const std::string &resolve,
-                                                      const bool         must_exist = true);
+                                                      const bool         must_exist = true,
+                                                      const bool         is_file = false);
     std::optional<std::filesystem::path> resolve_path(
         const std::string &resolve, const std::string &base, const bool must_exist = true);
     std::string read_file(std::string & filename);
