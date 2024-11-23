@@ -397,18 +397,18 @@ target("helix-api")
         -- determine the target output directory
         local target_dir = path.directory(target:targetfile())
 
-        local api_path            = path.join(target_dir,   "api")
-        local api_lib_path        = path.join(api_path,     "lib")
-        local api_include_path    = path.join(api_path,     "include")
-        local api_xmake_lua       = path.join(api_path,     "xmake.lua")
-        local api_lib_target_file = path.join(api_lib_path, target:filename())
+        local include_path            = path.join(target_dir,       "include")
+        local include_lib_path        = path.join(include_path,     "lib")
+        local include_include_path    = path.join(include_path,     "include")
+        local include_xmake_lua       = path.join(include_path,     "xmake.lua")
+        local include_lib_target_file = path.join(include_lib_path, target:filename())
 
         -- create directories for library and headers
-        os.mkdir(api_lib_path)
-        os.mkdir(api_include_path)
+        os.mkdir(include_lib_path)
+        os.mkdir(include_include_path)
 
         -- move the compiled library to the 'lib' folder and
-        os.cp(target:targetfile(), api_lib_target_file)
+        os.cp(target:targetfile(), include_lib_target_file)
         os.rm(target:targetfile())
 
         -- copy header files to the 'include' folder
@@ -416,20 +416,20 @@ target("helix-api")
 
         for _, header in ipairs(headers) do
             local rel_path = path.relative(header, "source")
-            os.mkdir(path.join(api_include_path, path.directory(rel_path)))
-            os.cp(header, path.join(api_include_path, rel_path))
+            os.mkdir(path.join(include_include_path, path.directory(rel_path)))
+            os.cp(header, path.join(include_include_path, rel_path))
         end
 
         -- Write the xmake config file
-        local file = io.open(api_xmake_lua, "w")
+        local file = io.open(include_xmake_lua, "w")
 
         file:write([[
-                            target("helix-api")
-                                set_kind("static")
-                                add_files("lib/*.a")
-                                add_includedirs("include")
-                                add_headerfiles("include/**.hh")
-                            ]])
+        target("helix-include")
+            set_kind("static")
+            add_files("lib/*.a")
+            add_includedirs("include")
+            add_headerfiles("include/**.hh")
+        ]])
         file:close()
     end)
 target_end()
