@@ -109,7 +109,7 @@ void process_paths(std::vector<T>                     &paths,
 }
 
 int CompilationUnit::compile(int argc, char **argv) {
-    __CONTROLLER_CLI_N::CLIArgs parsed_args(argc, argv, "0.0.1-alpha-2012");
+    __CONTROLLER_CLI_N::CLIArgs parsed_args(argc, argv, "0.0.1-alpha-51b");
     check_exit(parsed_args);
 
     return compile(parsed_args);
