@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Allow file system read/write access -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Allow debugging access -->
+    <key>com.apple.security.cs.debugger</key>
+    <true/>
+
+    <!-- Allow executing other binaries (required since helix does not integrate a c++ compiler internally) -->
+    <key>com.apple.security.cs.allow-execution</key>
+    <true/>
+
+    <!-- Enable inter-process communication, for managing subprocesses during compilation -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

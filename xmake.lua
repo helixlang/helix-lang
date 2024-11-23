@@ -1,10 +1,9 @@
 set_project    ("helix-lang")
-set_version    ("0.0.1-alpha-0362b", { soname = true })
+set_version    ("0.0.1-alpha-51b", { soname = true })
 set_description("The Helix Compiler. Python's Simplicity, Rust inspired Syntax, and C++'s Power")
 
 add_rules("mode.debug", "mode.release")
 
-local target_tripple
 local abi
 local runtime
 
@@ -120,7 +119,6 @@ function setup_macos()
 end
 
 function setup_debug()
-
 	set_symbols ("debug") -- Generate debug symbols
 	set_optimize("none")  -- Disable optimization
 	add_defines ("DEBUG") -- Define DEBUG macro
@@ -136,7 +134,7 @@ function setup_release()
 end
 
 local function setup_build_folder()
-	set_targetdir("$(buildir)/$(mode)/"  .. target_tripple .. "/bin")
+	set_targetdir("$(buildir)/$(mode)/$(arch)-" .. abi .. "-$(os)/bin")
 	set_objectdir("$(buildir)/.resolver")
 	set_dependir ("$(buildir)/.shared")
 end
@@ -201,7 +199,7 @@ function sleep(seconds)
     while os.mclock() - start < seconds do end
 end
 
-local function print_all_info()
+local function print_all_info(target)
     print("\n\n")
 
     local yellow = "\027[1;33m"
@@ -268,7 +266,7 @@ local function print_all_info()
     sleep(math.random(1, 20))
     print("  runtime: \027[1;33m" .. runtime .. "\027[0m")
     sleep(math.random(1, 20))
-    print("  target tripple: \027[1;33m" .. target_tripple .. "\027[0m")
+    print("  target triple: \027[1;33m" .. path.basename(path.directory(path.directory(target:targetfile()))) .. "\027[0m")
     
     sleep(500)
     
@@ -280,7 +278,7 @@ local function print_all_info()
         print("\n\n")
         print("checking for components:")
 
-        sleep(2000)
+        sleep(500)
 
         -- loop thrugh all the folders along with thier subdirectories (do not include files)
         for _, dir in ipairs(os.dirs("source/**")) do
@@ -288,19 +286,19 @@ local function print_all_info()
             print("  - found \027[1;33m\"" .. path.filename(dir) .. "\"\027[0m")
 
             -- add a small delay between 0.1 - 0.3 seconds
-            sleep(math.random(10, 30))
+            sleep(math.random(1, 10))
 
             -- loop through all files inside the directory
             for _, file in ipairs(os.files(dir .. "/**")) do
                 print("  - found \027[1;33m\"" .. path.basename(path.filename(file)) .. "\"\027[0m")
                 -- add a small delay between 0.1 - 0.3 seconds
-                sleep(math.random(10, 30))
+                sleep(math.random(1, 10))
             end
         end
 
         print("\n\n")
 
-        sleep(2000)
+        sleep(500)
         print("checks complete, starting build")
     end
 
@@ -309,7 +307,6 @@ end
 
 abi     = get_abi()
 runtime = get_runtime(abi)
-target_tripple = os.arch() .. "-" .. abi .. "-" .. os.host()
 cxx_standard = get_cxx_standard(abi)
 
 -- Define the LLVM and Clang package
@@ -347,7 +344,7 @@ target_end()
 
 target("helix") -- target config defined in the config seciton
     before_build(function (target)
-        print_all_info()
+        print_all_info(target)
     end)
 
     set_kind("binary")
@@ -394,7 +391,7 @@ target_end() -- empty target
 
 target("helix-api")
     set_kind("static")
-    set_targetdir("$(buildir)/$(mode)/"  .. target_tripple .. "")
+    set_targetdir("$(buildir)/$(mode)/$(arch)-" .. abi .. "-$(os)")
 
     after_build(function(target) -- make the helix library with all the appropriate header files
         -- determine the target output directory

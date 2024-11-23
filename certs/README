@@ -1,0 +1,23 @@
+# Certificates Directory
+
+This directory contains the `entitlements.plist` file used for self code-signing on macOS.
+
+## Self Code-Signing
+
+The Helix compiler has been self-signed because me (the developer) cannot afford a code-signing certificate due to being a broke ass collage student. If you prefer, you can compile the compiler from source.
+
+### How to Compile from Source
+
+1. Clone the repository:
+    ```
+    git clone https://github.com/your-repo/helix-lang.git
+    ```
+
+2. Navigate to the project directory:
+    ```
+    cd helix-lang
+    ```
+
+3. Follow the build instructions provided in the main `README.md` file.
+
+Thank you for using Helix!
