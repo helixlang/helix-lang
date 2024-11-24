@@ -234,8 +234,8 @@ __AST_NODE_BEGIN {
 
         NodeT<IdentExpr> alias; //< TODO: change to ScopePathExpr to allow for any path alias
         NodeT<>          path;  //< either a string literal or a scope path
-        Type             type;
-        bool             is_wildcard;
+        Type             type = Type::Module;
+        bool             is_wildcard = false;
     };
 
     class SpecImport final : public Node {

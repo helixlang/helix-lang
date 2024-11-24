@@ -365,7 +365,7 @@ target("helix") -- target config defined in the config seciton
             if ext == ".h" or ext == ".hh" then
                 -- Process header files: prepend #line directive
                 local content = io.readfile(filepath)
-                local line_directive = string.format('#line 1 "%s"\n', path.absolute(filepath))
+                local line_directive = string.format('#line 1 R"(%s)"\n', path.translate(path.absolute(filepath)))
                 content = line_directive .. content
 
                 -- Write the modified header to the target location

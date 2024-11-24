@@ -47,21 +47,21 @@ inline std::string to_string(const T &obj) {
 
 template <typename... Args>
 inline constexpr void print_pinned(Args &&...args) {
-    std::cout << "\033[?25l";  // Hide cursor
-    std::cout << "\033[0;0H";  // Move to top-left corner
-    std::cout << "\033[2K";    // Clear the line
+    // std::cout << "\033[?25l";  // Hide cursor
+    // std::cout << "\033[0;0H";  // Move to top-left corner
+    // std::cout << "\033[2K";    // Clear the line
 
     std::string str = (to_string(args) + ...);
     std::cout << str << "\n" << std::flush;
 
-    std::cout << "\033[?25h";                               // Show cursor
-    std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+    // std::cout << "\033[?25h";                               // Show cursor
+    // std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
 }
 
 template <typename... Args>
 inline constexpr void print(Args &&...args) {
-    std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
-    std::cout << "\033[2K";                                 // Clear the line
+    // std::cout << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+    // std::cout << "\033[2K";                                 // Clear the line
 
     std::string str = (to_string(args) + ...);  // Concatenate all arguments
     std::cout << str << std::flush;
@@ -78,8 +78,8 @@ inline constexpr void print(Args &&...args) {
 
 template <typename... Args>
 inline constexpr void print_err(Args &&...args) {
-    std::cerr << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
-    std::cerr << "\033[2K";                                 // Clear the line
+    // std::cerr << "\033[" << sysIO::__currentLine << ";0H";  // Move to the current line
+    // std::cerr << "\033[2K";                                 // Clear the line
 
     std::string str = (to_string(args) + ...);  // Concatenate all arguments
     std::cerr << str << std::flush;

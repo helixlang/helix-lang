@@ -188,7 +188,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
     }
 
     for (auto & line : lines) {
-         ErrorPOFNormalized err = CXIRCompiler::parse_msvc_err(line);
+        ErrorPOFNormalized err = CXIRCompiler::parse_msvc_err(line);
 
         if (std::get<0>(err).token_kind() == __TOKEN_N::WHITESPACE) {
             continue;
