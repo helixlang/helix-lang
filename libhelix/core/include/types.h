@@ -13,10 +13,10 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
+#include <cstddef>
+
 #ifndef __$LIBHELIX_TYPES__
 #define __$LIBHELIX_TYPES__
-
-#include <cstddef>
 
 using u8  = unsigned char;
 using i8  = signed char;

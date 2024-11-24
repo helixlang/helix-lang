@@ -13,12 +13,12 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
-#ifndef __$LIBHELIX_CONCEPTS__
-#define __$LIBHELIX_CONCEPTS__
-
 #include "config.h"
 #include "dtypes.h"
 #include "traits.h"
+
+#ifndef __$LIBHELIX_CONCEPTS__
+#define __$LIBHELIX_CONCEPTS__
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN

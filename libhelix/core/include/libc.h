@@ -13,10 +13,11 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
+#include "config.h"
+
 #ifndef __$LIBHELIX_LIBC__
 #define __$LIBHELIX_LIBC__
 
-#include "config.h"
 H_NAMESPACE_BEGIN
 
 namespace libc {

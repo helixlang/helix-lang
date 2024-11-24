@@ -39,5 +39,6 @@
 #include "refs.h"
 #include "traits.h"
 #include "types.h"
+#include "question.h"
 
 #endif

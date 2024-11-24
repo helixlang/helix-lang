@@ -13,10 +13,10 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
+#include "config.h"
+
 #ifndef __$LIBHELIX_TRAITS__
 #define __$LIBHELIX_TRAITS__
-
-#include "config.h"
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN
@@ -73,8 +73,8 @@ concept same_as = integral_constant<bool, same_as_v<_Tp, _Up>>::value ||
 template <class, class>
 constexpr bool same_as_v = false;
 
-template <class _Ty>
-constexpr bool same_as_v<_Ty, _Ty> = true;
+template <class _Tp>
+constexpr bool same_as_v<_Tp, _Tp> = true;
 
 template <class _Tp, class _Up>
 concept same_as = same_as_v<_Tp, _Up>;
@@ -91,12 +91,18 @@ struct _LIBCPP_TEMPLATE_VIS is_derived_of : public integral_constant<bool, __is_
 template <class _Bp, class _Dp>
 inline constexpr bool is_derived_of_v = __is_base_of(_Bp, _Dp);
 
+template <class _Tp>
+struct is_class : integral_constant<bool, __is_class(_Tp)> {}; // determine whether _Tp is a class
+
+template <class _Tp>
+constexpr bool is_class_v = __is_class(_Tp);
+
 namespace _const::utils {
     template <class>
     constexpr bool is_const_v = false;
 
-    template <class _Ty>
-    constexpr bool is_const_v<const _Ty> = true;
+    template <class _Tp>
+    constexpr bool is_const_v<const _Tp> = true;
 }  // namespace _const::utils
 
 template <class _Tp>

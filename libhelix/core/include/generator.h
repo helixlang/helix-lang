@@ -17,14 +17,14 @@
 ///                                                                                              ///
 ///----------------------------------------------------------------------------------------------///
 
-#ifndef __$LIBHELIX_GENERATOR__
-#define __$LIBHELIX_GENERATOR__
-
 #include <coroutine>
 #include <optional>
 
 #include "config.h"
 #include "refs.h"
+
+#ifndef __$LIBHELIX_GENERATOR__
+#define __$LIBHELIX_GENERATOR__
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN

@@ -13,11 +13,11 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
-#ifndef __$LIBHELIX_CAST__
-#define __$LIBHELIX_CAST__
-
 #include "concepts.h"
 #include "config.h"
+
+#ifndef __$LIBHELIX_CAST__
+#define __$LIBHELIX_CAST__
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN

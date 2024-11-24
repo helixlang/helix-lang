@@ -13,10 +13,10 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
+#include "config.h"
+
 #ifndef __$LIBHELIX_REFS__
 #define __$LIBHELIX_REFS__
-
-#include "config.h"
 
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN

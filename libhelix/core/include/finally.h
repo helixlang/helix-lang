@@ -13,13 +13,13 @@
 ///                                                                                              ///
 ///------------------------------------------------------------------------------------ Helix ---///
 
-#ifndef __$LIBHELIX_FINALLY__
-#define __$LIBHELIX_FINALLY__
-
 #include <functional>
 
 #include "config.h"
 #include "refs.h"
+
+#ifndef __$LIBHELIX_FINALLY__
+#define __$LIBHELIX_FINALLY__
 
 H_NAMESPACE_BEGIN
 

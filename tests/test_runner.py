@@ -89,7 +89,7 @@ def compile_and_execute(compiler_path, file_path, output_path):
             logger.error(f"Compilation failed for {file_path}. Error: {compile_process.stderr}")
             return compile_process.stdout, compile_process.stderr, False
         
-        if not os.path.exists(output_path):
+        if not os.path.exists(output_path + (".exe" if os.name == "nt" else "")):
             # see if theres any error by rerunning the command with --lsp-mode and --emit-ir
             compile_cmd2 = [compiler_path, file_path, "--lsp-mode", "--emit-ir", "-o", output_path]
             logger.debug(f"Compile command: {' '.join(compile_cmd2)}")
@@ -101,19 +101,19 @@ def compile_and_execute(compiler_path, file_path, output_path):
 
         logger.debug(f"Compilation successful for {file_path}")
         # Execute the compiled output
-        exec_process = subprocess.run([output_path], capture_output=True, text=True)
+        exec_process = subprocess.run([output_path + (".exe" if os.name == "nt" else "")], capture_output=True, text=True)
         logger.debug(f"Execution output: {exec_process.stdout}")
         return exec_process.stdout.strip(), exec_process.stderr.strip(), True
     finally:
         # Clean up the executable
-        if os.path.exists(output_path):
-            os.remove(output_path)
-            logger.debug(f"Cleaned up executable: {output_path}")
+        if os.path.exists(output_path + (".exe" if os.name == "nt" else "")):
+            os.remove(output_path + (".exe" if os.name == "nt" else ""))
+            logger.debug(f"Cleaned up executable: {output_path + ('.exe' if os.name == 'nt' else '')}")
 
 def run_test(compiler_path, folder_path, file_name):
     """Run a single test case."""
     file_path = os.path.join(folder_path, file_name)
-    output_path = os.path.join(folder_path, f"{os.path.splitext(file_name)[0]}.out")
+    output_path = os.path.join(folder_path, f"{os.path.splitext(file_name)[0]}")
     
     logger.info(f"Running test for file: {file_name}")
     expected_output, is_error_check = parse_expected_output(file_path)
