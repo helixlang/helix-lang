@@ -171,7 +171,8 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
     return tokens;
 }
 
-__AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenList &tokens, std::filesystem::path in_file_path) {
+__AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenList &tokens,
+                                                               std::filesystem::path in_file_path) {
     helix::log<LogLevel::Progress>("parsing ast...");
 
     remove_comments(tokens);
@@ -182,13 +183,13 @@ __AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenL
 
 /// compile and return the path of the compiled file without calling the linker
 /// ret codes: 0 - success, 1 - error, 2 - lsp mode
-std::pair<CXXCompileAction, int>
-CompilationUnit::build_unit(__CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging, bool no_unit) {
+std::pair<CXXCompileAction, int> CompilationUnit::build_unit(
+    __CONTROLLER_CLI_N::CLIArgs &parsed_args, bool enable_logging, bool no_unit) {
     if (parsed_args.error) {
         NO_LOGS           = true;
         error::SHOW_ERROR = true;
     }
-    
+
     if (parsed_args.quiet || parsed_args.lsp_mode) {
         NO_LOGS           = true;
         error::SHOW_ERROR = false;
@@ -280,7 +281,7 @@ int CompilationUnit::compile(__CONTROLLER_CLI_N::CLIArgs &parsed_args) {
     std::chrono::time_point<std::chrono::high_resolution_clock> start =
         std::chrono::high_resolution_clock::now();
     auto [action, result] = build_unit(parsed_args);
-CXXCompileAction _;
+    CXXCompileAction _;
     switch (result) {
         case 0:
             break;
@@ -296,7 +297,7 @@ CXXCompileAction _;
 
     if (error::HAS_ERRORED || parsed_args.lsp_mode) {
         LSP_MODE = parsed_args.lsp_mode;
-        
+
         if (LSP_MODE && !parsed_args.emit_ir) {
             return 0;
         }
@@ -325,7 +326,13 @@ void CompilationUnit::remove_comments(__TOKEN_N::TokenList &tokens) {
     tokens = new_tokens;
 }
 
-void CompilationUnit::emit_cxir(const generator::CXIR::CXIR &emitter, bool verbose) {
+/**
+ * @brief emit the cx-ir to the console
+ *
+ * @param emitter
+ * @param verbose
+ */
+void CompilationUnit::emit_cxir /* */ (const generator::CXIR::CXIR &emitter, bool verbose) {
     helix::log<LogLevel::Info>("emitting cx-ir...");
 
     if (verbose) {

@@ -194,7 +194,7 @@ inline __TOKEN_N::Token Lexer::next_token() {
         __TOKEN_N::Token{line, column, 1, offset, std::string(1, current()), file_name};
 
     throw error::Panic(error::create_old_CodeError(
-        &bad_token, 1.0011, std::vector<string>{std::string(1, current())}));
+        &bad_token, 1.0011, {}, std::vector<string>{std::string(1, current())}));
 }
 
 inline __TOKEN_N::Token Lexer::parse_compiler_directive() {

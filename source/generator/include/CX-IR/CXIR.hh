@@ -175,7 +175,7 @@ __CXIR_CODEGEN_BEGIN {
         CX_Token(cxir_tokens type, const token::Token &loc)
             : line(loc.line_number())
             , column(loc.column_number())
-            , length(1)
+            , length(loc.length())
             , type(type)
             , file_name(std::filesystem::path(loc.file_name()).generic_string())
             , value(cxir_tokens_map.at(type).has_value()
@@ -185,7 +185,7 @@ __CXIR_CODEGEN_BEGIN {
         CX_Token(cxir_tokens type, std::string value, const token::Token &loc)
             : line(loc.line_number())
             , column(loc.column_number())
-            , length(value.length())
+            , length(loc.length())
             , type(type)
             , file_name(std::filesystem::path(loc.file_name()).generic_string())
             , value(std::move(value)) {}
@@ -263,6 +263,8 @@ __CXIR_CODEGEN_BEGIN {
         void append(std::unique_ptr<CX_Token> token) { tokens.push_back(std::move(token)); }
         void append(cxir_tokens type) { tokens.push_back(std::make_unique<CX_Token>(type)); }
 
+        std::string generate_CXIR() const;
+
         template <const bool add_core = true>
         [[nodiscard]] std::string to_CXIR() const {
             std::string cxir;
@@ -273,33 +275,8 @@ __CXIR_CODEGEN_BEGIN {
                 cxir += get_imports<false>() + "\n";
             }
 
-            u64 current_line_no = 0;
+            cxir += generate_CXIR();
 
-            // normalize tokens
-            // if tokens has a line number, add a new line
-            for (u64 i = 0; i < tokens.size(); ++i) {
-                // normalize so there arent multiple #line
-                if (tokens[i]->get_value()[0] == '#') {
-                    if (!((i + 1) < tokens.size())) {
-                        cxir += "\n" + tokens[i]->get_value() + "\n";
-                        continue;
-                    }
-
-                    cxir += "\n" + tokens[i]->get_value() + " " + tokens[i + 1]->get_value() + "\n";
-                    ++i;
-                } else if (tokens[i]->get_value() == ";") {
-                    cxir += " " + tokens[i]->get_value() + "\n";
-                } else if (tokens[i]->get_line() == 0 || tokens[i]->get_line() == current_line_no) {
-                    cxir += " " + tokens[i]->get_value() + " ";
-                } else {
-                    cxir += "\n#line " + std::to_string(tokens[i]->get_line()) + " \"" +
-                            tokens[i]->get_file_name() + "\"\n";
-                    cxir += " " + tokens[i]->get_value() + " ";
-                    current_line_no = tokens[i]->get_line();
-                }
-            }
-
-            // If cxir is empty, log and return early
             if (cxir.empty()) {
                 print("CXIR is empty after processing tokens.");
                 return cxir;
