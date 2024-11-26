@@ -232,7 +232,7 @@ __AST_NODE_BEGIN {
                                         Modifiers::ExpectedModifier::AccessSpec);
         Modifiers qualifiers = Modifiers(Modifiers::ExpectedModifier::FuncQual);
 
-        token::Token marker;
+        token::Token        marker;
         NodeT<PathExpr>     name;
         NodeV<VarDecl>      params;
         NodeT<RequiresDecl> generics;

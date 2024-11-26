@@ -81,7 +81,7 @@
 /// [x] * AsyncExpr                 * AS -> ('spawn' | 'thread') E                               ///
 /// [x] * AwaitExpr                 * AS -> 'await' E                                            ///
 /// [ ] * ContextManagerExpr        * CM -> E 'as' ID Suite                                      ///
-/// [ ] * LambdaExpr                * LE -> 'fn' TODO                                            ///
+/// [x] * LambdaExpr                * LE -> 'fn' TODO                                            ///
 ///                                                                                              ///
 ///                                /* generics */                                                ///
 /// [ ] * GenericInvokeExpr         * GI -> '<' TY? ( ',' TY )* '>'                              ///
@@ -119,8 +119,10 @@
 #include "lexer/include/lexer.hh"
 #include "neo-pprint/include/hxpprint.hh"
 #include "parser/ast/include/config/AST_config.def"
+#include "parser/ast/include/nodes/AST_declarations.hh"
 #include "parser/ast/include/nodes/AST_expressions.hh"
 #include "parser/ast/include/private/AST_generate.hh"
+#include "parser/ast/include/private/base/AST_base_declaration.hh"
 #include "parser/ast/include/private/base/AST_base_expression.hh"
 #include "parser/ast/include/types/AST_jsonify_visitor.hh"
 #include "parser/ast/include/types/AST_modifiers.hh"
@@ -226,6 +228,8 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
                     PARSE_ERROR_MSG("Expected an expression, but found nothing"));
             }
         }
+    } else if (tok.token_kind() == __TOKEN_N::KEYWORD_FUNCTION) {
+        node = parse<LambdaExpr>();
     } else if (is_excepted(tok,
                            {__TOKEN_N::KEYWORD_THREAD,
                             __TOKEN_N::KEYWORD_SPAWN,
@@ -912,7 +916,8 @@ LINE910_PARSE_SCOPE_PATH_EXPR:
 
             // turbofish | import
             if (is_import) {
-                if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE) || CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_MUL)) {
+                if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE) ||
+                    CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_MUL)) {
                     break;
                 }
             }
@@ -1436,23 +1441,45 @@ AST_NODE_IMPL_VISITOR(Jsonify, ObjInitExpr) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-/* TODO: after Suite can be parsed */
 AST_NODE_IMPL(Expression, LambdaExpr) {
     IS_NOT_EMPTY;
-    NOT_IMPLEMENTED;
+
+    Declaration decl_parser(iter);
+
+    IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_FUNCTION);
+    NodeT<LambdaExpr> lambda = make_node<LambdaExpr>(CURRENT_TOK);
+
+    ParseResult<FuncDecl> decl = decl_parser.parse<FuncDecl>(nullptr, false);
+    RETURN_IF_ERROR(decl);
+
+    NodeT<FuncDecl> func_decl = decl.value();
+    if (lambda->body == nullptr) {
+        return std::unexpected(
+            PARSE_ERROR_MSG("lambda expresion excepted to have a body, but this is missing one"));
+    }
+
+    // deconstruct the function declaration
+    lambda->body     = func_decl->body;
+    lambda->params   = func_decl->params;
+    lambda->generics = func_decl->generics;
+    lambda->returns  = func_decl->returns;
+
+    return lambda;
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, LambdaExpr) {
     std::vector<neo::json> args;
 
-    for (const auto &arg : node.args) {
+    for (const auto &arg : node.params) {
         args.push_back(get_node_json(arg));
     }
 
     json.section("LambdaExpr")
-        .add("args", args)
+        .add("maker", node.marker)
         .add("body", get_node_json(node.body))
-        .add("return_type", get_node_json(node.ret));
+        .add("params", args)
+        .add("generics", get_node_json(node.generics))
+        .add("returns", get_node_json(node.returns));
 }
 
 // ---------------------------------------------------------------------------------------------- //
@@ -1623,7 +1650,49 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
     NodeT<Type> node = make_node<Type>(true);
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_FUNCTION)) {
-        NOT_IMPLEMENTED;
+        /// fn ptr types
+        // fn (int, float, ...) (-> ...)?
+
+        Type::FnPtr fn_ptr;
+
+        fn_ptr.marker = CURRENT_TOK;
+        iter.advance();
+
+        IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_OPEN_PAREN);
+        iter.advance();  // skip '('
+
+        ParseResult<Type> arg = parse<Type>();
+        RETURN_IF_ERROR(arg);
+
+        fn_ptr.params.emplace_back(arg.value());
+
+        while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
+            if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) {
+                break;  // exit the loop
+            }
+
+            ParseResult<Type> arg = parse<Type>();
+            RETURN_IF_ERROR(arg);
+
+            fn_ptr.params.emplace_back(arg.value());
+        }
+
+        IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_PAREN);
+        iter.advance();  // skip ')'
+
+        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_ARROW)) {
+            iter.advance();  // skip '->'
+
+            ParseResult<Type> return_t = parse<Type>();
+            RETURN_IF_ERROR(return_t);
+
+            fn_ptr.returns = return_t.value();
+        }
+
+        NodeT<Type> node = make_node<Type>(fn_ptr);
+        node->is_fn_ptr  = true;
+
+        return node;
     }
 
     while (node->specifiers.find_add(CURRENT_TOK)) {
@@ -1654,7 +1723,7 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
     };
 
     node->marker = CURRENT_TOK;
-    
+
     ParseResult<> EXPR;
     switch (CURRENT_TOK.token_kind()) {
         case __TOKEN_N::OPERATOR_MUL:
@@ -1740,7 +1809,7 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
                 break;
             }
 
-            // TODO: add support for scope path expressions
+                // TODO: add support for scope path expressions
 
             default:
                 if (is_excepted(tok, IS_UNARY_OPERATOR)) {
@@ -1760,6 +1829,31 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
     }
 
     node->value = EXPR.value();
+
+    if (node->value->getNodeType() == nodes::UnaryExpr) {
+        NodeT<UnaryExpr> type = as<UnaryExpr>(node->value);
+
+        if (type->op.token_kind() == __TOKEN_N::PUNCTUATION_QUESTION_MARK) {
+            if (type->type != UnaryExpr::PosType::PostFix) {
+                return std::unexpected(PARSE_ERROR(
+                    type->op,
+                    "invalid placement of `?` operator: must be used as a postfix operator."));
+            }
+
+            node->nullable = true;
+        } else if ((type->op.token_kind() == __TOKEN_N::OPERATOR_BITWISE_AND) ||
+                   (type->op.token_kind() == __TOKEN_N::OPERATOR_MUL)) {  // *&type?
+            if (type->type != UnaryExpr::PosType::PreFix) {
+                return std::unexpected(
+                    PARSE_ERROR(type->op,
+                                "invalid placement of '" + type->op.value() +
+                                    "' operator: must be used as a prefix operator."));
+            }
+        } else {
+            return std::unexpected(PARSE_ERROR(type->op, "invalid type operator."));
+        }
+    }
+
     return node;
 }
 

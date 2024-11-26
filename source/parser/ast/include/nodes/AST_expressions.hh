@@ -20,6 +20,7 @@
 #include "parser/ast/include/private/AST_nodes.hh"
 #include "parser/ast/include/types/AST_modifiers.hh"
 #include "parser/ast/include/types/AST_types.hh"
+#include "token/include/config/Token_config.def"
 
 __AST_NODE_BEGIN {
     class LiteralExpr final : public Node {  // := LITERAL
@@ -319,16 +320,17 @@ __AST_NODE_BEGIN {
         NodeT<>                  path;
     };
 
-    class LambdaExpr final : public Node {  // TODO
+    class LambdaExpr final : public Node {
         BASE_CORE_METHODS(LambdaExpr);
 
         explicit LambdaExpr(__TOKEN_N::Token marker)
             : marker(std::move(marker)) {}
 
-        NodeV<>          args;
-        NodeT<>          body;
-        NodeT<>          ret;
-        __TOKEN_N::Token marker;
+        __TOKEN_N::Token    marker;
+        NodeV<VarDecl>      params;
+        NodeT<RequiresDecl> generics;
+        NodeT<Type>         returns;
+        NodeT<SuiteState>   body;
     };
 
     class TernaryExpr final : public Node {  // := (E '?' E ':' E) | (E 'if' E 'else' E)
@@ -385,17 +387,27 @@ __AST_NODE_BEGIN {
     class Type final : public Node {  // := IdentExpr
         BASE_CORE_METHODS(Type);
 
+        struct FnPtr {
+            __TOKEN_N::Token marker;
+
+            // fn (...) -> ...
+
+            NodeV<Type> params;
+            NodeT<Type> returns;
+        };
+
         explicit Type(NodeT<> value)
             : value(std::move(value)) {}
-        explicit Type(NodeT<LambdaExpr> value)
-            : value(std::move(value)) {}
+        explicit Type(FnPtr value)
+            : fn_ptr(std::move(value)) {}
         explicit Type(bool /* unused */) {}
 
         token::Token             marker;
         NodeT<>                  value;
         NodeT<GenericInvokeExpr> generics;
-        bool                     nullable   = false;
-        bool                     is_fn_ptr  = false;
+        bool                     nullable  = false;
+        bool                     is_fn_ptr = false;
+        FnPtr                    fn_ptr{};  // never set unless is_fn_ptr is true
         Modifiers                specifiers = Modifiers(Modifiers::ExpectedModifier::TypeSpec);
     };
 

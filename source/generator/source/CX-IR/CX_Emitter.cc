@@ -129,6 +129,7 @@ void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::OpDecl> &op_decl,
 
         if (has_self) {
             CODEGEN_ERROR(pof, "cannot have 'self' in a free function");
+            return;
         }
 
         return;  // free function, no need to do any processing or checks
@@ -1052,6 +1053,7 @@ CX_VISIT_IMPL(FunctionCallExpr) {
             __AST_N::as<__AST_NODE::ArgumentListExpr>(node.args)->args.size() != 1) {
             auto bad_tok = node.path->get_back_name();
             CODEGEN_ERROR(bad_tok, "__inline_cpp requires exactly one argument");
+            return;
         }
 
         auto arg = __AST_N::as<__AST_NODE::ArgumentListExpr>(node.args)->args[0];
@@ -1060,6 +1062,7 @@ CX_VISIT_IMPL(FunctionCallExpr) {
                 __AST_NODE::nodes::LiteralExpr) {
             auto bad_tok = node.path->get_back_name();
             CODEGEN_ERROR(bad_tok, "__inline_cpp requires a string literal argument");
+            return;
         }
 
         auto arg_ptr =
@@ -1067,6 +1070,7 @@ CX_VISIT_IMPL(FunctionCallExpr) {
         if (arg_ptr->contains_format_args) {
             auto bad_tok = node.path->get_back_name();
             CODEGEN_ERROR(bad_tok, "__inline_cpp does not support format arguments");
+            return;
         }
 
         auto arg_str = arg_ptr->value;
@@ -1127,7 +1131,10 @@ CX_VISIT_IMPL(FunctionCallExpr) {
     ADD_NODE_PARAM(args);
 }
 
-CX_VISIT_IMPL(ArrayLiteralExpr) { BRACE_DELIMIT(COMMA_SEP(values);); }
+CX_VISIT_IMPL(ArrayLiteralExpr) {
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "list");
+    BRACE_DELIMIT(COMMA_SEP(values););
+}
 
 CX_VISIT_IMPL(TupleLiteralExpr) {
     if (!node.values.empty() && (node.values.size() > 0) &&
@@ -1141,12 +1148,24 @@ CX_VISIT_IMPL(TupleLiteralExpr) {
 
     BRACE_DELIMIT(COMMA_SEP(values););
 }
-/// TODO: is this even imlpementad in the current stage?
-CX_VISIT_IMPL(SetLiteralExpr) { BRACE_DELIMIT(COMMA_SEP(values);); }
 
-CX_VISIT_IMPL(MapPairExpr) { CXIR_NOT_IMPLEMENTED; }
+CX_VISIT_IMPL(SetLiteralExpr) {
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "set");
+    BRACE_DELIMIT(COMMA_SEP(values););
+}
 
-CX_VISIT_IMPL(MapLiteralExpr) { CXIR_NOT_IMPLEMENTED; }
+CX_VISIT_IMPL(MapPairExpr) {
+    ADD_TOKEN(CXX_LBRACE);
+    ADD_NODE_PARAM(key);
+    ADD_TOKEN(CXX_COLON);
+    ADD_NODE_PARAM(value);
+    ADD_TOKEN(CXX_RBRACE);
+}
+
+CX_VISIT_IMPL(MapLiteralExpr) {
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "hashmap");
+    BRACE_DELIMIT(COMMA_SEP(values););
+}
 
 CX_VISIT_IMPL(ObjInitExpr) {
     if (node.path) {
@@ -1165,7 +1184,37 @@ CX_VISIT_IMPL(ObjInitExpr) {
     );
 }
 
-CX_VISIT_IMPL(LambdaExpr) { CXIR_NOT_IMPLEMENTED; }
+CX_VISIT_IMPL(LambdaExpr) {
+    NO_EMIT_FORWARD_DECL;
+
+    BRACKET_DELIMIT(ADD_TOKEN_AT_LOC(CXX_AMPERSAND, node.marker););
+
+    if (node.generics) {
+        ANGLE_DELIMIT(                         //
+            ADD_PARAM(node.generics->params);  //
+        );
+    }
+
+    PAREN_DELIMIT(          //
+        COMMA_SEP(params);  // (params)
+    );
+
+    ADD_TOKEN(CXX_PTR_ACC);
+    if (node.returns) {
+        ADD_NODE_PARAM(returns);
+    } else {
+        ADD_TOKEN_AT_LOC(CXX_VOID, node.marker);
+    }
+
+    if (node.generics) {
+        if (node.generics->bounds) {
+            ADD_TOKEN(CXX_REQUIRES);
+            ADD_PARAM(node.generics->bounds);
+        }
+    }
+
+    ADD_NODE_PARAM(body);
+}
 
 CX_VISIT_IMPL(TernaryExpr) {
 
@@ -1314,10 +1363,33 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", marker);
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
 
-        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "generator", marker);
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", marker);
         ANGLE_DELIMIT(ADD_NODE_PARAM(value); ADD_NODE_PARAM(generics););
 
         return;
+    }
+
+    if (node.nullable) {
+        __TOKEN_N::Token marker;
+
+        if (node.value->getNodeType() == __AST_NODE::nodes::UnaryExpr) {
+            marker = __AST_N::as<__AST_NODE::UnaryExpr>(node.value)->op;
+        }
+
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "helix", marker);
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", marker);
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$question", marker);
+        ANGLE_DELIMIT(ADD_NODE_PARAM(value); ADD_NODE_PARAM(generics););
+
+        return;
+    }
+
+    if (node.is_fn_ptr) {
+        CXIR_NOT_IMPLEMENTED;
     }
 
     ADD_NODE_PARAM(value);
@@ -1758,7 +1830,8 @@ CX_VISIT_IMPL(ModuleDecl) {
     ADD_NODE_PARAM_BODY();
 }
 
-CX_VISIT_IMPL(StructDecl) {  // TODO: only enums, types, and unions
+CX_VISIT_IMPL(StructDecl) {
+    // TODO: only enums, strcuts, types, unnamed ops, and vars (let or const)
     // TODO: Modifiers
     if (node.generics) {           //
         ADD_NODE_PARAM(generics);  //
@@ -1775,11 +1848,42 @@ CX_VISIT_IMPL(StructDecl) {  // TODO: only enums, types, and unions
         ADD_NODE_PARAM(derives);  // should be its own generator
     }
 
-    ADD_NODE_PARAM_BODY();
-    ADD_TOKEN(CXX_SEMICOLON);
+    if (node.body != nullptr) {
+        for (auto &decl : node.body->body->body) {
+            switch (decl->getNodeType()) {
+                case parser::ast::node::nodes::EnumDecl:
+                case parser::ast::node::nodes::StructDecl:
+                case parser::ast::node::nodes::TypeDecl:
+                case parser::ast::node::nodes::OpDecl:
+                case parser::ast::node::nodes::LetDecl:
+                case parser::ast::node::nodes::ConstDecl:
+                    break;
+                default:
+                    CODEGEN_ERROR(node.name->name,
+                                  "strcut declaration cannot have a node of type: '" +
+                                      decl->getNodeName() +
+                                      "', strcut can only contain: enums, types, strcuts, unnamed "
+                                      "ops, and let/const declarations.")
+                    continue;
+            }
 
-    // structs can derive?
-    // enums should be able to as well... idea?
+            if (decl->getNodeType() == parser::ast::node::nodes::OpDecl) {
+                parser::ast::NodeT<parser::ast::node::OpDecl> op_decl =
+                    __AST_N::as<parser::ast::node::OpDecl>(decl);
+                if (op_decl->func->name) {
+                    auto maerker = op_decl->func->name->get_back_name();
+                    CODEGEN_ERROR(maerker,
+                                  "strcut declaration can not have named operators, remove the "
+                                  "named alias here.");
+                    continue;
+                }
+            }
+
+            decl->accept(*this);
+        }
+    }
+
+    ADD_TOKEN(CXX_SEMICOLON);
 }
 
 CX_VISIT_IMPL(ConstDecl) {
@@ -2691,6 +2795,7 @@ CX_VISIT_IMPL(InterDecl) {
                     } else {
                         CODEGEN_ERROR(var->var->path->name,
                                       "variable declarations in interfaces must have a type.");
+                        return;
                     }
 
                     ADD_TOKEN(CXX_GREATER_THAN);
@@ -2823,14 +2928,64 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
         if (node.returns != nullptr) {  // return type
             ADD_NODE_PARAM(returns);
         } else {
-            ADD_TOKEN(CXX_VOID);
+            ADD_TOKEN_AT_LOC(CXX_VOID, node.marker);
         }
     }
 
     NO_EMIT_FORWARD_DECL_SEMICOLON;
 
     if (node.body) {
-        ADD_NODE_PARAM_BODY();
+        if (node.body != nullptr) {
+            for (auto &member : node.body->body->body) {
+                if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                    // convert the func decl into a lambda
+                    __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
+                        __AST_N::as<__AST_NODE::FuncDecl>(member);
+
+                    BRACKET_DELIMIT();  // does not have access to the sourounding scope
+
+                    if (func_decl->generics) {
+                        ANGLE_DELIMIT(                               //
+                            ADD_PARAM(func_decl->generics->params);  //
+                        );
+                    }
+
+                    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
+                    if (!func_decl->params.empty()) {
+                        if (func_decl->params[0] != nullptr) {
+                            func_decl->params[0]->accept(*this);
+                        };
+                        for (size_t i = 1; i < func_decl->params.size(); ++i) {
+                            tokens.push_back(
+                                std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
+                            ;
+                            if (func_decl->params[i] != nullptr) {
+                                func_decl->params[i]->accept(*this);
+                            };
+                        }
+                    };
+                    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
+
+                    ADD_TOKEN(CXX_PTR_ACC);
+                    if (func_decl->returns) {
+                        ADD_PARAM(func_decl->returns);
+                    } else {
+                        ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
+                    }
+
+                    if (func_decl->generics) {
+                        if (func_decl->generics->bounds) {
+                            ADD_TOKEN(CXX_REQUIRES);
+                            ADD_PARAM(func_decl->generics->bounds);
+                        }
+                    }
+
+                    ADD_PARAM(func_decl->body);
+                }
+            }
+        } else {
+            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_SEMICOLON));
+        };
     };
 }
 
@@ -3069,10 +3224,56 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
     if (node.func->returns) {  //
         ADD_NODE_PARAM(func->returns);
     } else {
-        ADD_TOKEN(CXX_VOID);
+        ADD_TOKEN_AT_LOC(CXX_VOID, node.func->marker);
     }
 
-    ADD_NODE_PARAM(func->body);
+    for (auto &member : node.func->body->body->body) {
+        if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+            // convert the func decl into a lambda
+            __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
+                __AST_N::as<__AST_NODE::FuncDecl>(member);
+
+            BRACKET_DELIMIT();  // does not have access to the sourounding scope
+
+            if (func_decl->generics) {
+                ANGLE_DELIMIT(                               //
+                    ADD_PARAM(func_decl->generics->params);  //
+                );
+            }
+
+            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
+            if (!func_decl->params.empty()) {
+                if (func_decl->params[0] != nullptr) {
+                    func_decl->params[0]->accept(*this);
+                };
+                for (size_t i = 1; i < func_decl->params.size(); ++i) {
+                    tokens.push_back(
+                        std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
+                    ;
+                    if (func_decl->params[i] != nullptr) {
+                        func_decl->params[i]->accept(*this);
+                    };
+                }
+            };
+            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
+
+            ADD_TOKEN(CXX_PTR_ACC);
+            if (func_decl->returns) {
+                ADD_PARAM(func_decl->returns);
+            } else {
+                ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
+            }
+
+            if (func_decl->generics) {
+                if (func_decl->generics->bounds) {
+                    ADD_TOKEN(CXX_REQUIRES);
+                    ADD_PARAM(func_decl->generics->bounds);
+                }
+            }
+
+            ADD_PARAM(func_decl->body);
+        }
+    }
 
     // ---------------------------- function declaration ---------------------------- //
 
@@ -3098,7 +3299,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         if (node.func->returns) {  //
             ADD_NODE_PARAM(func->returns);
         } else {
-            ADD_TOKEN(CXX_VOID);
+            ADD_TOKEN_AT_LOC(CXX_VOID, node.func->marker);
         }
 
         BRACE_DELIMIT(
