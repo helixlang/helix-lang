@@ -1,0 +1,25 @@
+fn main() -> i32 {
+    let x = 5;
+    let y = 6;
+    let z = x + y; // 112121132131123
+    print(f"foo {z}");
+}
+
+class Foo {
+    static fn boo() -> i32 {
+        let x = 5;
+        let y = 6;
+        let z = x + y;
+
+        z;
+    }
+
+    fn bar() -> i32  {
+        let x = 5;
+        let y = 6;
+        let z = x + y;
+
+        print("foo");
+        return z;
+    }
+}

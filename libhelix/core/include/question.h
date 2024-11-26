@@ -21,6 +21,7 @@
 #include "dtypes.h"
 #include "libc.h"
 #include "libcxx.h"
+#include "print.h"
 #include "refs.h"
 #include "traits.h"
 #include "types.h"
@@ -31,12 +32,13 @@
 H_NAMESPACE_BEGIN
 H_STD_NAMESPACE_BEGIN
 
-class Error : public libcxx::exception {
+class Error {
   public:
     Error() = default;
     explicit Error(const string &message)
-        : message(message)
-        , libcxx::exception(message.c_str()) {}
+        : message(message) {
+        print("panicked: ", message);
+    }
 
     string message;
 };
@@ -47,34 +49,33 @@ class NullAccessError : public Error {
         : Error(message) {}
 };
 
-
 class null_t {};
 inline constexpr null_t null;
 
 template <class T, typename... Es>
 class question;
 
-template <class T, typename... Es>
-    requires std::traits::is_class_v<T> && (std::traits::is_class_v<Es> && ...)
-class question<T, Es...> : public T {
-  public:
-    /// this is for classes
-};
+// template <class T, typename... Es>
+//     requires std::traits::is_class_v<T> && (std::traits::is_class_v<Es> && ...)
+// class question<T, Es...> : public T {
+//   public:
+//     /// this is for classes
+// };
 
 template <class T, typename... Es>
-    requires(!std::traits::is_class_v<T>) && (std::traits::is_class_v<Es> && ...)
+    requires (std::traits::is_class_v<Es> && ...)
 class question<T, Es...> {
   public:
     enum class State : char { Value, Null, Error };
 
     template <typename... Et>
     union LikelyError {
-        LikelyError() {}
+         LikelyError() {}
         ~LikelyError() {}
-        LikelyError(const LikelyError &other)                = default;
-        LikelyError &operator=(const LikelyError &other)     = default;
-        LikelyError(LikelyError &&other) noexcept            = default;
-        LikelyError &operator=(LikelyError &&other) noexcept = default;
+         LikelyError(const LikelyError &other)                = default;
+         LikelyError &operator=(const LikelyError &other)     = default;
+         LikelyError(LikelyError &&other) noexcept            = default;
+         LikelyError &operator=(LikelyError &&other) noexcept = default;
 
         alignas(Et...) array<byte, libcxx::max({sizeof(Et)...})> storage{};
     };

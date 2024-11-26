@@ -40,6 +40,15 @@ fn main() -> i32 {
     // missing tests for downcast
     // idk what else to test
 
+    let h: *i32,
+        f: *i32,
+        g: *i32 = 0xff1 as unsafe *i32;
+        
+    h = 0x7FF000000000 as unsafe *i32;
+    f = h as unsafe *i32;
+
+    print(f"f = {f}, h = {h}, g = {g}");
+
     return 0;
 }
 
@@ -50,5 +59,6 @@ fn main() -> i32 {
 50
 42
 0x7ff000000000
+f = 0x7ff000000000, h = 0x7ff000000000, g = 0xff1
 // END TEST
 */
