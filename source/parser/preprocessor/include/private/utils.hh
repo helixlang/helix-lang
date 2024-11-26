@@ -106,7 +106,7 @@ inline int find_import_priority(bool is_module,  // NOLINT
 }
 
 inline std::string sanitize_string(const std::string &input) {
-    std::string output = "_";
+    std::string output = "_$";
     
     for (char ch : input) {
         if ((std::isalnum(ch) != 0) || ch == '_') {

@@ -490,8 +490,6 @@ class Int {
     }
 };
 
-Int operator""i(const char *numStr) { return Int(numStr); }
-
 struct OpType {
     enum Type {
         GeneratorOp,
@@ -606,7 +604,7 @@ struct OpType {
     }
 };
 
-void add_func_modifers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers modifiers) {
+void add_func_modifiers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers modifiers) {
     /*
 
     helix          | c++ (eq)
@@ -2909,7 +2907,7 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     //      eval -> constexpr
     //      const eval -> consteval
 
-    add_func_modifers(this, node.modifiers);
+    add_func_modifiers(this, node.modifiers);
 
     if (!no_return_t) {
         ADD_TOKEN(CXX_AUTO);  // auto
@@ -2935,58 +2933,69 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     NO_EMIT_FORWARD_DECL_SEMICOLON;
 
     if (node.body) {
-        if (node.body != nullptr) {
-            for (auto &member : node.body->body->body) {
-                if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
-                    // convert the func decl into a lambda
-                    __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
-                        __AST_N::as<__AST_NODE::FuncDecl>(member);
+        BRACE_DELIMIT(for (auto &member
+                           : node.body->body->body) {
+            if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                // convert the func decl into a lambda
+                __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
+                    __AST_N::as<__AST_NODE::FuncDecl>(member);
 
-                    BRACKET_DELIMIT();  // does not have access to the sourounding scope
+                BRACKET_DELIMIT();  // does not have access to the sourounding scope
 
-                    if (func_decl->generics) {
-                        ANGLE_DELIMIT(                               //
-                            ADD_PARAM(func_decl->generics->params);  //
-                        );
-                    }
-
-                    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
-                    if (!func_decl->params.empty()) {
-                        if (func_decl->params[0] != nullptr) {
-                            func_decl->params[0]->accept(*this);
-                        };
-                        for (size_t i = 1; i < func_decl->params.size(); ++i) {
-                            tokens.push_back(
-                                std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
-                            ;
-                            if (func_decl->params[i] != nullptr) {
-                                func_decl->params[i]->accept(*this);
-                            };
-                        }
-                    };
-                    tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
-
-                    ADD_TOKEN(CXX_PTR_ACC);
-                    if (func_decl->returns) {
-                        ADD_PARAM(func_decl->returns);
-                    } else {
-                        ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
-                    }
-
-                    if (func_decl->generics) {
-                        if (func_decl->generics->bounds) {
-                            ADD_TOKEN(CXX_REQUIRES);
-                            ADD_PARAM(func_decl->generics->bounds);
-                        }
-                    }
-
-                    ADD_PARAM(func_decl->body);
+                if (func_decl->generics) {
+                    ANGLE_DELIMIT(                               //
+                        ADD_PARAM(func_decl->generics->params);  //
+                    );
                 }
+
+                tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
+                if (!func_decl->params.empty()) {
+                    if (func_decl->params[0] != nullptr) {
+                        func_decl->params[0]->accept(*this);
+                    };
+                    for (size_t i = 1; i < func_decl->params.size(); ++i) {
+                        tokens.push_back(
+                            std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
+                        ;
+                        if (func_decl->params[i] != nullptr) {
+                            func_decl->params[i]->accept(*this);
+                        };
+                    }
+                };
+                tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
+
+                ADD_TOKEN(CXX_PTR_ACC);
+                if (func_decl->returns) {
+                    ADD_PARAM(func_decl->returns);
+                } else {
+                    ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
+                }
+
+                if (func_decl->generics) {
+                    if (func_decl->generics->bounds) {
+                        ADD_TOKEN(CXX_REQUIRES);
+                        ADD_PARAM(func_decl->generics->bounds);
+                    }
+                }
+
+                ADD_PARAM(func_decl->body);
+                continue;
             }
-        } else {
-            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_SEMICOLON));
-        };
-    };
+
+            if (member->getNodeType() == __AST_NODE::nodes::LetDecl) {
+                __AST_N::NodeT<__AST_NODE::LetDecl> node = __AST_N::as<__AST_NODE::LetDecl>(member);
+                visit(*node, true);
+
+                ADD_TOKEN(CXX_SEMICOLON);
+                continue;
+            }
+
+            member->accept(*this);
+            ADD_TOKEN(CXX_SEMICOLON);
+        });
+    } else {
+        ADD_TOKEN(CXX_SEMICOLON);
+    }
 }
 
 CX_VISIT_IMPL(VarDecl) {
@@ -3151,7 +3160,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         ADD_TOKEN(CXX_INLINE);  // inline the operator
     }
 
-    add_func_modifers(this, node.modifiers);
+    add_func_modifiers(this, node.modifiers);
 
     ADD_TOKEN(CXX_AUTO);
 
@@ -3227,52 +3236,69 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         ADD_TOKEN_AT_LOC(CXX_VOID, node.func->marker);
     }
 
-    for (auto &member : node.func->body->body->body) {
-        if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
-            // convert the func decl into a lambda
-            __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
-                __AST_N::as<__AST_NODE::FuncDecl>(member);
+    if (node.func->body) {
+        BRACE_DELIMIT(for (auto &member
+                           : node.func->body->body->body) {
+            if (member->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                // convert the func decl into a lambda
+                __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl =
+                    __AST_N::as<__AST_NODE::FuncDecl>(member);
 
-            BRACKET_DELIMIT();  // does not have access to the sourounding scope
+                BRACKET_DELIMIT();  // does not have access to the sourounding scope
 
-            if (func_decl->generics) {
-                ANGLE_DELIMIT(                               //
-                    ADD_PARAM(func_decl->generics->params);  //
-                );
-            }
+                if (func_decl->generics) {
+                    ANGLE_DELIMIT(                               //
+                        ADD_PARAM(func_decl->generics->params);  //
+                    );
+                }
 
-            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
-            if (!func_decl->params.empty()) {
-                if (func_decl->params[0] != nullptr) {
-                    func_decl->params[0]->accept(*this);
-                };
-                for (size_t i = 1; i < func_decl->params.size(); ++i) {
-                    tokens.push_back(
-                        std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
-                    ;
-                    if (func_decl->params[i] != nullptr) {
-                        func_decl->params[i]->accept(*this);
+                tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_LPAREN));
+                if (!func_decl->params.empty()) {
+                    if (func_decl->params[0] != nullptr) {
+                        func_decl->params[0]->accept(*this);
                     };
-                }
-            };
-            tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
+                    for (size_t i = 1; i < func_decl->params.size(); ++i) {
+                        tokens.push_back(
+                            std ::make_unique<CX_Token>(cxir_tokens ::CXX_CORE_OPERATOR, ","));
+                        ;
+                        if (func_decl->params[i] != nullptr) {
+                            func_decl->params[i]->accept(*this);
+                        };
+                    }
+                };
+                tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_RPAREN));
 
-            ADD_TOKEN(CXX_PTR_ACC);
-            if (func_decl->returns) {
-                ADD_PARAM(func_decl->returns);
-            } else {
-                ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
+                ADD_TOKEN(CXX_PTR_ACC);
+                if (func_decl->returns) {
+                    ADD_PARAM(func_decl->returns);
+                } else {
+                    ADD_TOKEN_AT_LOC(CXX_VOID, func_decl->marker);
+                }
+
+                if (func_decl->generics) {
+                    if (func_decl->generics->bounds) {
+                        ADD_TOKEN(CXX_REQUIRES);
+                        ADD_PARAM(func_decl->generics->bounds);
+                    }
+                }
+
+                ADD_PARAM(func_decl->body);
+                continue;
             }
 
-            if (func_decl->generics) {
-                if (func_decl->generics->bounds) {
-                    ADD_TOKEN(CXX_REQUIRES);
-                    ADD_PARAM(func_decl->generics->bounds);
-                }
+            if (member->getNodeType() == __AST_NODE::nodes::LetDecl) {
+                __AST_N::NodeT<__AST_NODE::LetDecl> node = __AST_N::as<__AST_NODE::LetDecl>(member);
+                visit(*node, true);
+
+                ADD_TOKEN(CXX_SEMICOLON);
+                continue;
             }
 
-            ADD_PARAM(func_decl->body);
-        }
+            member->accept(*this);
+            ADD_TOKEN(CXX_SEMICOLON);
+        });
+    } else {
+        ADD_TOKEN(CXX_SEMICOLON);
     }
 
     // ---------------------------- function declaration ---------------------------- //
@@ -3283,7 +3309,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
             ADD_NODE_PARAM(func->generics);
         };
 
-        add_func_modifers(this, node.modifiers);
+        add_func_modifiers(this, node.modifiers);
 
         ADD_TOKEN(CXX_AUTO);
 
