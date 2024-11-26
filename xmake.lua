@@ -181,8 +181,8 @@ local function helix_src_setup()
 	add_headerfiles("source/**.def")
 	add_headerfiles("source/**.inc")
     
-    add_headerfiles("libhelix/core/include/**.h") -- add all headers in the libhelix/core/include directory
-    add_includedirs("libhelix/core/include") -- add all headers in the libhelix/core/include directory
+    add_headerfiles("lib-helix/core/include/**.h") -- add all headers in the lib-helix/core/include directory
+    add_includedirs("lib-helix/core/include") -- add all headers in the lib-helix/core/include directory
 
     -- libs
     add_includedirs("libs") -- add all files in the neo-json directory
@@ -353,16 +353,16 @@ target("helix") -- target config defined in the config seciton
     set_kind("binary")
     set_languages(cxx_standard)
 
-    -- after build copy all the folders and files from libhelix to the target directory
+    -- after build copy all the folders and files from lib-helix to the target directory
     after_build(function(target)
         -- Determine the target output directory
         local target_dir = path.directory(target:targetfile())
 
-        -- Traverse the libhelix folder to find all files
-        for _, filepath in ipairs(os.files("libhelix/**/*")) do
+        -- Traverse the lib-helix folder to find all files
+        for _, filepath in ipairs(os.files("lib-helix/**/*")) do
             -- Get the file extension and relative path
             local ext = path.extension(filepath)
-            local relative_path = path.relative(filepath, "libhelix")
+            local relative_path = path.relative(filepath, "lib-helix")
             local target_path = path.join(target_dir, "..", relative_path)
 
             if ext == ".h" or ext == ".hh" then
