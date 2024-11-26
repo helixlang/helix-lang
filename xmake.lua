@@ -82,7 +82,7 @@ function setup_windows()
 	add_syslinks("ntdll", "version")
     -- add /EHsc and /RTC1 flags
     set_policy("check.auto_ignore_flags", false)
-    add_cxflags("/EHsc", "/RTC1", "/STACK:10485760")
+    add_cxflags("/EHsc", "/STACK:10485760")
 
 	add_includedirs(".\\libs\\llvm-18.1.9-src\\llvm\\include")
 	add_linkdirs(".\\libs\\llvm-18.1.9-src\\llvm\\lib")
@@ -180,6 +180,9 @@ local function helix_src_setup()
 	add_headerfiles("source/**.hh") -- add all headers in the source directory
 	add_headerfiles("source/**.def")
 	add_headerfiles("source/**.inc")
+    
+    add_headerfiles("libhelix/core/include/**.h") -- add all headers in the libhelix/core/include directory
+    add_includedirs("libhelix/core/include") -- add all headers in the libhelix/core/include directory
 
     -- libs
     add_includedirs("libs") -- add all files in the neo-json directory

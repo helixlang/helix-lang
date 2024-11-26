@@ -7,7 +7,7 @@
 - [ ] Add support for packing and unpacking functions and destructuring
 - [ ] Parse simple macros and invocations
 - [ ] Parse eval if statements
-- [ ] Get CXIR compile messages to convert to helix errors
+- [x] Get CXIR compile messages to convert to helix errors
 - [x] Parse basic helix imports (no symbol resolution)
 - [ ] Codegen C++ headers to allow C++ to call helix code
 - [ ] Parse and codegen catch blocks with no catch type
