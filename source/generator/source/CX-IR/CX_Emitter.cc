@@ -118,18 +118,20 @@ void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::FuncDecl> &func_decl,
     }
 }
 
-void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::OpDecl> &op_decl, token::Token &pof, bool in_udt = true) {
+void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::OpDecl> &op_decl,
+                                token::Token                       &pof,
+                                bool                                in_udt = true) {
     auto &func_decl      = op_decl->func;
     func_decl->modifiers = op_decl->modifiers;
 
-    if (!in_udt) { // free fucntion, cannot have self
+    if (!in_udt) {  // free fucntion, cannot have self
         auto [has_self, has_static] = contains_self_static(func_decl);
 
         if (has_self) {
             CODEGEN_ERROR(pof, "cannot have 'self' in a free function");
         }
 
-        return; // free function, no need to do any processing or checks
+        return;  // free function, no need to do any processing or checks
     }
 
     handle_static_self_fn_decl(func_decl, pof);
@@ -314,7 +316,7 @@ class Int {
             carry           = result / 10;
             if (!carry) {
                 break;
-}
+            }
         }
         while (carry != 0U) {
             digits.push_back(carry % 10);
@@ -489,7 +491,6 @@ class Int {
 
 Int operator""i(const char *numStr) { return Int(numStr); }
 
-
 struct OpType {
     enum Type {
         GeneratorOp,
@@ -499,56 +500,53 @@ struct OpType {
         None,
     };
 
-    Type type = None;
-    __TOKEN_N::Token* tok = nullptr;
+    Type              type = None;
+    __TOKEN_N::Token *tok  = nullptr;
 
-    OpType(const __AST_NODE::OpDecl& op, bool in_udt) {
+    OpType(const __AST_NODE::OpDecl &op, bool in_udt) {
         if (in_udt) {
             type = det_t(op);
         }
     }
 
-    Type det_t(const __AST_NODE::OpDecl& op) {
+    Type det_t(const __AST_NODE::OpDecl &op) {
         /// see the token and signature
         if (op.op.size() < 1) {
             return None;
         }
 
-        tok = const_cast<__TOKEN_N::Token*>(&op.op.front());
+        tok                   = const_cast<__TOKEN_N::Token *>(&op.op.front());
         auto [$self, $static] = contains_self_static(std::make_shared<__AST_NODE::OpDecl>(op));
 
         if (op.op.back() == __TOKEN_N::KEYWORD_IN) {
             if ($static) {
-                error::Panic(
-                    error::CodeError{
-                        .pof = tok,
-                        .err_code = 0.3002,
-                        .err_fmt_args = {"the 'in' operator can not be marked static"}
-                    }
-                );
+                error::Panic(error::CodeError{
+                    .pof          = tok,
+                    .err_code     = 0.3002,
+                    .err_fmt_args = {"the 'in' operator can not be marked static"}});
 
                 return Error;
             }
 
             if (!$self) {
-                error::Panic(
-                    error::CodeError{
-                        .pof = tok,
-                        .err_code = 0.3002,
-                        .err_fmt_args = {"the 'in' operator must take a self paramater since it has to be a member function"}
-                    }
-                );
+                error::Panic(error::CodeError{
+                    .pof          = tok,
+                    .err_code     = 0.3002,
+                    .err_fmt_args = {"the 'in' operator must take a self paramater since it has to "
+                                     "be a member function"}});
 
                 return Error;
             }
 
             // check the signature we don't give a shit about the func name rn
-            if ($self && op.func->params.size() == 1) { // most likely GeneratorOp
-                if (op.func->returns && op.func->returns->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
+            if ($self && op.func->params.size() == 1) {  // most likely GeneratorOp
+                if (op.func->returns &&
+                    op.func->returns->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
                     return GeneratorOp;
                 }
-            } else if ($self && op.func->params.size() == 2) { // most likely ContainsOp
-                if (op.func->returns && op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr) {
+            } else if ($self && op.func->params.size() == 2) {  // most likely ContainsOp
+                if (op.func->returns &&
+                    op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr) {
                     // make sure the ret is a bool
                     auto node = __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value);
 
@@ -558,13 +556,11 @@ struct OpType {
                 }
             }
 
-            error::Panic(
-                error::CodeError{
-                    .pof = tok,
-                    .err_code = 0.3002,
-                    .err_fmt_args = {"invalid 'in' operator, must be 'op in fn <name>(self) -> yield <type>' or 'op in fn <name>(self, arg: <type>) -> bool'"}
-                }
-            );
+            error::Panic(error::CodeError{
+                .pof          = tok,
+                .err_code     = 0.3002,
+                .err_fmt_args = {"invalid 'in' operator, must be 'op in fn <name>(self) -> yield "
+                                 "<type>' or 'op in fn <name>(self, arg: <type>) -> bool'"}});
 
             return Error;
         }
@@ -573,25 +569,20 @@ struct OpType {
             // op as fn (self) -> string {}
             // the as op must take self as the only arg and return any type
             if ($static) {
-                error::Panic(
-                    error::CodeError{
-                        .pof = tok,
-                        .err_code = 0.3002,
-                        .err_fmt_args = {"can not mark 'as' operator with static, signature must be 'op as fn (self) -> <type>'"}
-                    }
-                );
+                error::Panic(error::CodeError{
+                    .pof          = tok,
+                    .err_code     = 0.3002,
+                    .err_fmt_args = {"can not mark 'as' operator with static, signature must be "
+                                     "'op as fn (self) -> <type>'"}});
 
                 return Error;
             }
 
             if (!op.func->returns) {
-                error::Panic(
-                    error::CodeError{
-                        .pof = tok,
-                        .err_code = 0.3002,
-                        .err_fmt_args = {"'as' operator must have a return type even if its void"}
-                    }
-                );
+                error::Panic(error::CodeError{
+                    .pof          = tok,
+                    .err_code     = 0.3002,
+                    .err_fmt_args = {"'as' operator must have a return type even if its void"}});
 
                 return Error;
             }
@@ -602,13 +593,10 @@ struct OpType {
                 }
             }
 
-            error::Panic(
-                error::CodeError{
-                    .pof = tok,
-                    .err_code = 0.3002,
-                    .err_fmt_args = {"invalid 'as' operator, must be 'op as fn (self) -> <type>'"}
-                }
-            );
+            error::Panic(error::CodeError{
+                .pof          = tok,
+                .err_code     = 0.3002,
+                .err_fmt_args = {"invalid 'as' operator, must be 'op as fn (self) -> <type>'"}});
 
             return Error;
         }
@@ -617,7 +605,7 @@ struct OpType {
     }
 };
 
-void add_func_modifers(__CXIR_CODEGEN_N::CXIR* self, __AST_N::Modifiers modifiers) {
+void add_func_modifers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers modifiers) {
     /*
 
     helix          | c++ (eq)
@@ -632,7 +620,7 @@ void add_func_modifers(__CXIR_CODEGEN_N::CXIR* self, __AST_N::Modifiers modifier
 
     if (modifiers.contains(__TOKEN_N::KEYWORD_INLINE)) {
         self->append(std ::make_unique<__CXIR_CODEGEN_N::CX_Token>(
-           __CXIR_CODEGEN_N:: cxir_tokens::CXX_INLINE, modifiers.get(__TOKEN_N::KEYWORD_INLINE)));
+            __CXIR_CODEGEN_N::cxir_tokens::CXX_INLINE, modifiers.get(__TOKEN_N::KEYWORD_INLINE)));
     }
 
     if (modifiers.contains(__TOKEN_N::KEYWORD_STATIC)) {
@@ -642,18 +630,18 @@ void add_func_modifers(__CXIR_CODEGEN_N::CXIR* self, __AST_N::Modifiers modifier
 
     if (modifiers.contains(__TOKEN_N::KEYWORD_CONST) &&
         modifiers.contains(__TOKEN_N::KEYWORD_EVAL)) {
-        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(__CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEVAL,
-            modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
+        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
+            __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEVAL, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
     } else if (modifiers.contains(__TOKEN_N::KEYWORD_EVAL)) {
-        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(__CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEXPR,
-                                                     modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
+        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
+            __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEXPR, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
     }
 }
 
-void add_func_specifiers(__CXIR_CODEGEN_N::CXIR* self, __AST_N::Modifiers modifiers) {
+void add_func_specifiers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers modifiers) {
     if (modifiers.contains(__TOKEN_N::KEYWORD_CONST)) {
-        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(__CXIR_CODEGEN_N::cxir_tokens::CXX_CONST,
-            modifiers.get(__TOKEN_N::KEYWORD_CONST)));
+        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
+            __CXIR_CODEGEN_N::cxir_tokens::CXX_CONST, modifiers.get(__TOKEN_N::KEYWORD_CONST)));
     }
 }
 
@@ -753,7 +741,7 @@ CX_VISIT_IMPL(LiteralExpr) {
                 switch (Int(tok.value()).determineRange()) {
                     case Int::IntRange::NONE:
                         inference = false;
-                        heap_int = true;
+                        heap_int  = true;
                         break;
 
                     // never infer unsigned types for literals
@@ -989,7 +977,7 @@ CX_VISIT_IMPL(IdentExpr) {
         ADD_TOKEN(CXX_RPAREN);
         return;
     }
-    
+
     if (node.name.value() == "int") {
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$int", node.name);
         return;
@@ -1195,13 +1183,14 @@ CX_VISIT_IMPL(ParenthesizedExpr) { PAREN_DELIMIT(ADD_NODE_PARAM(value);); }
 CX_VISIT_IMPL(CastExpr) {
     /*
     a as float;       // regular cast
-    a as *int;        // pointer cast (safe, returns a pointer if the memory is allocated else *null)
-    a as &int;        // reference cast (safe, returns a reference if the memory is allocated else &null)
-    a as unsafe *int; // unsafe pointer cast (raw memory access)
-    a as const int;   // const cast (makes the value immutable)
-    a as int;         // removes the const qualifier if present else does nothing
+    a as *int;        // pointer cast (safe, returns a pointer if the memory is allocated else
+    *null) a as &int;        // reference cast (safe, returns a reference if the memory is allocated
+    else &null) a as unsafe *int; // unsafe pointer cast (raw memory access) a as const int;   //
+    const cast (makes the value immutable) a as int;         // removes the const qualifier if
+    present else does nothing
 
-    /// we now also have to do a check to see if the type has a `.as` method that takes a nullptr of the casted type and returns the casted type
+    /// we now also have to do a check to see if the type has a `.as` method that takes a nullptr of
+    the casted type and returns the casted type
     /// if it does we should use that instead of the regular cast
 
     template <typename T, typename U>
@@ -1225,12 +1214,12 @@ CX_VISIT_IMPL(CastExpr) {
 
     */
 
-    // a as float;        // const_cast | static_cast - removes the const qualifier if present else static cast
-    // a as *int;         // dynamic_cast             - pointer cast (safe, returns a pointer if the memory is allocated else *null)
-    // a as &int;         // static_cast              - reference cast (safe, returns a reference if the memory is allocated else &null)
-    // a as unsafe *int;  // reintreprit_cast         - unsafe pointer cast (c style)
-    // a as const int;    // const_cast               - const cast (makes the value immutable)
-    // avaliable fucntions: std::as_remove_const
+    // a as float;        // const_cast | static_cast - removes the const qualifier if present else
+    // static cast a as *int;         // dynamic_cast             - pointer cast (safe, returns a
+    // pointer if the memory is allocated else *null) a as &int;         // static_cast - reference
+    // cast (safe, returns a reference if the memory is allocated else &null) a as unsafe *int;  //
+    // reintreprit_cast         - unsafe pointer cast (c style) a as const int;    // const_cast -
+    // const cast (makes the value immutable) avaliable fucntions: std::as_remove_const
     //                      a as const int  -> std::as_const
     //                      a as float      -> std::as_cast
     //                      a as *int       -> std::as_pointer
@@ -1255,8 +1244,7 @@ CX_VISIT_IMPL(CastExpr) {
         ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "decltype");
         PAREN_DELIMIT(              //
             ADD_NODE_PARAM(value);  //
-        );
-    );
+        ););
 
     PAREN_DELIMIT(              //
         ADD_NODE_PARAM(value);  //
@@ -1387,7 +1375,7 @@ CX_VISIT_IMPL(ForPyStatementCore) {
     ADD_TOKEN(CXX_COLON);
     ADD_NODE_PARAM(range);
     ADD_TOKEN(CXX_RPAREN);
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(ForCStatementCore) {
@@ -1398,7 +1386,8 @@ CX_VISIT_IMPL(ForCStatementCore) {
         ADD_TOKEN(CXX_SEMICOLON);   //
         ADD_NODE_PARAM(update);     //
     );
-    ADD_NODE_PARAM(body);
+
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(ForState) {
@@ -1419,7 +1408,7 @@ CX_VISIT_IMPL(WhileState) {
     PAREN_DELIMIT(                  //
         ADD_NODE_PARAM(condition);  //
     );
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(ElseState) {
@@ -1439,7 +1428,7 @@ CX_VISIT_IMPL(ElseState) {
             );                              //
         );
     }
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(IfState) {
@@ -1459,7 +1448,7 @@ CX_VISIT_IMPL(IfState) {
         );                              //
     }
 
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 
     ADD_ALL_NODE_PARAMS(else_body);
 }
@@ -1473,7 +1462,7 @@ CX_VISIT_IMPL(SwitchCaseState) {
             ADD_TOKEN(CXX_CASE);
             ADD_NODE_PARAM(condition);
             ADD_TOKEN(CXX_COLON);
-            ADD_NODE_PARAM(body);
+            ADD_NODE_PARAM_BODY();
             break;
 
         case __AST_NODE::SwitchCaseState::CaseType::Fallthrough:
@@ -1492,7 +1481,7 @@ CX_VISIT_IMPL(SwitchCaseState) {
         case __AST_NODE::SwitchCaseState::CaseType::Default:
             ADD_TOKEN(CXX_DEFAULT);
             ADD_TOKEN(CXX_COLON);
-            ADD_NODE_PARAM(body);
+            ADD_NODE_PARAM_BODY();
     }
 }
 
@@ -1594,7 +1583,7 @@ CX_VISIT_IMPL(SuiteState) {
     // -> '{' body '}'
     BRACE_DELIMIT(  //
 
-        if (node.body) { ADD_NODE_PARAM(body); }  //
+        if (node.body) { ADD_NODE_PARAM_BODY(); }  //
     );
 }
 CX_VISIT_IMPL(ContinueState) {
@@ -1608,7 +1597,7 @@ CX_VISIT_IMPL(CatchState) {
     PAREN_DELIMIT(                    //
         ADD_NODE_PARAM(catch_state);  //
     );                                //
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(FinallyState) {
@@ -1628,7 +1617,7 @@ CX_VISIT_IMPL(FinallyState) {
     ADD_TOKEN(CXX_LBRACKET);
     ADD_TOKEN(CXX_AMPERSAND);
     ADD_TOKEN(CXX_RBRACKET);
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
     ADD_TOKEN(CXX_RPAREN);
     ADD_TOKEN(CXX_SEMICOLON);
 }
@@ -1642,7 +1631,7 @@ CX_VISIT_IMPL(TryState) {
     }
 
     ADD_TOKEN(CXX_TRY);
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(PanicState) {
@@ -1766,7 +1755,7 @@ CX_VISIT_IMPL(ModuleDecl) {
 
     ADD_NODE_PARAM(name);
 
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
 }
 
 CX_VISIT_IMPL(StructDecl) {  // TODO: only enums, types, and unions
@@ -1786,7 +1775,7 @@ CX_VISIT_IMPL(StructDecl) {  // TODO: only enums, types, and unions
         ADD_NODE_PARAM(derives);  // should be its own generator
     }
 
-    ADD_NODE_PARAM(body);
+    ADD_NODE_PARAM_BODY();
     ADD_TOKEN(CXX_SEMICOLON);
 
     // structs can derive?
@@ -1817,12 +1806,7 @@ CX_VISIT_IMPL(ClassDecl) {
                     if (func_name.value() == name->name.value()) {
                         // self must be present and the fucntion can not be marked as static
                         if (!has_self || has_static) {
-                            error::Panic(
-                                error::CodeError{
-                                    .pof = &func_name,
-                                    .err_code = 0.3007
-                                }
-                            );
+                            error::Panic(error::CodeError{.pof = &func_name, .err_code = 0.3007});
 
                             continue;
                         }
@@ -1838,8 +1822,9 @@ CX_VISIT_IMPL(ClassDecl) {
                     }
 
                 } else if (child->getNodeType() == __AST_NODE::nodes::OpDecl) {
-                    // we need to handle the `in` operator since its codegen also has to check for the presence of the begin and end functions
-                    // 2 variations of the in operator are possible
+                    // we need to handle the `in` operator since its codegen also has to check for
+                    // the presence of the begin and end functions 2 variations of the in operator
+                    // are possible
                     // 1. `in` operator that takes no args and yields (used in for loops)
                     // 2. `in` operator that takes 1 arg and returns a bool (used in expressions)
                     // we need to handle both of these cases
@@ -1853,9 +1838,11 @@ CX_VISIT_IMPL(ClassDecl) {
                         op_name = op_decl->op.back();
                     }
 
-                    /// FIXME: this is ugly as shit. this has to be fixed, we need pattern matching and a symbol table
+                    /// FIXME: this is ugly as shit. this has to be fixed, we need pattern matching
+                    /// and a symbol table
                     if (op_t.type == OpType::GeneratorOp) {
-                        /// there can not be a fucntion named begin and define that takes no arguments
+                        /// there can not be a fucntion named begin and define that takes no
+                        /// arguments
                         for (auto &child : body->body->body) {
                             if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
                                 auto         func_decl = __AST_N::as<__AST_NODE::FuncDecl>(child);
@@ -1863,25 +1850,23 @@ CX_VISIT_IMPL(ClassDecl) {
 
                                 if (func_name.value() == "begin") {
                                     if (func_decl->params.size() == 0) {
-                                        error::Panic(
-                                            error::CodeError{
-                                                .pof = &func_name,
-                                                .err_code = 0.3002,
-                                                .err_fmt_args = {"can not define both begin/end fuctions and overload the `in` genrator operator"}
-                                            }
-                                        );
+                                        error::Panic(error::CodeError{
+                                            .pof          = &func_name,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define both begin/end fuctions and "
+                                                "overload the `in` genrator operator"}});
                                     }
                                 }
 
                                 if (func_name.value() == "end") {
                                     if (func_decl->params.size() == 0) {
-                                        error::Panic(
-                                            error::CodeError{
-                                                .pof = &func_name,
-                                                .err_code = 0.3002,
-                                                .err_fmt_args = {"can not define both begin/end fuctions and overload the `in` genrator operator"}
-                                            }
-                                        );
+                                        error::Panic(error::CodeError{
+                                            .pof          = &func_name,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define both begin/end fuctions and "
+                                                "overload the `in` genrator operator"}});
                                     }
                                 }
                             }
@@ -1956,12 +1941,7 @@ CX_VISIT_IMPL(ClassDecl) {
 
         if (node.generics != nullptr) {
             /// warn that this class will not be checked since it accepts a generic
-            error::Panic(
-                error::CodeError{
-                    .pof = &node.name->name,
-                    .err_code = 0.3001
-                }
-            );
+            error::Panic(error::CodeError{.pof = &node.name->name, .err_code = 0.3001});
 
             return;
         }
@@ -1996,14 +1976,14 @@ CX_VISIT_IMPL(ClassDecl) {
                     args.emplace_back(arg->var->path);
                 }
 
-                type_node->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
-                    __AST_N::as<>(args));
+                type_node->generics =
+                    parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(__AST_N::as<>(args));
             }
 
             /// append the class name and generics to extend
             if (extend->generics) {
                 extend->generics->args.insert(extend->generics->args.begin(),
-                                                __AST_N::as<__AST_NODE::Node>(type_node));
+                                              __AST_N::as<__AST_NODE::Node>(type_node));
             } else {
                 extend->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
                     __AST_N::as<__AST_NODE::Node>(type_node));
@@ -2012,11 +1992,11 @@ CX_VISIT_IMPL(ClassDecl) {
             extend->accept(*this);
             add_token(cxir_tokens::CXX_COMMA);
 
-            this->append(std::make_unique<CX_Token>(
-                cxir_tokens::CXX_CORE_LITERAL,
-                "\"" + node.name->name.value() + " must satisfy " + extend->marker.value() +
-                    " interface\"",
-                loc));
+            this->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_LITERAL,
+                                                    "\"" + node.name->name.value() +
+                                                        " must satisfy " + extend->marker.value() +
+                                                        " interface\"",
+                                                    loc));
             add_token(cxir_tokens::CXX_RPAREN);
             add_token(cxir_tokens::CXX_SEMICOLON);
         }
@@ -2474,9 +2454,11 @@ CX_VISIT_IMPL(InterDecl) {
 
                     ADD_TOKEN(CXX_RBRACE);
                     ADD_TOKEN(CXX_PTR_ACC);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
+                    ADD_TOKEN_AS_VALUE_AT_LOC(
+                        CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
+                    ADD_TOKEN_AS_VALUE_AT_LOC(
+                        CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
@@ -2626,7 +2608,8 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
+                    ADD_TOKEN_AS_VALUE_AT_LOC(
+                        CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
@@ -2673,7 +2656,8 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "convertible_to", var->var->path->name);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(
+                        CXX_CORE_IDENTIFIER, "convertible_to", var->var->path->name);
                     ADD_TOKEN(CXX_LESS_THAN);
 
                     if (var->var->type) {
@@ -2691,7 +2675,8 @@ CX_VISIT_IMPL(InterDecl) {
 
                         //     if (type->value->getNodeType() == __AST_NODE::nodes::IdentExpr) {
                         //         ADD_TOKEN(CXX_AMPERSAND);
-                        //     } else if (type->value->getNodeType() == __AST_NODE::nodes::UnaryExpr) {
+                        //     } else if (type->value->getNodeType() ==
+                        //     __AST_NODE::nodes::UnaryExpr) {
                         //         __AST_N::NodeT<__AST_NODE::UnaryExpr> unary =
                         //             __AST_N::as<__AST_NODE::UnaryExpr>(type->value);
 
@@ -2845,7 +2830,7 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     NO_EMIT_FORWARD_DECL_SEMICOLON;
 
     if (node.body) {
-        ADD_NODE_PARAM(body);
+        ADD_NODE_PARAM_BODY();
     };
 }
 
@@ -2955,8 +2940,8 @@ the `in` op has no other variants
 */
 
 CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
-    OpType op_t = OpType(node, in_udt);
-    auto _node = std::make_shared<__AST_NODE::OpDecl>(node);
+    OpType       op_t  = OpType(node, in_udt);
+    auto         _node = std::make_shared<__AST_NODE::OpDecl>(node);
     token::Token tok;
 
     /// FIXME: really have to add markers to the rewrite of the compiler
@@ -3008,7 +2993,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
     };
 
     if (!node.modifiers.contains(__TOKEN_N::KEYWORD_INLINE)) {
-        ADD_TOKEN(CXX_INLINE);     // inline the operator
+        ADD_TOKEN(CXX_INLINE);  // inline the operator
     }
 
     add_func_modifers(this, node.modifiers);
@@ -3042,23 +3027,19 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
             /// add the fucntion
             ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
 
-            auto type = __AST_N::make_node<__AST_NODE::Type>(
-                __AST_N::make_node<__AST_NODE::UnaryExpr>(
+            auto type =
+                __AST_N::make_node<__AST_NODE::Type>(__AST_N::make_node<__AST_NODE::UnaryExpr>(
                     node.func->returns,
                     __TOKEN_N::Token(__TOKEN_N::OPERATOR_MUL, "*", *op_t.tok),
                     __AST_NODE::UnaryExpr::PosType::PreFix,
-                    true
-                )
-            );
+                    true));
 
             auto param = __AST_N::make_node<__AST_NODE::VarDecl>(
                 __AST_N::make_node<__AST_NODE::NamedVarSpecifier>(
                     __AST_N::make_node<__AST_NODE::IdentExpr>(
-                        __TOKEN_N::Token() // whitespace token
-                    ),
-                    type
-                )
-            );
+                        __TOKEN_N::Token()  // whitespace token
+                        ),
+                    type));
 
             node.func->params.emplace_back(param);
         }
@@ -3121,18 +3102,16 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         }
 
         BRACE_DELIMIT(
-            ADD_TOKEN(CXX_RETURN);       //
+            ADD_TOKEN(CXX_RETURN);  //
 
             if (in_udt && op_t.type != OpType::None) {
                 if (op_t.type == OpType::GeneratorOp) {
                     /// add the fucntion
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
-                }
-                else if (op_t.type == OpType::ContainsOp) {
+                } else if (op_t.type == OpType::ContainsOp) {
                     /// add the fucntion
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$contains", *op_t.tok);
-                }
-                else if (op_t.type == OpType::CastOp) {
+                } else if (op_t.type == OpType::CastOp) {
                     /// add the fucntion
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
                 }
@@ -3151,10 +3130,9 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
                 }
 
                 this->tokens.pop_back();
-            }
-            ADD_TOKEN(CXX_RPAREN);
+            } ADD_TOKEN(CXX_RPAREN);
 
-            ADD_TOKEN(CXX_SEMICOLON); //
+            ADD_TOKEN(CXX_SEMICOLON);  //
         );
     }
 
@@ -3173,25 +3151,23 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         ADD_TOKEN(CXX_AUTO);
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "begin", tok);
         PAREN_DELIMIT();
-        BRACE_DELIMIT(
-            ADD_TOKEN(CXX_RETURN);       //
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$gen_state", *op_t.tok);
-            ADD_TOKEN(CXX_DOT);       //
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "begin", *op_t.tok);
-            PAREN_DELIMIT();
-            ADD_TOKEN(CXX_SEMICOLON);       //
+        BRACE_DELIMIT(ADD_TOKEN(CXX_RETURN);  //
+                      ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$gen_state", *op_t.tok);
+                      ADD_TOKEN(CXX_DOT);  //
+                      ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "begin", *op_t.tok);
+                      PAREN_DELIMIT();
+                      ADD_TOKEN(CXX_SEMICOLON);  //
         );
 
         ADD_TOKEN(CXX_AUTO);
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "end", tok);
         PAREN_DELIMIT();
-        BRACE_DELIMIT(
-            ADD_TOKEN(CXX_RETURN);       //
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$gen_state", *op_t.tok);
-            ADD_TOKEN(CXX_DOT);       //
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "end", *op_t.tok);
-            PAREN_DELIMIT();
-            ADD_TOKEN(CXX_SEMICOLON);       //
+        BRACE_DELIMIT(ADD_TOKEN(CXX_RETURN);  //
+                      ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$gen_state", *op_t.tok);
+                      ADD_TOKEN(CXX_DOT);  //
+                      ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "end", *op_t.tok);
+                      PAREN_DELIMIT();
+                      ADD_TOKEN(CXX_SEMICOLON);  //
         );
     }
 }
@@ -3259,7 +3235,8 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
                         make_token(token::tokens::IDENTIFIER, "__inline_cpp"),
                         make_token(token::tokens::PUNCTUATION_OPEN_PAREN, "("),
                         make_token(token::tokens::LITERAL_STRING,
-                                   "\"using namespace helix; using namespace helix:: " + _namespace + "\""),
+                                   "\"using namespace helix; using namespace helix:: " +
+                                       _namespace + "\""),
                         make_token(token::tokens::PUNCTUATION_CLOSE_PAREN, ")"),
                         make_token(token::tokens::PUNCTUATION_SEMICOLON, ";"),
                         make_token(token::tokens::EOF_TOKEN, "")};
