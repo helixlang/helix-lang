@@ -1,0 +1,231 @@
+///--- The Helix Project ------------------------------------------------------------------------///
+///                                                                                              ///
+///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
+///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
+///   commercial purposes, provided that you give appropriate credit, and indicate if changes    ///
+///   were made.                                                                                 ///
+///                                                                                              ///
+///   For more information on the license terms and requirements, please visit:                  ///
+///     https://creativecommons.org/licenses/by/4.0/                                             ///
+///                                                                                              ///
+///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
+///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
+///                                                                                              ///
+///-------------------------------------------------------------------------------------- C++ ---///
+
+#include "utils.hh"
+
+
+CX_VISIT_IMPL(ClassDecl) {
+    auto add_udt_body = [node](CXIR                                         *self,
+                               const __AST_N::NodeT<__AST_NODE::IdentExpr>   name,
+                               const __AST_N::NodeT<__AST_NODE::SuiteState> &body) {
+        if (body != nullptr) {
+            self->append(cxir_tokens::CXX_LBRACE);
+
+            for (auto &child : body->body->body) {
+                if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                    auto         func_decl = __AST_N::as<__AST_NODE::FuncDecl>(child);
+                    token::Token func_name = func_decl->name->get_back_name();
+
+                    auto [has_self, has_static] = contains_self_static(func_decl);
+
+                    if (func_name.value() == name->name.value()) {
+                        // self must be present and the fucntion can not be marked as static
+                        if (!has_self || has_static) {
+                            error::Panic(error::CodeError{.pof = &func_name, .err_code = 0.3007});
+
+                            continue;
+                        }
+                    }
+
+                    handle_static_self_fn_decl(func_decl, func_name);
+                    add_visibility(self, func_decl);
+
+                    if (name != nullptr) {
+                        self->visit(*func_decl, func_name.value() == name->name.value());
+                    } else {
+                        self->visit(*func_decl);
+                    }
+
+                } else if (child->getNodeType() == __AST_NODE::nodes::OpDecl) {
+                    // we need to handle the `in` operator since its codegen also has to check for
+                    // the presence of the begin and end functions 2 variations of the in operator
+                    // are possible
+                    // 1. `in` operator that takes no args and yields (used in for loops)
+                    // 2. `in` operator that takes 1 arg and returns a bool (used in expressions)
+                    // we need to handle both of these cases
+                    token::Token op_name;
+                    auto         op_decl = __AST_N::as<__AST_NODE::OpDecl>(child);
+                    auto         op_t    = OpType(*op_decl, true);
+
+                    if (op_decl->func->name != nullptr) {
+                        op_name = op_decl->func->name->get_back_name();
+                    } else {
+                        op_name = op_decl->op.back();
+                    }
+
+                    /// FIXME: this is ugly as shit. this has to be fixed, we need pattern matching
+                    /// and a symbol table
+                    if (op_t.type == OpType::GeneratorOp) {
+                        /// there can not be a fucntion named begin and define that takes no
+                        /// arguments
+                        for (auto &child : body->body->body) {
+                            if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                                auto         func_decl = __AST_N::as<__AST_NODE::FuncDecl>(child);
+                                token::Token func_name = func_decl->name->get_back_name();
+
+                                if (func_name.value() == "begin") {
+                                    if (func_decl->params.size() == 0) {
+                                        error::Panic(error::CodeError{
+                                            .pof          = &func_name,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define both begin/end fuctions and "
+                                                "overload the `in` genrator operator"}});
+                                    }
+                                }
+
+                                if (func_name.value() == "end") {
+                                    if (func_decl->params.size() == 0) {
+                                        error::Panic(error::CodeError{
+                                            .pof          = &func_name,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define both begin/end fuctions and "
+                                                "overload the `in` genrator operator"}});
+                                    }
+                                }
+                            }
+                        }
+                    } else if (op_t.type == OpType::Error) {
+                        continue;
+                    }
+
+                    add_visibility(self, op_decl->func);
+
+                    self->visit(*op_decl, true);
+                } else if (child->getNodeType() == __AST_NODE::nodes::LetDecl) {
+                    auto let_decl = __AST_N::as<__AST_NODE::LetDecl>(child);
+
+                    if (let_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (let_decl->vis.contains(token::tokens::KEYWORD_PUBLIC)) {
+                        add_public(self);
+                    } else {
+                        add_private(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                } else if (child->getNodeType() == __AST_NODE::nodes::ConstDecl) {
+                    auto const_decl = __AST_N::as<__AST_NODE::ConstDecl>(child);
+
+                    if (const_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (const_decl->vis.contains(token::tokens::KEYWORD_PUBLIC)) {
+                        add_public(self);
+                    } else {
+                        add_private(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                } else {
+                    add_visibility(self, child);
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                }
+            }
+
+            self->append(cxir_tokens::CXX_RBRACE);
+        }
+    };
+
+    if (node.generics != nullptr) {
+        ADD_NODE_PARAM(generics);
+    }
+
+    ADD_TOKEN(CXX_CLASS);
+    ADD_NODE_PARAM(name);
+
+    if (node.derives) {
+        ADD_TOKEN(CXX_COLON);
+        ADD_NODE_PARAM(derives);
+    }
+
+    if (node.body != nullptr) {
+        add_udt_body(this, node.name, node.body);
+    }
+
+    ADD_TOKEN(CXX_SEMICOLON);
+
+    /// interface support
+    /// FIXME: this does not work in the cases where the class takes a generic type
+    if (!node.extends.empty()) {
+        /// static_assert(extend<class<gens>>, "... must satisfy ... interface");
+        token::Token loc;
+
+        if (node.generics != nullptr) {
+            /// warn that this class will not be checked since it accepts a generic
+            error::Panic(error::CodeError{.pof = &node.name->name, .err_code = 0.3001});
+
+            return;
+        }
+
+        auto add_token = [this, &loc](const cxir_tokens &tok) {
+            this->append(std::make_unique<CX_Token>(tok, loc));
+        };
+
+        /// class Foo::<T> extends Bar::<T> requires <T> {}
+        /// static_assert(Bar<Foo<T>, T>, "Foo<T> must satisfy Bar<T> interface");
+        for (auto &_extend : node.extends) {
+            auto &extend = std::get<0>(_extend);
+            loc          = extend->marker;
+
+            add_token(cxir_tokens::CXX_STATIC_ASSERT);
+            add_token(cxir_tokens::CXX_LPAREN);
+
+            if (extend->is_fn_ptr) {
+                PARSE_ERROR(loc, "Function pointers are not allowed in extends");
+            } else if (extend->nullable) {
+                PARSE_ERROR(loc, "Nullable types are not allowed in extends");
+            }
+
+            __AST_N::NodeT<__AST_NODE::Type> type_node =
+                parser::ast::make_node<__AST_NODE::Type>(true);
+            type_node->value = node.name;
+
+            __AST_N::NodeV<__AST_NODE::IdentExpr> args;
+
+            if (node.generics) {
+                for (auto &arg : node.generics->params->params) {
+                    args.emplace_back(arg->var->path);
+                }
+
+                type_node->generics =
+                    parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(__AST_N::as<>(args));
+            }
+
+            /// append the class name and generics to extend
+            if (extend->generics) {
+                extend->generics->args.insert(extend->generics->args.begin(),
+                                              __AST_N::as<__AST_NODE::Node>(type_node));
+            } else {
+                extend->generics = parser::ast::make_node<__AST_NODE::GenericInvokeExpr>(
+                    __AST_N::as<__AST_NODE::Node>(type_node));
+            }
+
+            extend->accept(*this);
+            add_token(cxir_tokens::CXX_COMMA);
+
+            this->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_LITERAL,
+                                                    "\"" + node.name->name.value() +
+                                                        " must satisfy " + extend->marker.value() +
+                                                        " interface\"",
+                                                    loc));
+            add_token(cxir_tokens::CXX_RPAREN);
+            add_token(cxir_tokens::CXX_SEMICOLON);
+        }
+    }
+}
