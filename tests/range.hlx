@@ -28,7 +28,7 @@
 /// }
 ///
 /// op's in class defs need to ignore self parm and work without self while calling as well.
-import core::lol::*;
+//import core::lol::*;
 ffi "c++" import "iostream";
 ffi "c++" import "chrono";
 

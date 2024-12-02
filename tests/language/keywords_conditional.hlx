@@ -27,16 +27,51 @@ fn main() -> i32 {
 
     // Test: switch-case
     switch x {
-        case 15:
-            print("x is 15");
-        case 10:
-            print("x is 10");
-        default:
-            print("x is neither 15 nor 10");
+        case 15: print("x is 15");
+        case 10: print("x is 10");
+        default: print("x is neither 15 nor 10");
     }
 
     return 0;
 }
+
+// import std::range;
+
+// test "conditional keywords" {
+//     let stdout: list<string> = std::io::capture::<std::io::stdout!> {
+//         main();
+//     };
+
+//     if stdout.len() < 3:
+//         return false; // indicates the test has failed
+
+//     let excepted: list<string> = [
+//         "x is greater than 5",
+//         "x is not less than 5",
+//         "x is 10"
+//     ];
+
+//     let foo: int = 19;
+
+//     for i, j in std.zip(stdout, excepted) {
+//         if i != j {
+//             print(f"excepted {j} but got {i}");
+//             return false;
+//         }
+//     }
+// }
+
+// fn zip(args: ...T) -> (T::underlying_t, ...)
+//   requires <...T>
+//   if (T... has std::ranges::Iterable) -> {
+
+//     let zipped_result: std::Vec<(T::underlying_t?...)>; // [(string, int, ...)]
+//     bool has_next = true;
+
+//     while has_next {
+//         zipped_result.push((...args.next()));
+//     }
+// }
 
 /*
 --------- do not remove this comment, it is used by the test script to validate the output ---------

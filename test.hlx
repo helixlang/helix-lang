@@ -1,36 +1,35 @@
 
 macro tokens!(create) {
-    create!(LET, "let");
-    create!(FN, "fn");
-    create!(CLASS, "class");
-    create!(STATIC, "static");
-    create!(RETURN, "return");
-    create!(PRINT, "print");
-    create!(FMT, "f");
-    create!(STRING, "string");
-    create!(INT, "i32");
-    create!(L_PAREN, "(");
-    create!(R_PAREN, ")");
-    create!(L_BRACE, "{");
-    create!(R_BRACE, "}");
-    create!(L_BRACKET, "[");
-    create!(R_BRACKET, "]");
-    create!(COMMA, ",");
-    create!(SEMICOLON, ";");
-    create!(COLON, ":");
-    create!(ARROW, "->");
-    create!(EQ, "=");
-    create!(PLUS, "+");
-    create!(MINUS, "-");
-    create!(STAR, "*");
-    create!(SLASH, "/");
-    create!(BANG, "!");
+    create(LET, "let");
+    create(FN, "fn");
+    create(CLASS, "class");
+    create(STATIC, "static");
+    create(RETURN, "return");
+    create(PRINT, "print");
+    create(FMT, "f");
+    create(STRING, "string");
+    create(INT, "i32");
+    create(L_PAREN, "(");
+    create(R_PAREN, ")");
+    create(L_BRACE, "{");
+    create(R_BRACE, "}");
+    create(L_BRACKET, "[");
+    create(R_BRACKET, "]");
+    create(COMMA, ",");
+    create(SEMICOLON, ";");
+    create(COLON, ":");
+    create(ARROW, "->");
+    create(EQ, "=");
+    create(PLUS, "+");
+    create(MINUS, "-");
+    create(STAR, "*");
+    create(SLASH, "/");
+    create(BANG, "!");
 };
 
 macro generate_case!(kind, value) {
     case TokenKind::kind:
         return value;
-    ;
 };
  
 macro generate_enum!(kind, value) {
@@ -38,7 +37,7 @@ macro generate_enum!(kind, value) {
 };
 
 enum TokenKind {
-    tokens!(generate_enum)
+    tokens!(generate_enum!)
 }
 
 
@@ -46,9 +45,7 @@ fn string_of_token(kind: TokenKind) -> string {
     
 }
 
-
 // -------------------------------------------------------- //
-
 
 class Span {
     let start: usize;
@@ -57,6 +54,11 @@ class Span {
     fn length() -> usize {
         return self.end - self.start;
     }
+}
+
+    
+fn input(lalla: string) -> typeofcalle!() {
+    
 }
 
 struct Location {
@@ -74,9 +76,10 @@ class Token {
 
     op as fn (self) -> string {
         switch kind {
-            tokens!(generate_case)
+            tokens!(generate_case!)
         }
 
         return "unknown";
+        
     }
 }

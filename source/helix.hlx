@@ -22,7 +22,11 @@
 /*
 using the new toolchain the entire process can happen like this:
 */
-
+module ojas {
+macro ban! () {
+    $"};"
+};
+}
 
 interface foo requires <U> {
     fn foo(self) -> U;
