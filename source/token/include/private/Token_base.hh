@@ -60,14 +60,14 @@ __TOKEN_BEGIN {
 
         explicit Token(tokens token_type, const std::string &filename, std::string value = "");
 
-        Token(tokens token_type, std::string value, const Token &loc) :
-            line(loc.line),
-            column(loc.column),
-            len(value.length()),
-            _offset(loc.offset()),
-            kind(token_type),
-            val(std::move(value)),
-            filename(loc.filename) {}
+        Token(tokens token_type, std::string value, const Token &loc)
+            : line(loc.line)
+            , column(loc.column)
+            , len(value.length())
+            , _offset(loc.offset())
+            , kind(token_type)
+            , val(std::move(value))
+            , filename(loc.filename) {}
 
         ~Token();
 
@@ -88,6 +88,8 @@ __TOKEN_BEGIN {
         bool          operator==(const tokens &rhs) const;
         std::ostream &operator<<(std::ostream &os) const;
         Token        &operator+(const string &str);
+        operator tokens() const { return token_kind(); }
+        operator tokens() { return token_kind(); }
 
         TO_NEO_JSON_IMPL {
             neo::json token_json("Token");
