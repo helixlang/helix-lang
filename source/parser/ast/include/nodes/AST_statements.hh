@@ -163,9 +163,9 @@ __AST_NODE_BEGIN {
         // := 'case' expr Suite | 'default' Suite
 
         enum class CaseType {
-            Case,
-            Default,
-            Fallthrough,
+            Case,        // no fallthrough
+            Default,     // no fallthrough
+            Fallthrough, // fallthrough
         };
 
         SwitchCaseState(NodeT<>           condition,

@@ -794,6 +794,7 @@ AST_NODE_IMPL(Statement, SwitchCaseState) {
     // := ('case' E SuiteState) | 'default' SuiteState
 
     __TOKEN_N::Token marker;
+    SwitchCaseState::CaseType case_type = SwitchCaseState::CaseType::Case;
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CASE)) {
         marker = CURRENT_TOK;
@@ -802,39 +803,72 @@ AST_NODE_IMPL(Statement, SwitchCaseState) {
         ParseResult<> expr = expr_parser.parse();
         RETURN_IF_ERROR(expr);
 
-        // if thres a fallthorugh
-        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) {
+        // fallthrough always and only 1 statement allowed for readability reasons
+        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) { // case ...: ...; case ...:
+            case_type = SwitchCaseState::CaseType::Fallthrough;
+
             if (iter.peek().has_value() && NEXT_TOK.token_kind() == __TOKEN_N::KEYWORD_CASE) {
                 iter.advance();  // skip ':'
-                return make_node<SwitchCaseState>(
-                    expr.value(), nullptr, SwitchCaseState::CaseType::Fallthrough, marker);
+                return make_node<SwitchCaseState>(expr.value(), nullptr, case_type, marker);
             }
         }
 
-        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
+        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) { // case ... { ...* } // auto breaks
+            case_type = SwitchCaseState::CaseType::Case;
+
             if (iter.peek().has_value() &&
                 NEXT_TOK.token_kind() == __TOKEN_N::PUNCTUATION_CLOSE_BRACE) {
                 return std::unexpected(PARSE_ERROR(
-                    CURRENT_TOK, "mssing statement, if you want to fallthrough use ':'"));
+                    CURRENT_TOK, "missing statement, if you want to fallthrough use ':'"));
             }
+        }
+
+        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_ARROW)) { // case ... -> foo; // auto breaks
+            case_type = SwitchCaseState::CaseType::Case;
+            iter.advance();  // skip '->'
+
+            Declaration decl_parser(iter);
+
+            ParseResult<> decl = decl_parser.parse();
+            RETURN_IF_ERROR(decl);
+
+            NodeT<BlockState> block = make_node<BlockState>(NodeV<>{decl.value()});
+            NodeT<SuiteState> body  = make_node<SuiteState>(block);
+
+            return make_node<SwitchCaseState>(expr.value(), body, case_type, marker);
         }
 
         ParseResult<SuiteState> body = parse<SuiteState>();
         RETURN_IF_ERROR(body);
 
         return make_node<SwitchCaseState>(
-            expr.value(), body.value(), SwitchCaseState::CaseType::Case, marker);
+            expr.value(), body.value(), case_type, marker);
     }
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DEFAULT)) {
+        case_type = SwitchCaseState::CaseType::Default;
+
         marker = CURRENT_TOK;
         iter.advance();  // skip 'default'
+
+        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_ARROW)) { // case ... -> foo; // auto breaks
+            iter.advance();  // skip '->'
+
+            Declaration decl_parser(iter);
+
+            ParseResult<> decl = decl_parser.parse();
+            RETURN_IF_ERROR(decl);
+
+            NodeT<BlockState> block = make_node<BlockState>(NodeV<>{decl.value()});
+            NodeT<SuiteState> body  = make_node<SuiteState>(block);
+
+            return make_node<SwitchCaseState>(nullptr, body, case_type, marker);
+        }
 
         ParseResult<SuiteState> body = parse<SuiteState>();
         RETURN_IF_ERROR(body);
 
-        return make_node<SwitchCaseState>(
-            nullptr, body.value(), SwitchCaseState::CaseType::Default, marker);
+        return make_node<SwitchCaseState>(nullptr, body.value(), case_type, marker);
     }
 
 #define DEFAULT_CASE_TOKENS {__TOKEN_N::KEYWORD_CASE, __TOKEN_N::KEYWORD_DEFAULT}
