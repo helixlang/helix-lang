@@ -145,8 +145,6 @@ def run_test(compiler_path, folder_path, file_name):
                                              f"      {COLOR_YELLOW}Output:{COLOR_RESET}\n" \
                                              f"        {(NEW_LINE_CHAR + '        ').join(stderr.splitlines())}"
 
-
-
         # Make sure there no stdout and there is only stderr
         if stdout.strip() == "" and stderr.strip() != "":
             logger.info(f"Error check passed for file: {file_name}")
