@@ -13,6 +13,7 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include "generator/include/config/Gen_config.def"
 #include "utils.hh"
 
 CX_VISIT_IMPL(Type) {  // TODO Modifiers
@@ -50,8 +51,34 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
         return;
     }
 
-    if (node.is_fn_ptr) {
-        CXIR_NOT_IMPLEMENTED;
+    if (node.is_fn_ptr) {  // $function<rt(prm)>
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "helix", node.fn_ptr.marker);
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", node.fn_ptr.marker);
+        ADD_TOKEN(CXX_SCOPE_RESOLUTION);
+
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$function", node.fn_ptr.marker);
+        ADD_TOKEN(CXX_LESS_THAN);
+
+        if (node.fn_ptr.returns) {
+            ADD_PARAM(node.fn_ptr.returns);
+        } else {
+            ADD_TOKEN(CXX_VOID);
+        }
+        PAREN_DELIMIT(  //
+            if (!node.fn_ptr.params.empty()) {
+                for (const auto &prm : node.fn_ptr.params) {
+                    ADD_PARAM(prm);
+                    ADD_TOKEN(CXX_COMMA);
+                }
+
+                tokens.pop_back();  // remove the last comma added
+            }  //
+        );
+
+        ADD_TOKEN(CXX_GREATER_THAN);
+        return;
     }
 
     ADD_NODE_PARAM(value);

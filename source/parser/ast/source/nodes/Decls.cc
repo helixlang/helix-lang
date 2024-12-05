@@ -836,8 +836,7 @@ AST_NODE_IMPL(Declaration,
 
     bool has_name = true;
 
-    if (!force_name &&
-        !(CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) || CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE))) {
+    if (!force_name && !(CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) || CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_SCOPE))) {
         has_name = false;
     }
 
@@ -857,28 +856,32 @@ AST_NODE_IMPL(Declaration,
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_OPEN_PAREN);
     iter.advance();  // skip '('
 
-    while (CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) || CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CONST)) {
+    if (!CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) {
         __TOKEN_N::Token starting = CURRENT_TOK;
+        ParseResult<VarDecl> first_param = parse<VarDecl>(true);
+        RETURN_IF_ERROR(first_param);
 
-        ParseResult<VarDecl> param = parse<VarDecl>(true);
-        RETURN_IF_ERROR(param);
+        node->params.emplace_back(first_param.value());
 
-        if (param.value()->value != nullptr) {
-            if (has_keyword) {
-                return std::unexpected(
-                    PARSE_ERROR(starting, "positional argument after default argument"));
+        while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
+            iter.advance();  // skip ','
+
+            ParseResult<VarDecl> param = parse<VarDecl>(true);
+            RETURN_IF_ERROR(param);
+
+            if (param.value()->value != nullptr) {
+                has_keyword = true;
+            } else { // if theres no value but theres a keyword arg
+                if (has_keyword) {
+                    return std::unexpected(
+                        PARSE_ERROR(starting, "positional argument after default argument"));
+                }
             }
 
-            has_keyword = true;
-        }
-
-        node->params.emplace_back(param.value());
-
-        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
-            iter.advance();  // skip ','
+            node->params.emplace_back(param.value());
         }
     }
-
+    
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_PAREN);
     iter.advance();  // skip ')'
 

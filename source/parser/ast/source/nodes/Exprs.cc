@@ -1453,7 +1453,7 @@ AST_NODE_IMPL(Expression, LambdaExpr) {
     RETURN_IF_ERROR(decl);
 
     NodeT<FuncDecl> func_decl = decl.value();
-    if (lambda->body == nullptr) {
+    if (func_decl->body == nullptr) {
         return std::unexpected(
             PARSE_ERROR_MSG("lambda expresion excepted to have a body, but this is missing one"));
     }

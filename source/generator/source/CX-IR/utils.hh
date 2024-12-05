@@ -659,58 +659,60 @@ class ModifyNestedFunctions {
         : emitter(emitter) {}
 
     bool operator()(const __AST_N::NodeT<> &elm) const {
+        emitter->append(std::make_unique<CX_Token>(CXX_SEMICOLON));
+
         if (elm->getNodeType() == __AST_NODE::nodes::FuncDecl) {
             __AST_N::NodeT<__AST_NODE::FuncDecl> func_decl = __AST_N::as<__AST_NODE::FuncDecl>(elm);
 
             if (func_decl->name != nullptr) {
-                emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AUTO));
-                emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, func_decl->name->get_back_name().value(), func_decl->marker));
-                emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_EQUAL));
+                emitter->append(std::make_unique<CX_Token>(CXX_AUTO));
+                emitter->append(std::make_unique<CX_Token>(CXX_CORE_IDENTIFIER, func_decl->name->get_back_name().value(), func_decl->marker));
+                emitter->append(std::make_unique<CX_Token>(CXX_EQUAL));
             }
 
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LBRACKET));
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RBRACKET));
+            emitter->append(std::make_unique<CX_Token>(CXX_LBRACKET));
+            emitter->append(std::make_unique<CX_Token>(CXX_RBRACKET));
 
             if (func_decl->generics) {
-                emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LESS));
+                emitter->append(std::make_unique<CX_Token>(CXX_LESS));
                 func_decl->generics->params->accept(*emitter);
-                emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_GREATER));
+                emitter->append(std::make_unique<CX_Token>(CXX_GREATER));
             }
 
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+            emitter->append(std::make_unique<CX_Token>(CXX_LPAREN));
             if (!func_decl->params.empty()) {
                 if (func_decl->params[0] != nullptr) {
                     func_decl->params[0]->accept(*emitter);
                 };
                 for (size_t i = 1; i < func_decl->params.size(); ++i) {
                     emitter->append(
-                        std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_OPERATOR, ","));
+                        std::make_unique<CX_Token>(CXX_CORE_OPERATOR, ","));
                     ;
                     if (func_decl->params[i] != nullptr) {
                         func_decl->params[i]->accept(*emitter);
                     };
                 }
             };
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+            emitter->append(std::make_unique<CX_Token>(CXX_RPAREN));
 
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PTR_ACC));
+            emitter->append(std::make_unique<CX_Token>(CXX_PTR_ACC));
 
             if (func_decl->returns) {
                 func_decl->returns->accept(*emitter);
             } else {
                 emitter->append(
-                    std::make_unique<CX_Token>(cxir_tokens::CXX_VOID, func_decl->marker));
+                    std::make_unique<CX_Token>(CXX_VOID, func_decl->marker));
             }
 
             if (func_decl->generics) {
                 if (func_decl->generics->bounds) {
-                    emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_REQUIRES));
+                    emitter->append(std::make_unique<CX_Token>(CXX_REQUIRES));
                     func_decl->generics->bounds->accept(*emitter);
                 }
             }
 
             func_decl->body->accept(*emitter);
-            emitter->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+            emitter->append(std::make_unique<CX_Token>(CXX_SEMICOLON));
             return true;
         }
 
@@ -729,6 +731,7 @@ class ModifyNestedFunctions {
         if (elm->getNodeType() == __AST_NODE::nodes::LetDecl) {
             __AST_N::NodeT<__AST_NODE::LetDecl> node = __AST_N::as<__AST_NODE::LetDecl>(elm);
             emitter->visit(*node, true);
+            emitter->append(std::make_unique<CX_Token>(CXX_SEMICOLON));
 
             return true;
         }
