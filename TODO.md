@@ -2,7 +2,7 @@
 
 - [x] Parse TurboFish syntax (temporary until the symbol table is implemented)
 - [x] Parse and codegen reference and pointer types along with nullability
-- [ ] Parse and codegen function pointers
+- [x] Parse and codegen function pointers
 - [x] Parse Tuple types and codegen them
 - [ ] Add support for packing and unpacking functions and destructuring
 - [ ] Parse simple macros and invocations
@@ -22,7 +22,7 @@
 
 
 # TODO remaining until standard library can be implemented:
-- [ ] Codegen the missing codgen functions (lambdas, maps, sets, and a couple of others)
+- [x] Codegen the missing codgen functions (lambdas, maps, sets, and a couple of others)
 - [x] Codegen Interfaces
 - [ ] Parse and codegen `extend` syntax for generic specializations
 - [ ] Parse and codegen `...` variadic argument syntax
@@ -30,7 +30,10 @@
 - [ ] Codegen Modifiers and Attributes (partly done - only functions is done)
 - [ ] Make scope paths with generics work
 - [ ] Make panic and panic unwinding work
+- [ ] make operator $ question work
 - [ ] make the core lib auto import by default
+- [ ] ObjInitializer doesnt work for some reason
+- [ ] F-strings are broken in 2 ways, 1. they dont work if theres no format specifier inside an fstring like: f"hello" (fails but should work) 2. f"hello {"world"}" works but if theres a bracket inside the fstring it fails: f"hello {"workd {"}}"}" (fails but should work since the string inside isnt a fstring)
 
 
 ### **1. Parse and Codegen Function Pointers**

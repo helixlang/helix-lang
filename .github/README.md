@@ -135,7 +135,7 @@ curl -fsSL https://xmake.io/shget.text | bash
 
 1. Make a directory for the project and clone the repo
 ```ps
-$ git clone https://github.com/kneorain/helix-lang.git
+$ git clone https://github.com/helixlang/helix-lang.git
 $ cd helix-lang
 ```
 
@@ -232,8 +232,8 @@ At this point the compiler is usable, but errors only extend to syntax errors, a
 
 Helix is an open-source project, and we welcome contributions! Whether it's fixing bugs, improving documentation, or adding new features, your contributions are valuable.
 
-- [Submit Issues](https://github.com/kneorain/helix-lang/issues)
-- [Submit Pull Requests](https://github.com/kneorain/helix-lang/pulls)
+- [Submit Issues](https://github.com/helixlang/helix-lang/issues)
+- [Submit Pull Requests](https://github.com/helixlang/helix-lang/pulls)
 
 Read our [Contributing Guide](CONTRIBUTING.md) for more details.
 
@@ -241,7 +241,7 @@ Read our [Contributing Guide](CONTRIBUTING.md) for more details.
 
 ## License
 
-Helix is licensed under the Attribution 4.0 International License. See the [LICENSE](https://github.com/kneorain/helix-lang/blob/main/license) for more details.
+Helix is licensed under the Attribution 4.0 International License. See the [LICENSE](https://github.com/helixlang/helix-lang/blob/main/license) for more details.
 
 ---
 
@@ -250,8 +250,8 @@ Helix is licensed under the Attribution 4.0 International License. See the [LICE
 We want to thank all contributors for their efforts in making Helix a reality. Your work is appreciated!
 
 <div align="center">
-  <a href="https://github.com/kneorain/helix-lang/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=kneorain/helix-lang">
+  <a href="https://github.com/helixlang/helix-lang/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=helixlang/helix-lang">
   </a>
 </div>
 
