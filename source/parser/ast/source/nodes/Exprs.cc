@@ -335,7 +335,6 @@ AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-com
                     continue_loop = false;
                     break;
                 }
-
                 expr = parse<ObjInitExpr>(false, expr);
                 RETURN_IF_ERROR(expr);
                 break;
@@ -1419,7 +1418,7 @@ AST_NODE_IMPL(Expression, ObjInitExpr, bool skip_start_brace, ParseResult<> obj_
             obj->kwargs.push_back(next.value());
         }
 
-    if (is_anonymous) {
+    if (!is_anonymous) {
         obj->path = obj_path.value();
     }
 
