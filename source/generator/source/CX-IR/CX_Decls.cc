@@ -128,25 +128,15 @@ CX_VISIT_IMPL(ModuleDecl) {
 CX_VISIT_IMPL(EnumDecl) {
 
     ADD_TOKEN(CXX_ENUM);
-    ADD_TOKEN(CXX_STRUCT);  // Same as enum class, but it makes more sense here to be a struct
-    ADD_NODE_PARAM(name);
-    ADD_TOKEN(CXX_COLON);
 
-    // bool has_neg= false;
+    if (node.name != nullptr) {
+        ADD_TOKEN(CXX_CLASS);
+        ADD_NODE_PARAM(name);
+    }
 
-    // for (auto& mem : node.members) {
-    //     if (mem->value) {
-    //         mem->value.get().
-    //     }
-    // }
-
-    if (node.derives) {           //
-        ADD_NODE_PARAM(derives);  //
-    } else {                      // TODO: after sign is checked use: ADD_TOKEN(CXX_UNSIGNED);
-        // if (node.members.size() >=256 )      { ADD_TOKEN(CXX_CHAR);}
-        // else if (node.members.size()  ) { ADD_TOKEN(CXX_SHORT);}
-        // else if (node.members.size()  ) { ADD_TOKEN(CXX_CHAR);}
-        // TODO: SIZING restrictions based on number of elements
+    if (node.derives) {
+        ADD_TOKEN(CXX_COLON);
+        ADD_NODE_PARAM(derives);
     }
 
     BRACE_DELIMIT(           //

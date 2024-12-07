@@ -308,6 +308,12 @@ CX_VISIT_IMPL(FunctionCallExpr) {
     }
 
     ADD_NODE_PARAM(generic);
+
+    if (node.args->getNodeType() == __AST_NODE::nodes::ObjInitExpr) {
+        auto obj = __AST_N::as<__AST_NODE::ObjInitExpr>(node.args);
+        obj->path = nullptr;
+    }
+
     ADD_NODE_PARAM(args);
 }
 
@@ -348,18 +354,19 @@ CX_VISIT_IMPL(MapLiteralExpr) {
 }
 
 CX_VISIT_IMPL(ObjInitExpr) {
-    if (node.path) {
-        ADD_NODE_PARAM(path);
-    }
+    ADD_NODE_PARAM(path);
 
     BRACE_DELIMIT(  //
         if (!node.kwargs.empty()) {
-            ADD_NODE_PARAM(kwargs[0]->value);
-
-            for (size_t i = 1; i < node.kwargs.size(); ++i) {
+            for (auto &i : node.kwargs) {
+                ADD_TOKEN(CXX_DOT);
+                ADD_PARAM(i->name);
+                ADD_TOKEN_AT_LOC(CXX_ASSIGN, i->name->name);
+                ADD_PARAM(i->value);
                 ADD_TOKEN(CXX_COMMA);
-                ADD_NODE_PARAM(kwargs[i]->value);
             }
+
+            tokens.pop_back(); // remove last comma
         }  //
     );
 }
