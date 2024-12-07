@@ -9,7 +9,7 @@ interface Basic_Something {
 }
 
 // A class implementing Foe and Basic_Something
-class Drinks extend Foe::<int>, Basic_Something {
+class Drinks with Foe::<int>, Basic_Something {
     fn poo(self) -> int {
         return self.x;
     }

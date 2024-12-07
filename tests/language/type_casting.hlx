@@ -19,6 +19,32 @@ class Derived derives Base {
     }
 }
 
+struct TempContainer {
+    let vb: i32;
+}
+
+class ClassCasting {
+    let val: i32;
+
+    fn ClassCasting(self, val: i32) {
+        self.val = val;
+    }
+
+    op as fn (self) -> TempContainer {
+        return TempContainer {
+            vb = self.val
+        };
+    }
+
+    op delete fn (self) {
+        print("destroying");
+    }
+}
+
+fn takes_temp_container(tc: TempContainer) {
+    print(f"{tc.vb}");
+}
+
 fn main() -> i32 {
     // Test 1: remove constness
     const const_val: i32 = 42;
@@ -53,6 +79,9 @@ fn main() -> i32 {
     f = h as unsafe *i32;
 
     print(f"f = {f}, h = {h}, g = {g}");
+
+    let ic = ClassCasting(42);
+    //takes_temp_container(ic as TempContainer); // without the cast this should work (since it's an implicit cast)
 
     return 0;
 }

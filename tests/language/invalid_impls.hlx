@@ -4,14 +4,14 @@ interface Haggler requires <U> {
 }
 
 // Invalid class with mismatched return type
-class InvalidC extend Haggler::<string> {
+class InvalidC with Haggler::<string> {
     fn tia(self) -> i64 { // Mismatched return type
         return 0;
     }
 }
 
 // Invalid class missing required method
-class MissingMethodC extend Haggler::<int> {
+class MissingMethodC with Haggler::<int> {
     // Missing `fn tia(self) -> int`
 }
 

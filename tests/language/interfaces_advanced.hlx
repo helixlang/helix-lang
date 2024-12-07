@@ -9,7 +9,7 @@ interface Advanced requires <U> if U has Foe::<i32> {
 }
 
 // A class implementing Foe
-class Tavern extend Foe::<i32> {
+class Tavern with Foe::<i32> {
     fn flip(self) -> i32 {
         return self.x;
     }
@@ -22,7 +22,7 @@ class Achoo {
 }
 
 // A class implementing Advanced
-class AdvancedTavern extend Advanced::<Tavern>
+class AdvancedTavern with Advanced::<Tavern>
   requires <U> if U has Foe::<i32> {
     pub let advanced_field: U;
 
@@ -32,7 +32,10 @@ class AdvancedTavern extend Advanced::<Tavern>
 
     static fn advanced_static_method(value: U) -> U {
         return value;
-        
+    }
+
+    fn AdvancedTavern(self, advanced_field: U) {
+        self.advanced_field = advanced_field;
     }
 }
 
@@ -42,7 +45,7 @@ class InvalidTavern {
         return Tavern{};
     }
 
-    static fn advanced_static_method(value: Tavern) -> Tavern {
+    static fn advanced_static_method(value: &Tavern) -> Tavern {
         return value;
     }
 
@@ -51,7 +54,7 @@ class InvalidTavern {
 
 fn main() -> i32 {
     // Test Advanced interface
-    let advanced_instance = AdvancedTavern::<Tavern>{advanced_field = Tavern{}};
+    let advanced_instance = AdvancedTavern::<Tavern>(Tavern{});
     print(advanced_instance.advanced_method().flip()); // Should print 10
 
     print("true" if (InvalidTavern has Advanced::<Tavern>) else "false"); // Should print false

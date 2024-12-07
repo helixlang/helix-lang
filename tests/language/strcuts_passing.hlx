@@ -1,0 +1,118 @@
+struct Point {
+    let x: i32;
+    let y: i32;
+
+    op + fn (self, other: &Point) -> Point {
+        return Point {
+            x = self.x + other.x,
+            y = self.y + other.y
+        };
+    }
+}
+
+struct Foam {
+    let x: int;
+
+    op + fn (self) -> int { // works
+        return self.x;
+    }
+}
+
+struct Soap {
+    let x: int;
+
+    enum {
+        A,
+        B,
+        C
+    } // works
+}
+
+struct Lick {
+    let x: int;
+    const y: int = 10;
+}
+
+struct Pick {
+    let x: int;
+    enum EnumName {
+        A,
+        B,
+        C
+    }
+
+    const y: EnumName = EnumName::A;
+}
+
+struct Arugula {
+    let x: int;
+    let y: int;
+    let z: int;
+    let w: int;
+    let v: int;
+    let u: int;
+    let t: int;
+    let s: int;
+    let r: int;
+    let q: int;
+    let p: int;
+    let o: int;
+    let n: int;
+    let m: int;
+    let l: int;
+    let k: int;
+    let j: int;
+    let i: int;
+    let h: int;
+    let g: int;
+    let f: int;
+    let e: int;
+    let d: int;
+    let c: int;
+    let b: int;
+    let a: int;
+}
+
+struct Sitting1 {
+    struct Nested {
+        let x: int;
+    }
+
+    let woa: Nested;
+}
+
+struct Sitting2 {
+    struct Nested {
+        let x: int;
+    }
+
+    let woa: Nested;
+    let x: int;
+}
+
+struct Sitting3 {
+    type alias_to_int = int;
+    let x: alias_to_int;
+}
+
+fn main() -> i32 {
+    let p = Point { x = 3, y = 4 };
+    print(f"({p.x}, {p.y})");
+
+    let q: Point;
+    q = Point { x = 1, y = 2 };
+    
+    let r: Point = p + q;
+
+    print(f"({r.x}, {r.y})");
+
+    return 0;
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+(3, 4)
+(4, 6)
+// END TEST
+*/

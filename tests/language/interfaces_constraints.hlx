@@ -9,7 +9,7 @@ interface ConstrainedI requires <U> if U has SimpleI {
 }
 
 // A class implementing SimpleI
-class Bar extend SimpleI {
+class Bar with SimpleI {
     fn innit(self) -> int {
         return self.x;
     }
@@ -18,7 +18,7 @@ class Bar extend SimpleI {
 }
 
 // A class implementing constrained interface
-class ConstrainedPub extend ConstrainedI::<Bar> {
+class ConstrainedPub with ConstrainedI::<Bar> {
     fn mandem(self, other: Bar) -> bool {
         return self.x > other.x;
     }

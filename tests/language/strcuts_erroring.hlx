@@ -1,0 +1,32 @@
+struct LAO {
+    let x: int;
+
+    fn bar(self) -> int { // error: structs cant have methods
+        return self.x;
+    }
+}
+
+struct LOB {
+    let x: int;
+
+    op + fn bar(self) -> int { // error: structs cant have named operators
+        return self.x;
+    }
+}
+
+struct LAC {
+    let x: int;
+    
+    class T1 { // error: structs cant have classes
+        let x: int;
+    }
+}
+
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START ERRORS
+error: invalid syntax: struct declaration cannot have a node of type: 'FuncDecl', struct can only contain: enums, types, structs, unnamed ops, and let/const declarations.
+error: invalid syntax: struct declaration cannot have named operators; remove the named alias.
+error: invalid syntax: struct declaration cannot have a node of type: 'ClassDecl', struct can only contain: enums, types, structs, unnamed ops, and let/const declarations.
+// END ERRORS
+*/

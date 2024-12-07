@@ -27,9 +27,13 @@ fn main() -> i32 {
 
     // Test: switch-case
     switch x {
-        case 15: print("x is 15");
-        case 10: print("x is 10");
-        default: print("x is neither 15 nor 10");
+        case 15 {
+            print("x is 15");
+        } case 10 {
+            print("x is 10");
+        } default {
+            print("x is neither 15 nor 10");
+        }
     }
 
     return 0;

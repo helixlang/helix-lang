@@ -1,0 +1,22 @@
+// anonymous enum
+struct S {
+    enum {
+        A,
+        B,
+        C
+    }
+}
+
+fn main() -> i32 {
+    let s = S::A;
+    let t = S::B;
+    let u = S::C;
+
+    print(f"{s}, {t}, {u}");
+}
+/*
+--------- do not remove this comment, it is used by the test script to validate the output ---------
+// START TEST
+0, 1, 2
+// END TEST
+*/
