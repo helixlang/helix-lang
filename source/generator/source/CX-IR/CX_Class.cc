@@ -22,6 +22,8 @@ CX_VISIT_IMPL(ClassDecl) {
                                const __AST_N::NodeT<__AST_NODE::SuiteState> &body) {
         if (body != nullptr) {
             self->append(cxir_tokens::CXX_LBRACE);
+            bool has_destructor = false;
+            bool has_constructor = false;
 
             for (auto &child : body->body->body) {
                 if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
@@ -37,6 +39,8 @@ CX_VISIT_IMPL(ClassDecl) {
 
                             continue;
                         }
+
+                        has_constructor = true;
                     }
 
                     handle_static_self_fn_decl(func_decl, func_name);
@@ -63,6 +67,10 @@ CX_VISIT_IMPL(ClassDecl) {
                         op_name = op_decl->func->name->get_back_name();
                     } else {
                         op_name = op_decl->op.back();
+                    }
+
+                    if (op_t.type == OpType::Error) {
+                        continue;
                     }
 
                     /// FIXME: this is ugly as shit. this has to be fixed, we need pattern matching
@@ -98,12 +106,33 @@ CX_VISIT_IMPL(ClassDecl) {
                                 }
                             }
                         }
-                    } else if (op_t.type == OpType::Error) {
+                    } else if (op_t.type == OpType::DeleteOp) {
+                        // generate: ~name->name() body
+                        has_destructor = true;
+                        
+                        if (op_decl->modifiers.contains(token::tokens::KEYWORD_PROTECTED) || op_decl->modifiers.contains(token::tokens::KEYWORD_PRIVATE)) {
+                            error::Panic(error::CodeError{
+                                            .pof          = &op_name,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define a destructor as private or protected"}});
+                        }
+
+                        add_public(self);
+                        token::Token marker = ((op_t.tok == nullptr) ? node.name->name : *op_t.tok);
+                    
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_TILDE, marker));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER,
+                                                                node.name->name.value(), marker));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+                        self->visit(*op_decl->func->body);
+
                         continue;
                     }
 
                     add_visibility(self, op_decl->func);
-
                     self->visit(*op_decl, true);
                 } else if (child->getNodeType() == __AST_NODE::nodes::LetDecl) {
                     auto let_decl = __AST_N::as<__AST_NODE::LetDecl>(child);
@@ -137,6 +166,19 @@ CX_VISIT_IMPL(ClassDecl) {
                     self->append(cxir_tokens::CXX_SEMICOLON);
                 }
             }
+
+            if (!has_constructor) {
+                default_constructor(self, node.name);
+            }
+
+            if (!has_destructor) {
+                default_destructor(self, node.name);
+            }
+
+            delete_copy_constructor(self, node.name);
+            delete_copy_assignment(self, node.name);
+            default_move_constructor(self, node.name);
+            default_move_assignment(self, node.name);
 
             self->append(cxir_tokens::CXX_RBRACE);
         }

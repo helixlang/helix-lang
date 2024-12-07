@@ -1,71 +1,183 @@
 ///--- The Helix Project ------------------------------------------------------------------------///
 ///                                                                                              ///
-///   Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).    ///
-///   You are allowed to use, modify, redistribute, and create derivative works, even for        ///
+///   part of the helix project, under the attribution 4.0 international license (cc by 4.0).    ///
+///   you are allowed to use, modify, redistribute, and create derivative works, even for        ///
 ///   commercial purposes, provided that you give appropriate credit, and indicate if changes    ///
 ///   were made.                                                                                 ///
 ///                                                                                              ///
-///   For more information on the license terms and requirements, please visit:                  ///
+///   for more information on the license terms and requirements, please visit:                  ///
 ///     https://creativecommons.org/licenses/by/4.0/                                             ///
 ///                                                                                              ///
-///   SPDX-License-Identifier: CC-BY-4.0                                                         ///
-///   Copyright (c) 2024 The Helix Project (CC BY 4.0)                                           ///
+///   spdx-license-identifier: cc-by-4.0                                                         ///
+///   copyright (c) 2024 the helix project (cc by 4.0)                                           ///
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
 #include "utils.hh"
 
 CX_VISIT_IMPL(StructDecl) {
-    // TODO: only enums, strcuts, types, unnamed ops, and vars (let or const)
-    // TODO: Modifiers
-    if (node.generics) {           //
-        ADD_NODE_PARAM(generics);  //
+    auto add_udt_body = [node](CXIR                                         *self,
+                               const __AST_N::NodeT<__AST_NODE::IdentExpr>   name,
+                               const __AST_N::NodeT<__AST_NODE::SuiteState> &body) {
+        if (body != nullptr) {
+            self->append(cxir_tokens::CXX_LBRACE);
+            bool has_destructor = false;
+
+            for (auto &child : body->body->body) {
+                switch (child->getNodeType()) {
+                    case __AST_NODE::nodes::EnumDecl:
+                    case __AST_NODE::nodes::StructDecl:
+                    case __AST_NODE::nodes::TypeDecl:
+                    case __AST_NODE::nodes::OpDecl:
+                    case __AST_NODE::nodes::LetDecl:
+                    case __AST_NODE::nodes::ConstDecl:
+                        break;
+                    default:
+                        CODEGEN_ERROR(
+                            node.name->name,
+                            "struct declaration cannot have a node of type: '" +
+                                child->getNodeName() +
+                                "', struct can only contain: enums, types, structs, unnamed ops, "
+                                "and let/const declarations.");
+                        continue;
+                }
+
+                if (child->getNodeType() == __AST_NODE::nodes::OpDecl) {
+                    auto op_decl = __AST_N::as<__AST_NODE::OpDecl>(child);
+                    if (op_decl->func->name) {
+                        auto marker = op_decl->func->name->get_back_name();
+                        CODEGEN_ERROR(
+                            marker,
+                            "struct declaration cannot have named operators; remove the named alias.");
+                        continue;
+                    }
+
+                    auto op_t = OpType(*op_decl, true);
+                    if (op_t.type == OpType::Error) {
+                        continue;
+                    }
+
+                    if (op_t.type == OpType::GeneratorOp) {
+                        for (auto &child : body->body->body) {
+                            if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
+                                auto func_decl = __AST_N::as<__AST_NODE::FuncDecl>(child);
+                                token::Token func_name = func_decl->name->get_back_name();
+
+                                if (func_name.value() == "begin" && func_decl->params.size() == 0) {
+                                    error::Panic(error::CodeError{
+                                        .pof          = &func_name,
+                                        .err_code     = 0.3002,
+                                        .err_fmt_args = {
+                                            "cannot define both begin/end functions and overload "
+                                            "the `in` generator operator"}});
+                                }
+
+                                if (func_name.value() == "end" && func_decl->params.size() == 0) {
+                                    error::Panic(error::CodeError{
+                                        .pof          = &func_name,
+                                        .err_code     = 0.3002,
+                                        .err_fmt_args = {
+                                            "cannot define both begin/end functions and overload "
+                                            "the `in` generator operator"}});
+                                }
+                            }
+                        }
+                    } else if (op_t.type == OpType::DeleteOp) {
+                        // generate: ~name->name() body
+                        has_destructor = true;
+                        
+                        if (op_decl->modifiers.contains(token::tokens::KEYWORD_PROTECTED) || op_decl->modifiers.contains(token::tokens::KEYWORD_PRIVATE)) {
+                            error::Panic(error::CodeError{
+                                            .pof          = &*op_t.tok,
+                                            .err_code     = 0.3002,
+                                            .err_fmt_args = {
+                                                "can not define a destructor as private or protected"}});
+                        }
+
+                        add_public(self);
+                        token::Token marker = ((op_t.tok == nullptr) ? node.name->name : *op_t.tok);
+                    
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_TILDE, marker));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER,
+                                                                node.name->name.value(), marker));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+                        self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+                        self->visit(*op_decl->func->body);
+
+                        continue;
+                    }
+
+                    add_visibility(self, op_decl->func);
+                    self->visit(*op_decl, true);
+                } else if (child->getNodeType() == __AST_NODE::nodes::LetDecl) {
+                    auto let_decl = __AST_N::as<__AST_NODE::LetDecl>(child);
+
+                    if (let_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (let_decl->vis.contains(token::tokens::KEYWORD_PRIVATE)) {
+                        add_private(self);
+                    } else {
+                        add_public(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                } else if (child->getNodeType() == __AST_NODE::nodes::ConstDecl) {
+                    auto const_decl = __AST_N::as<__AST_NODE::ConstDecl>(child);
+
+                    if (const_decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+                        add_protected(self);
+                    } else if (const_decl->vis.contains(token::tokens::KEYWORD_PRIVATE)) {
+                        add_private(self);
+                    } else {
+                        add_public(self);
+                    }
+
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                } else {
+                    add_visibility(self, child);
+                    child->accept(*self);
+                    self->append(cxir_tokens::CXX_SEMICOLON);
+                }
+            }
+
+            // generate: ...(const ...&) = delete;
+            // generate: ...& operator=(const ...&) = delete;
+            // generate: ...(...&&) noexcept = default;
+            // generate: ...& operator=(...&&) noexcept = default;
+            // also generate a default destructor if not present
+
+            if (!has_destructor) {
+                default_destructor(self, node.name);
+            }
+
+            // default_constructor(self, node.name);
+            // delete_copy_constructor(self, node.name);
+            // default_move_constructor(self, node.name);
+
+            delete_copy_assignment(self, node.name);
+            default_move_assignment(self, node.name);
+
+            self->append(cxir_tokens::CXX_RBRACE);
+        }
     };
 
-    // ADD_TOKEN(CXX_TYPEDEF);
+    if (node.generics != nullptr) {
+        ADD_NODE_PARAM(generics);
+    }
 
     ADD_TOKEN(CXX_STRUCT);
-
     ADD_NODE_PARAM(name);
 
     if (node.derives) {
         ADD_TOKEN(CXX_COLON);
-        ADD_NODE_PARAM(derives);  // should be its own generator
+        ADD_NODE_PARAM(derives);
     }
 
     if (node.body != nullptr) {
-        for (auto &decl : node.body->body->body) {
-            switch (decl->getNodeType()) {
-                case parser::ast::node::nodes::EnumDecl:
-                case parser::ast::node::nodes::StructDecl:
-                case parser::ast::node::nodes::TypeDecl:
-                case parser::ast::node::nodes::OpDecl:
-                case parser::ast::node::nodes::LetDecl:
-                case parser::ast::node::nodes::ConstDecl:
-                    break;
-                default:
-                    CODEGEN_ERROR(node.name->name,
-                                  "strcut declaration cannot have a node of type: '" +
-                                      decl->getNodeName() +
-                                      "', strcut can only contain: enums, types, strcuts, unnamed "
-                                      "ops, and let/const declarations.")
-                    continue;
-            }
-
-            if (decl->getNodeType() == parser::ast::node::nodes::OpDecl) {
-                parser::ast::NodeT<parser::ast::node::OpDecl> op_decl =
-                    __AST_N::as<parser::ast::node::OpDecl>(decl);
-                if (op_decl->func->name) {
-                    auto maerker = op_decl->func->name->get_back_name();
-                    CODEGEN_ERROR(maerker,
-                                  "strcut declaration can not have named operators, remove the "
-                                  "named alias here.");
-                    continue;
-                }
-            }
-
-            decl->accept(*this);
-        }
+        add_udt_body(this, node.name, node.body);
     }
 
     ADD_TOKEN(CXX_SEMICOLON);
