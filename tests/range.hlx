@@ -141,7 +141,5 @@ fn main() -> int {
     return 0;
 }
 
-class Foo extend Bar::<T> requires <T, U> {}
-
 // grantee that a..b becomes range(a, b); and a..=b becomes range(a, b++);
 // a and b must implement Incrementable and be Equatable

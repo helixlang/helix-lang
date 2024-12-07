@@ -30,9 +30,12 @@
 - [ ] Codegen Modifiers and Attributes (partly done - only functions is done)
 - [ ] Make scope paths with generics work
 - [ ] Make panic and panic unwinding work
-- [ ] make operator $ question work
+- [ ] make operator $question work
 - [ ] make the core lib auto import by default
-- [ ] ObjInitializer doesnt work for some reason
+- [x] ObjInitializer doesnt work for some reason
+- [ ] note: replace 'default' with 'delete'
+- [ ] change lexer to not work with any op and stop after the first match
+- [ ] make structs work with 'with'
 - [ ] F-strings are broken in 2 ways, 1. they dont work if theres no format specifier inside an fstring like: f"hello" (fails but should work) 2. f"hello {"world"}" works but if theres a bracket inside the fstring it fails: f"hello {"workd {"}}"}" (fails but should work since the string inside isnt a fstring)
 
 

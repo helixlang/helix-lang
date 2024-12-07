@@ -15,19 +15,70 @@ fn printReverseList(head: *Node) {
     print(f"{head->value} ")
 }
 
+fn pow(base: u64, exp: u64) -> u64 {
+    let result = 1;
+    let e = exp;
+
+    while e > 0 {
+        if e % 2 == 1 {
+            result *= base;
+        }
+        base *= base;
+        e /= 2;
+    }
+
+    return result;
+}
+
+fn str_to_u64(s: &string) -> u64 {
+    let result: u64 = 0;
+    let i = 0;
+
+    while i < s.size() {
+        let digit = (s[i] as u64) - ('0' as u64);
+        result = result * 10 + digit;
+        i += 1;
+    }
+
+    return result;
+}
+
+fn num_concat(number: &string) -> u64 {
+    let final_num: u64 = 0;
+    let n: list::<string>;
+
+    let len = number.length();
+    let i = 0;
+
+    while i < len {
+        let end = (i + 32) if (i + 32 < len) else len;
+        n.push_back(number.substr(i, end));
+        i += 32;
+    }
+
+    let iter = 0;
+
+    if n.size() > 1 && n[0][0] == '-' {
+        n[0] = n[0].substr(1);
+    }
+
+    while iter < n.size() {
+        let val = str_to_u64(n[iter]);
+        
+        if iter == n.size() - 1:
+            final_num = final_num * pow(10, ((n[iter].length()) as u64)) + val;
+        else:
+            final_num = final_num * pow(10, 32) + val;
+
+        iter += 1;
+    }
+
+    return final_num;
+}
+
+// entry point
 fn main() -> i32 {
-    // create a basic linked list containing: [1, 2, 3]
-    let head   = Node(1)
-    let second = Node(2)
-    let third  = Node(3)
-
-    // link the nodes
-    head.next   = &second
-    second.next = &third
-
-    // print the list in reverse order
-    print("linked list in reverse order: ")
-    printReverseList(&head)
-
-    return 0
+    let num = "123849771248217498127421874128412941";
+    let result = num_concat(num);
+    print(f"Result: {result}");
 }
