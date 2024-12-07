@@ -71,11 +71,11 @@
 ///                                                                                              ///
 ///                /* declaration nodes */                                                       ///
 /// [ ] * FFIDecl   *  VisDecl? 'ffi' L.StringLiteral D                                          ///
-/// [ ] * LetDecl   *  VisDecl? 'let'   SharedModifiers VarDecl* ';'                             ///
-/// [ ] * ConstDecl *  VisDecl? 'const' SharedModifiers VarDecl* ';'                             ///
-/// [ ] * TypeDecl  *  VisDecl? 'type'  E.IdentExpr RequiresDecl? '=' E ';'                      ///
+/// [x] * LetDecl   *  VisDecl? 'let'   SharedModifiers VarDecl* ';'                             ///
+/// [x] * ConstDecl *  VisDecl? 'const' SharedModifiers VarDecl* ';'                             ///
+/// [x] * TypeDecl  *  VisDecl? 'type'  E.IdentExpr RequiresDecl? '=' E ';'                      ///
 /// [x] * EnumDecl  *  VisDecl? 'enum' ('derives' E.Type)? E.ObjInitExpr                         ///
-/// [ ] * OpDecl    *  SharedModifiers? 'op' T FuncDecl[no_SharedModifiers=true]                 ///
+/// [x] * OpDecl    *  SharedModifiers? 'op' T FuncDecl[no_SharedModifiers=true]                 ///
 /// [x] * FuncDecl  *  SharedModifiers? 'fn' E.PathExpr '(' VarDecl[true]* ')' RequiresDecl? S.Suite
 /// [x] * StructDecl* 'const'? VisDecl? 'struct'    E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
 /// [x] * ClassDecl * 'const'? VisDecl? 'class' E.IdentExpr UDTDeriveDecl? ExtendsDecl?
@@ -487,7 +487,7 @@ AST_NODE_IMPL(Declaration, ClassDecl, const std::shared_ptr<__TOKEN_N::TokenList
     // ClassDecl := Modifiers 'class'  E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite
     auto parse_extends = [this](NodeT<ClassDecl> &node) -> std::expected<void, ParseError> {
         // ExtendsDecl := 'extends' (VisDecl? E.Type (',' VisDecl? E.Type)*)?
-        IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_EXTEND);
+        IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_WITH);
         iter.advance();  // skip 'extends'
 
         AccessSpecifier access = AccessSpecifier(
@@ -549,7 +549,7 @@ AST_NODE_IMPL(Declaration, ClassDecl, const std::shared_ptr<__TOKEN_N::TokenList
         node->derives = derives.value();
     }
 
-    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_EXTEND)) {
+    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_WITH)) {
         RETURN_IF_ERROR(parse_extends(node));
     }
 
@@ -651,10 +651,10 @@ AST_NODE_IMPL_VISITOR(Jsonify, InterDecl) {
 
 AST_NODE_IMPL(Declaration, EnumDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
     IS_NOT_EMPTY;
-    // EnumDecl := Modifiers 'enum' ('derives' E.Type)? (('{' (EnumMemberDecl (','
-    // EnumMemberDecl)*)? '}') | (':' (EnumMemberDecl (',' EnumMemberDecl)*) ';'))
+    // EnumDecl := Modifiers 'enum' (('derives' E.Type)? Ident)? (('{' (EnumMemberDecl (',' EnumMemberDecl)*)? '}') | (':' (EnumMemberDecl) ';'))
 
     NodeT<EnumDecl> node = make_node<EnumDecl>(true);
+    bool anonymous_enum = false;
 
     if (modifiers != nullptr) {
         for (auto &tok : *modifiers) {
@@ -672,20 +672,26 @@ AST_NODE_IMPL(Declaration, EnumDecl, const std::shared_ptr<__TOKEN_N::TokenList>
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_ENUM);
     iter.advance();  // skip 'enum'
 
-    ParseResult<IdentExpr> name = expr_parser.parse<IdentExpr>();
-    RETURN_IF_ERROR(name);
-
-    node->name = name.value();
-
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DERIVES)) {
-        iter.advance();  // skip 'derives'
-
         ParseResult<Type> derives = expr_parser.parse<Type>();
         RETURN_IF_ERROR(derives);
 
         node->derives = derives.value();
     }
 
+    if (CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER)) {
+        ParseResult<IdentExpr> name = expr_parser.parse<IdentExpr>();
+        RETURN_IF_ERROR(name);
+
+        node->name = name.value();
+    } else {
+        anonymous_enum = true;
+
+        if (node->derives) {
+            return std::unexpected(PARSE_ERROR(CURRENT_TOK, "anonymous enum cannot have specified type"));
+        }
+    }
+    
     if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
         iter.advance();  // skip '{'
 
@@ -695,33 +701,27 @@ AST_NODE_IMPL(Declaration, EnumDecl, const std::shared_ptr<__TOKEN_N::TokenList>
 
             node->members.emplace_back(member.value());
 
-            if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
-                iter.advance();  // skip ','
+            if (!CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
+                break;
             }
+            
+            iter.advance();  // skip ','
         }
 
         IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_BRACE);
         iter.advance();  // skip '}'
-
     } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) {
         iter.advance();  // skip ':'
 
-        while (CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER)) {
-            ParseResult<EnumMemberDecl> member = parse<EnumMemberDecl>();
-            RETURN_IF_ERROR(member);
+        ParseResult<EnumMemberDecl> member = parse<EnumMemberDecl>();
+        RETURN_IF_ERROR(member);
 
-            node->members.emplace_back(member.value());
-
-            if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
-                iter.advance();  // skip ','
-            }
-        }
+        node->members.emplace_back(member.value());
 
         IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
         iter.advance();  // skip ';'
-
     } else {
-        return std::unexpected(PARSE_ERROR(CURRENT_TOK, "expected enum body"));
+        return std::unexpected(PARSE_ERROR(CURRENT_TOK, "expected '{' or ':' for enum"));
     }
 
     return node;
