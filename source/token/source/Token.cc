@@ -132,7 +132,7 @@ __TOKEN_BEGIN {
     u32 Token::line_number() const { return line; }
 
     u32 Token::column_number() const { return column; }
-    
+
     u32 &Token::get_column_number() const { return column; }
 
     u32 Token::length() const { return len; }
@@ -157,6 +157,8 @@ __TOKEN_BEGIN {
         this->val = std::string(other);
         this->len = this->val.length();
     }
+
+    void Token::set_kind(tokens token_type) { this->kind = token_type; }
 
     void Token::offset(OffsetType ty, u64 by) {
         switch (ty) {

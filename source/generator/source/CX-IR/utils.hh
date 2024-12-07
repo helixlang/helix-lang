@@ -88,7 +88,7 @@ contains_self_static(const __AST_N::NodeT<__AST_NODE::FuncDecl> &func_decl) {
         }
     }
 
-    if (func_decl->modifiers.contains(token::tokens::KEYWORD_STATIC)) {
+    if (func_decl->modifiers.contains(__TOKEN_N::KEYWORD_STATIC)) {
         found_self_static.second = true;  // found 'static'
     }
 
@@ -112,7 +112,7 @@ inline void handle_static_self_fn_decl(__AST_N::NodeT<__AST_NODE::FuncDecl> &fun
             error::Panic(error::CodeError{.pof = &pof, .err_code = 0.3004});
 
             func_decl->modifiers.add(__AST_N::FunctionSpecifier(
-                token::Token(token::tokens::KEYWORD_STATIC, "helix_internal.file")));
+                token::Token(__TOKEN_N::KEYWORD_STATIC, "helix_internal.file")));
         }
     } else if (has_self) {
         error::Panic(error::CodeError{.pof = &pof, .err_code = 0.3005});
@@ -165,9 +165,9 @@ inline void add_private(generator::CXIR::CXIR *self) {
 
 inline void add_visibility(generator::CXIR::CXIR                      *self,
                            const __AST_N::NodeT<__AST_NODE::FuncDecl> &func_decl) {
-    if (func_decl->modifiers.contains(token::tokens::KEYWORD_PROTECTED)) {
+    if (func_decl->modifiers.contains(__TOKEN_N::KEYWORD_PROTECTED)) {
         add_protected(self);
-    } else if (func_decl->modifiers.contains(token::tokens::KEYWORD_PRIVATE)) {
+    } else if (func_decl->modifiers.contains(__TOKEN_N::KEYWORD_PRIVATE)) {
         add_private(self);
     } else {
         add_public(self);
@@ -176,9 +176,9 @@ inline void add_visibility(generator::CXIR::CXIR                      *self,
 
 inline void add_visibility(generator::CXIR::CXIR                    *self,
                            const __AST_N::NodeT<__AST_NODE::OpDecl> &op_decl) {
-    if (op_decl->modifiers.contains(token::tokens::KEYWORD_PROTECTED)) {
+    if (op_decl->modifiers.contains(__TOKEN_N::KEYWORD_PROTECTED)) {
         add_protected(self);
-    } else if (op_decl->modifiers.contains(token::tokens::KEYWORD_PRIVATE)) {
+    } else if (op_decl->modifiers.contains(__TOKEN_N::KEYWORD_PRIVATE)) {
         add_private(self);
     } else {
         add_public(self);
@@ -188,9 +188,9 @@ inline void add_visibility(generator::CXIR::CXIR                    *self,
 template <typename T>
 inline void add_visibility(generator::CXIR::CXIR *self, const T &decl) {
     if constexpr (HasVisiblityModifier<T>) {
-        if (decl->vis.contains(token::tokens::KEYWORD_PROTECTED)) {
+        if (decl->vis.contains(__TOKEN_N::KEYWORD_PROTECTED)) {
             add_protected(self);
-        } else if (decl->vis.contains(token::tokens::KEYWORD_PRIVATE)) {
+        } else if (decl->vis.contains(__TOKEN_N::KEYWORD_PRIVATE)) {
             add_private(self);
         } else {
             add_public(self);
@@ -500,6 +500,9 @@ struct OpType {
         GeneratorOp,
         ContainsOp,
         CastOp,
+        DeleteOp,
+        MoveAssignOp,
+        CopyAssignOp,
         Error,
         None,
     };
@@ -522,7 +525,7 @@ struct OpType {
         tok                   = const_cast<__TOKEN_N::Token *>(&op.op.front());
         auto [$self, $static] = contains_self_static(std::make_shared<__AST_NODE::OpDecl>(op));
 
-        if (op.op.back() == __TOKEN_N::KEYWORD_IN) {
+        if (op.op.size() == 1 && op.op.back() == __TOKEN_N::KEYWORD_IN) {
             if ($static) {
                 error::Panic(error::CodeError{
                     .pof          = tok,
@@ -545,7 +548,7 @@ struct OpType {
             // check the signature we don't give a shit about the func name rn
             if ($self && op.func->params.size() == 1) {  // most likely GeneratorOp
                 if (op.func->returns &&
-                    op.func->returns->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
+                    op.func->returns->specifiers.contains(__TOKEN_N::KEYWORD_YIELD)) {
                     return GeneratorOp;
                 }
             } else if ($self && op.func->params.size() == 2) {  // most likely ContainsOp
@@ -569,7 +572,7 @@ struct OpType {
             return Error;
         }
 
-        if (op.op.back() == __TOKEN_N::KEYWORD_AS) {
+        if (op.op.size() == 1 && op.op.back() == __TOKEN_N::KEYWORD_AS) {
             // op as fn (self) -> string {}
             // the as op must take self as the only arg and return any type
             if ($static) {
@@ -605,6 +608,56 @@ struct OpType {
             return Error;
         }
 
+        if (op.op.size() == 1 && op.op.back() == __TOKEN_N::KEYWORD_DELETE) {
+            // delete can not take any parms but self, and must be in a udt, it can not return
+            // anyhitng either
+
+            if ($static) {
+                error::Panic(error::CodeError{
+                    .pof          = tok,
+                    .err_code     = 0.3002,
+                    .err_fmt_args = {
+                        "can not mark 'delete' operator with static, signature must be "
+                        "'op delete fn (self)' delete should not return anything even if its 'void'."}});
+
+                return Error;
+            }
+
+            if ($self && op.func->params.size() == 1) {
+                if (!op.func->returns) {
+                    return DeleteOp;
+                }
+            }
+
+            error::Panic(error::CodeError{
+                .pof          = tok,
+                .err_code     = 0.3002,
+                .err_fmt_args = {"invalid 'delete' operator, must be 'op delete fn (self)' delete "
+                                 "should not return anything even if its 'void'."}});
+
+            return Error;
+        }
+
+        if (op.op.size() == 1 && op.op.back() == __TOKEN_N::OPERATOR_ASSIGN) {
+            // ClassName& operator=(ClassName&&)
+            // ClassName& operator=(const ClassName&)
+            // signature for move assign is `op = fn (self, _: const ClassName&) -> ... {}`
+
+            // for copy we need to check:
+            // takes 2 params incl. self
+            // the 1 param (excl. self) is a const ref to the class
+            // the func is not marked static or const
+
+            // for move we need to check:
+            // takes 2 params incl. self
+            // the 1 param (excl. self) is a rvalue ref to the class
+            // the func is not marked static or const
+
+            if ($static) {
+                return None; // neither move nor copy operator
+            }
+        }
+
         return None;
     }
 };
@@ -616,7 +669,7 @@ inline void add_func_modifiers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers 
     -------------- | --------
     const          | const
     let eval       | constinit
-    let const eval | consteval
+    const eval     | consteval
     eval fn        | constexpr
     const eval fn  | const constexpr
 
@@ -666,7 +719,9 @@ class ModifyNestedFunctions {
 
             if (func_decl->name != nullptr) {
                 emitter->append(std::make_unique<CX_Token>(CXX_AUTO));
-                emitter->append(std::make_unique<CX_Token>(CXX_CORE_IDENTIFIER, func_decl->name->get_back_name().value(), func_decl->marker));
+                emitter->append(std::make_unique<CX_Token>(CXX_CORE_IDENTIFIER,
+                                                           func_decl->name->get_back_name().value(),
+                                                           func_decl->marker));
                 emitter->append(std::make_unique<CX_Token>(CXX_EQUAL));
             }
 
@@ -685,8 +740,7 @@ class ModifyNestedFunctions {
                     func_decl->params[0]->accept(*emitter);
                 };
                 for (size_t i = 1; i < func_decl->params.size(); ++i) {
-                    emitter->append(
-                        std::make_unique<CX_Token>(CXX_CORE_OPERATOR, ","));
+                    emitter->append(std::make_unique<CX_Token>(CXX_CORE_OPERATOR, ","));
                     ;
                     if (func_decl->params[i] != nullptr) {
                         func_decl->params[i]->accept(*emitter);
@@ -700,8 +754,7 @@ class ModifyNestedFunctions {
             if (func_decl->returns) {
                 func_decl->returns->accept(*emitter);
             } else {
-                emitter->append(
-                    std::make_unique<CX_Token>(CXX_VOID, func_decl->marker));
+                emitter->append(std::make_unique<CX_Token>(CXX_VOID, func_decl->marker));
             }
 
             if (func_decl->generics) {
@@ -740,6 +793,104 @@ class ModifyNestedFunctions {
         return true;
     }
 };
+
+inline void default_constructor(CXIR *self, const __AST_N::NodeT<__AST_NODE::IdentExpr> &name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+inline void default_destructor(CXIR* self, const __AST_N::NodeT<__AST_NODE::IdentExpr>& name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_TILDE, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+inline void delete_copy_constructor(CXIR* self, const __AST_N::NodeT<__AST_NODE::IdentExpr>& name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CONST, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+inline void delete_copy_assignment(CXIR* self, const __AST_N::NodeT<__AST_NODE::IdentExpr>& name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_OPERATOR, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CONST, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+inline void default_move_constructor(CXIR* self, const __AST_N::NodeT<__AST_NODE::IdentExpr>& name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_NOEXCEPT));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+inline void default_move_assignment(CXIR* self, const __AST_N::NodeT<__AST_NODE::IdentExpr>& name) {
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_COLON));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_OPERATOR, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_LPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, name->name.value(), name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_AMPERSAND, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_RPAREN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_NOEXCEPT));
+    
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
+    self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
 }  // namespace __CXIR_CODEGEN_N
 
 #endif  // __CX_UTILS__

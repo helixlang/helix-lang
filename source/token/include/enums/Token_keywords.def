@@ -27,7 +27,6 @@
 /// P  : Preprocessor
 
 /* TODO determine if is needs to be removed */
-
 #define KEYWORD_TOKENS(GENERATE)                       \
     /* S */ GENERATE(KEYWORD_IF, "if")                 \
     /* S */ GENERATE(KEYWORD_ELSE, "else")             \
@@ -68,7 +67,6 @@
     /* M */ GENERATE(KEYWORD_PROTECTED, "prot")        \
     /* M */ GENERATE(KEYWORD_INTERNAL, "intl")         \
     /* M */ GENERATE(KEYWORD_CONST, "const")           \
-    /*---- S ----*/ GENERATE(KEYWORD_GLOBAL, "global") \
     /* D */ GENERATE(KEYWORD_FFI, "ffi")               \
     /* S */ GENERATE(KEYWORD_IMPORT, "import")         \
     /* S */ GENERATE(KEYWORD_YIELD, "yield")           \
@@ -79,6 +77,7 @@
     /* D */ GENERATE(KEYWORD_MODULE, "module")         \
     /* H */ GENERATE(KEYWORD_REQUIRES, "requires")     \
     /* H */ GENERATE(KEYWORD_EXTEND, "extend")         \
+    /* H */ GENERATE(KEYWORD_WITH, "with")         \
     /*---- M ----*/ GENERATE(KEYWORD_UNSAFE, "unsafe")
 
 // NOTE: IF THIS GENERATION IS CHANGED DO NOT FORGET TO UPDATE COUNT

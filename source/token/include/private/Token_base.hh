@@ -110,6 +110,7 @@ __TOKEN_BEGIN {
 
         void set_file_name(const std::string &file_name);
         void set_value(const std::string &other);
+        void set_kind(tokens token_type);
 
         enum class OffsetType {
             Line,
