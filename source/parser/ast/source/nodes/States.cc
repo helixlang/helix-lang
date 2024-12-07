@@ -793,91 +793,62 @@ AST_NODE_IMPL(Statement, SwitchCaseState) {
     IS_NOT_EMPTY;
     // := ('case' E SuiteState) | 'default' SuiteState
 
-    __TOKEN_N::Token marker;
+    __TOKEN_N::Token marker = CURRENT_TOK;
+    /*
+    Case
+    Default
+    Fallthrough
+    
+    case: ... <- fallthrough
+    case: {}  <- fallthrough
+    case {}   <- case
+    
+    default:    <- default
+    default {}  <- default
+    default: {} <- default
+    */
     SwitchCaseState::CaseType case_type = SwitchCaseState::CaseType::Case;
+    ParseResult<> condition;
+
 
     if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CASE)) {
-        marker = CURRENT_TOK;
         iter.advance();  // skip 'case'
-
-        ParseResult<> expr = expr_parser.parse();
-        RETURN_IF_ERROR(expr);
-
-        // fallthrough always and only 1 statement allowed for readability reasons
-        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) { // case ...: ...; case ...:
-            case_type = SwitchCaseState::CaseType::Fallthrough;
-
-            if (iter.peek().has_value() && NEXT_TOK.token_kind() == __TOKEN_N::KEYWORD_CASE) {
-                iter.advance();  // skip ':'
-                return make_node<SwitchCaseState>(expr.value(), nullptr, case_type, marker);
-            }
-        }
-
-        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) { // case ... { ...* } // auto breaks
-            case_type = SwitchCaseState::CaseType::Case;
-
-            if (iter.peek().has_value() &&
-                NEXT_TOK.token_kind() == __TOKEN_N::PUNCTUATION_CLOSE_BRACE) {
-                return std::unexpected(PARSE_ERROR(
-                    CURRENT_TOK, "missing statement, if you want to fallthrough use ':'"));
-            }
-        }
-
-        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_ARROW)) { // case ... -> foo; // auto breaks
-            case_type = SwitchCaseState::CaseType::Case;
-            iter.advance();  // skip '->'
-
-            Declaration decl_parser(iter);
-
-            ParseResult<> decl = decl_parser.parse();
-            RETURN_IF_ERROR(decl);
-
-            NodeT<BlockState> block = make_node<BlockState>(NodeV<>{decl.value()});
-            NodeT<SuiteState> body  = make_node<SuiteState>(block);
-
-            return make_node<SwitchCaseState>(expr.value(), body, case_type, marker);
-        }
-
-        ParseResult<SuiteState> body = parse<SuiteState>();
-        RETURN_IF_ERROR(body);
-
-        return make_node<SwitchCaseState>(
-            expr.value(), body.value(), case_type, marker);
-    }
-
-    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DEFAULT)) {
+    } else if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DEFAULT)) {
         case_type = SwitchCaseState::CaseType::Default;
-
-        marker = CURRENT_TOK;
         iter.advance();  // skip 'default'
-
-        if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_ARROW)) { // case ... -> foo; // auto breaks
-            iter.advance();  // skip '->'
-
-            Declaration decl_parser(iter);
-
-            ParseResult<> decl = decl_parser.parse();
-            RETURN_IF_ERROR(decl);
-
-            NodeT<BlockState> block = make_node<BlockState>(NodeV<>{decl.value()});
-            NodeT<SuiteState> body  = make_node<SuiteState>(block);
-
-            return make_node<SwitchCaseState>(nullptr, body, case_type, marker);
-        }
-
-        ParseResult<SuiteState> body = parse<SuiteState>();
-        RETURN_IF_ERROR(body);
-
-        return make_node<SwitchCaseState>(nullptr, body.value(), case_type, marker);
+    } else {
+        return std::unexpected(PARSE_ERROR(
+            CURRENT_TOK, "expected 'case' or 'default' but found: " + CURRENT_TOK.token_kind_repr()));
     }
 
-#define DEFAULT_CASE_TOKENS {__TOKEN_N::KEYWORD_CASE, __TOKEN_N::KEYWORD_DEFAULT}
-    IS_IN_EXCEPTED_TOKENS(DEFAULT_CASE_TOKENS);
-#undef DEFAULT_CASE_TOKENS
+    if (case_type != SwitchCaseState::CaseType::Default) {
+        condition = expr_parser.parse();
+        RETURN_IF_ERROR(condition);
+    }
 
-    return std::unexpected(PARSE_ERROR(CURRENT_TOK,
-                                       "should have never gotten this error, something is fucked." +
-                                           CURRENT_TOK.token_kind_repr()));
+    // if the next token is ':' then we have a fallthrough
+    if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) {
+        if (HAS_NEXT_TOK && NEXT_TOK.token_kind() == __TOKEN_N::PUNCTUATION_OPEN_BRACE) { // : {
+            iter.advance();  // skip ':'
+        }
+
+        if (case_type != SwitchCaseState::CaseType::Default) {
+            case_type = SwitchCaseState::CaseType::Fallthrough;
+        }
+    } else {
+        if (case_type == SwitchCaseState::CaseType::Default) {
+            if (CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
+                return std::unexpected(PARSE_ERROR(
+                    CURRENT_TOK, "expected '{', or ':' for default case, but found: " + CURRENT_TOK.token_kind_repr()));
+            }
+        }
+    }
+    
+    ParseResult<SuiteState> body = parse<SuiteState>();
+    RETURN_IF_ERROR(body);
+
+    return make_node<SwitchCaseState>(condition.value_or(nullptr), body.value(), case_type, marker);
+
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, SwitchCaseState) {
@@ -892,67 +863,59 @@ AST_NODE_IMPL_VISITOR(Jsonify, SwitchCaseState) {
 
 AST_NODE_IMPL(Statement, SwitchState) {
     IS_NOT_EMPTY;
-    // := 'switch' expr (('{' SwitchCaseState* '}') | (':' SwitchCaseState*))
+    // := 'switch' expr (('{' SwitchCaseState* '}') | (':' SwitchCaseState))
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_SWITCH);
     iter.advance();  // skip 'switch'
 
-    __TOKEN_N::Token starting_token;  // '(', ')'
-    __TOKEN_N::Token first_token;     // 'default'
-    bool             expecting_brace_close = false;
-    bool             found_default         = false;
-
     ParseResult<> expr = expr_parser.parse();
     RETURN_IF_ERROR(expr);
 
-#define SUITE_TOKENS {__TOKEN_N::PUNCTUATION_OPEN_BRACE, __TOKEN_N::PUNCTUATION_COLON}
-    IS_IN_EXCEPTED_TOKENS(SUITE_TOKENS)
-#undef SUITE_TOKENS
-
-    if CURRENT_TOKEN_IS (__TOKEN_N::PUNCTUATION_OPEN_BRACE) {
-        expecting_brace_close = true;
-        starting_token        = CURRENT_TOK;
-    }
-
-    iter.advance();  // skip '{' | ':'
-
     NodeT<SwitchState> node = make_node<SwitchState>(expr.value());
 
-    ParseResult<SwitchCaseState> case_state = parse<SwitchCaseState>();
-    RETURN_IF_ERROR(case_state);
+    if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE)) {
+        iter.advance();  // skip '{'
 
-    node->cases.emplace_back(case_state.value());
+        while (iter.remaining_n() > 0 && CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_CLOSE_BRACE)) {
+            ParseResult<SwitchCaseState> case_state = parse<SwitchCaseState>();
+            RETURN_IF_ERROR(case_state);
 
-    if (case_state.value()->type == SwitchCaseState::CaseType::Default) {
-        found_default = true;
-        first_token   = case_state.value()->marker;
-    }
+            node->cases.emplace_back(case_state.value());
+        }
 
-    while (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CASE) ||
-           CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DEFAULT)) {
-        case_state = parse<SwitchCaseState>();
+        IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_BRACE);
+        iter.advance();  // skip '}'
+    } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) {
+        iter.advance();  // skip ':'
+
+        if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CASE) ||
+            CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_DEFAULT)) {
+            // warn saying this is redundant and an if statement should be used instead
+            error::Panic(error::CodeError{
+                .pof      = const_cast<__TOKEN_N::Token *>(&CURRENT_TOK),
+                .err_code = 0.0001,
+                .mark_pof = true,
+                .fix_fmt_args{},
+                .err_fmt_args{
+                    GET_DEBUG_INFO +
+                    "redundant switch statement with only one case, use an if statement instead"},
+                .opt_fixes{},
+                .level = error::WARN,
+            });
+        }
+
+        ParseResult<SwitchCaseState> case_state = parse<SwitchCaseState>();
         RETURN_IF_ERROR(case_state);
 
-        if (case_state.value()->type == SwitchCaseState::CaseType::Default) {
-            if (found_default) {
-                return std::unexpected(
-                    PARSE_ERROR(case_state.value()->marker,
-                                "redefinition of default case" /* TODO: INCLUDE PREV LOC TOO */));
-            }
-
-            found_default = true;
-        }
-
         node->cases.emplace_back(case_state.value());
-    }
-
-    if (expecting_brace_close) {
-        if (iter.remaining_n() == 0 || iter.current().get() != __TOKEN_N::PUNCTUATION_CLOSE_BRACE) {
+    } else {
+        if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_SEMICOLON)) {
             return std::unexpected(
-                PARSE_ERROR(starting_token, "expected '}' to close the switch block"));
+                PARSE_ERROR(CURRENT_TOK, "expected a scope with cases but found ';'"));
         }
 
-        iter.advance();  // skip '}'
+        return std::unexpected(PARSE_ERROR(
+            CURRENT_TOK, "expected '{' or ':', but found: " + CURRENT_TOK.token_kind_repr()));
     }
 
     return node;
@@ -1028,7 +991,7 @@ AST_NODE_IMPL(Statement, ImportState, bool is_ffi) {
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_IMPORT);
     iter.advance();  // skip 'import'
 
-    if CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_MODULE) {
+    if CURRENT_TOKEN_IS (__TOKEN_N::KEYWORD_MODULE) {
         is_module = true;
         iter.advance();  // skip 'module`
     }
@@ -1235,7 +1198,6 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
     bool              is_wildcard = false;
     bool              is_symbol   = false;
 
-
     IS_NULL_RESULT(path) {
         /// parse a ScopePathExpr
         ParseResult<ScopePathExpr> path = expr_parser.parse<ScopePathExpr>(nullptr, false, true);
@@ -1249,7 +1211,8 @@ AST_NODE_IMPL(Statement, SpecImport, ParseResult<SingleImport> path) {
         }
 
         node = make_node<SpecImport>(path.value());
-    } else {
+    }
+    else {
         if (path.value()->type == SingleImport::Type::File) {
             return std::unexpected(
                 PARSE_ERROR(CURRENT_TOK, "file imports cannot have import items."));
@@ -1363,7 +1326,9 @@ AST_NODE_IMPL(Statement, ExprState) {
     return make_node<ExprState>(expr.value());
 }
 
-AST_NODE_IMPL_VISITOR(Jsonify, ExprState) { json.section("ExprState").add("expr", get_node_json(node.value)); }
+AST_NODE_IMPL_VISITOR(Jsonify, ExprState) {
+    json.section("ExprState").add("expr", get_node_json(node.value));
+}
 
 // ---------------------------------------------------------------------------------------------- //
 

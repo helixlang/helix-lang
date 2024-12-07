@@ -157,8 +157,8 @@ CX_VISIT_IMPL(SwitchCaseState) {
             BRACE_DELIMIT(  //
                 if (node.body && node.body->body) { node.body->body->accept(*this); }
 
-                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "break", node.marker);  // break;
-                ADD_TOKEN(CXX_SEMICOLON);                                              //
+                ADD_TOKEN_AT_LOC(CXX_BREAK, node.marker);  // break;
+                ADD_TOKEN(CXX_SEMICOLON);                  //
             );
 
             break;
@@ -189,9 +189,11 @@ CX_VISIT_IMPL(SwitchCaseState) {
             BRACE_DELIMIT(  //
                 if (node.body && node.body->body) { node.body->body->accept(*this); }
 
-                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "break", node.marker);  // break;
-                ADD_TOKEN(CXX_SEMICOLON);                                              //
+                ADD_TOKEN_AT_LOC(CXX_BREAK, node.marker);  // break;
+                ADD_TOKEN(CXX_SEMICOLON);                  //
             );
+
+            break;
     }
 }
 
