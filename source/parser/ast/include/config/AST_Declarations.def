@@ -26,6 +26,7 @@
     MACRO(RequiresDecl)      \
     MACRO(ModuleDecl)        \
     MACRO(StructDecl)        \
+    MACRO(ExtendDecl)        \
     MACRO(ConstDecl)         \
     MACRO(ClassDecl)         \
     MACRO(InterDecl)         \

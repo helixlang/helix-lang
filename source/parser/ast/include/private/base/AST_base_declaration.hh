@@ -64,6 +64,8 @@ __AST_NODE_BEGIN {
                 return parse_ConstDecl(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, ClassDecl>) {
                 return parse_ClassDecl(std ::forward<Args>(args)...);
+            } else if constexpr (std ::is_same_v<T, ExtendDecl>) {
+                return parse_ExtendDecl(std ::forward<Args>(args)...); 
             } else if constexpr (std ::is_same_v<T, InterDecl>) {
                 return parse_InterDecl(std ::forward<Args>(args)...);
             } else if constexpr (std ::is_same_v<T, EnumDecl>) {
@@ -102,8 +104,8 @@ __AST_NODE_BEGIN {
         parse_StructDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
         ParseResult<ConstDecl>
         parse_ConstDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
-        ParseResult<ClassDecl>
-        parse_ClassDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
+        ParseResult<ClassDecl> parse_ClassDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
+        ParseResult<ExtendDecl> parse_ExtendDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
         ParseResult<InterDecl>
         parse_InterDecl(const std::shared_ptr<__TOKEN_N::TokenList> &modifiers = nullptr);
         ParseResult<EnumDecl>

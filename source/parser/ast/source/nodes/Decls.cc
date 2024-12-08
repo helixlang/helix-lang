@@ -482,6 +482,14 @@ AST_NODE_IMPL_VISITOR(Jsonify, ConstDecl) {
 
 // ---------------------------------------------------------------------------------------------- //
 
+AST_NODE_IMPL(Declaration, ExtendDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
+    NOT_IMPLEMENTED;
+}
+
+AST_NODE_IMPL_VISITOR(Jsonify, ExtendDecl) { json.section("ExtendDecl"); }
+
+// ---------------------------------------------------------------------------------------------- //
+
 AST_NODE_IMPL(Declaration, ClassDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
     IS_NOT_EMPTY;
     // ClassDecl := Modifiers 'class'  E.IdentExpr UDTDeriveDecl? RequiresDecl? S.Suite

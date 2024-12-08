@@ -128,6 +128,25 @@ __AST_NODE_BEGIN {
         NodeV<VarDecl> vars;
     };
 
+    class ExtendDecl final : public Node {
+        BASE_CORE_METHODS(ExtendDecl);
+
+        // ExtendDecl := 'const'? VisDecl? 'class'     E.IdentExpr UDTDeriveDecl? RequiresDecl?
+        // S.Suite
+
+        explicit ExtendDecl(bool /* unused */) {}
+
+        std::vector<std::pair<NodeT<Type>, AccessSpecifier>> extends;
+        NodeT<IdentExpr>                   name;
+        NodeT<UDTDeriveDecl>               derives;
+        NodeT<RequiresDecl>                generics;
+        NodeT<SuiteState>                  body;
+        Modifiers                          modifiers = Modifiers(
+              Modifiers::ExpectedModifier::ClassSpec,
+              Modifiers::ExpectedModifier::AccessSpec
+        );
+    };
+
     class ClassDecl final : public Node {
         BASE_CORE_METHODS(ClassDecl);
 
@@ -142,8 +161,7 @@ __AST_NODE_BEGIN {
         NodeT<IdentExpr>     name;
         NodeT<UDTDeriveDecl> derives;
         NodeT<RequiresDecl>  generics;
-
-        NodeT<SuiteState> body;
+        NodeT<SuiteState>    body;
     };
 
     class InterDecl final : public Node {
