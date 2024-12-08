@@ -1,18 +1,18 @@
 class Node {
-    pub let value: i32
-    pub let next: *Node = &null
+    pub let value: i32;
+    pub let next: *Node = &null;
 
     // constructor for Node
     fn Node(self, value: i32) {
-        self.value = value
+        self.value = value;
     }
 }
 
 fn printReverseList(head: *Node) {
     if head->next != &null:
-        printReverseList(head->next)
+        printReverseList(head->next);
 
-    print(f"{head->value} ")
+    print(f"{head->value} ");
 }
 
 fn pow(base: u64, exp: u64) -> u64 {
@@ -75,6 +75,69 @@ fn num_concat(number: &string) -> u64 {
 
     return final_num;
 }
+
+class AClass
+  requires <T: class, ...Es> {
+    ...
+}
+
+extend AClass::<T, Es...> with SomeInterface
+  requires <T: class, ...Es> if (traits::is_class_v::<Es> && ...) {
+    ...
+}
+
+extend AClass::<T, Es...> // without extending an interface
+  requires <T: class, ...Es> if (traits::is_class_v::<T> && (traits::is_class_v::<Es> && ...)) {
+    ...
+}
+
+// ------------------ simple example of requires specialization ------------------
+class SomeOtherClass requires <T> {
+    ...
+}
+
+extend SomeOtherClass::<T> with SomeInterface
+  requires <T> {
+    ...
+}
+
+extend SomeOtherClass::<i32> { // without extending an interface and a specific type
+    ...
+}
+
+// ------------------ even simpler example of requires specialization ------------------
+class AnotherClass {
+    ...
+}
+
+extend AnotherClass { // this directly adds everything defined in the extension into the class itself
+    ...
+}
+
+
+interface JsonIfy {
+    fn to_json(self) -> string {};
+}
+
+class Book {
+    let val: i32;
+
+    fn Book(self, val: i32) {
+        self.val = val;
+    }
+
+    op as fn (self) -> string {
+        return "class: Book";
+    }
+}
+
+extend Book with JsonIfy {
+    fn to_json(self) -> &self {
+        return f"val: {*&self.val}";
+    }
+}
+
+
 
 // entry point
 fn main() -> i32 {

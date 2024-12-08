@@ -12,6 +12,11 @@
 
 /*
 macro_def := 'macro' IDENTIFIER ( '(' IDENTIFIER ( ',' IDENTIFIER )* ')' )? '{' ANY* '}' ';'
+
+FIXME  : macro rules:
+#...  -> stringify
+\...  -> concat
+\#... -> un-stringify
 */
 
 struct MacroDef {

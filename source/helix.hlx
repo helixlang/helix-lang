@@ -39,13 +39,51 @@ fn something() requires <T> if foo::<int> in T {
     T::bar();
 }
 
-fn helix_compiler(std::array::<std::string, N> args) -> i32 requires <N: std::size_t> {
-    let invoke:      InvocationManager       = InvocationManager(args, true);
-    let compile:     CompilationUnit         = CompilationUnit(invoke);
-    let diag_handle: PrettyDiagnosticHandler = PrettyDiagnosticHandler();
+
+fn foo() -> i32? | $question::<i32> {
+    panic "this is a panic";
+    // breaks down to the following c++:
+    return PanicFrame(
+        "this is a panic",
+        "source/helix.hlx",
+        1, "foo"
+    );
+}
+
+fn abc() -> i32 {
+    let x = ["hello", "world"];
+
+    // fails to codegen correctly since the `as` requires a primary expr on the right
+    return x[0].length() as i32;
+    // the really annoying thing is the error message is not helpful at all, it just says
+    // "function `length` not found." which is not true. the reason is because the c++ codegen looks
+    // like this: `helix::std::as<i32>(x[0]).length()`, which is not correct and the reason it fails.
+    //
+    // couple of notes about helix:
+    // - the language is still in development and is not stable yet.
+    // - the language right now has a c++ backend, and the self-hosted compiler would initially also
+    //   have a c++ backend. but that would be migrated to a llvm backend later on. (the c++ backend
+    //   is just a temporary solution, since llvm is really hard to work with and the c++ backend is
+    //   much easier to work with - for now)
+
+    // this is the fix: (looks bad but it's the only way to fix it right now)
+    return (x[0].length()) as i32;
+
+    // this is one of many little things that are very finicky in the language but it will be fixed
+    // with the self-hosted compiler.
+    //
+    // the current compiler is very limited in what it can do, but it's a start and does work for the
+    // most part, the self-hosted compiler will be able to do much more and be much more flexible.
+}
+
+fn helix_compiler(std::array::<std::string, N> args) -> i32
+  requires <N: std::size_t> {
+    let invoke      = InvocationManager(args, true);
+    let compile     = CompilationUnit(invoke);
+    let diag_handle = PrettyDiagnosticHandler();
 
     // frontend processors
-    compile.add_frontend_processor(LexicalProcessor());
+    compile.add_frontend_processor(Mem::Heap::<LexicalProcessor>());
     compile.add_frontend_processor(PreProcessor());
     compile.add_frontend_processor(ASTProcessor());
 
@@ -56,40 +94,40 @@ fn helix_compiler(std::array::<std::string, N> args) -> i32 requires <N: std::si
     // set diagnostics
     compile.set_diagnostic_handler(diag_handle);
 
-    if (compile.execute() != InvocationManager::Success) {
+    if (compile.execute() != CompilationUnit::Success) {
         switch (compile.exit_state) {
-            case InvocationManager::CompilerError:
+            case CompilationUnit::CompilerError:
                 log(
                     "compiler internal error: ",
                     diag_handle
-                        .get<InvocationManager::CompilerError>()
+                        .get<CompilationUnit::CompilerError>()
                         .format()
                         .to_string()
                 ); break;
 
-            case InvocationManager::CodeError:
+            case CompilationUnit::CodeError:
                 log(
                     "user code error: ",
                     diag_handle
-                        .get<InvocationManager::CodeError>()
+                        .get<CompilationUnit::CodeError>()
                         .format()
                         .to_string()
                 ); break;
 
-            case InvocationManager::UnrecoverableError:
+            case CompilationUnit::UnrecoverableError:
                 log(
                     "fatal error: ",
                     diag_handle
-                        .get<InvocationManager::UnrecoverableError>()
+                        .get<CompilationUnit::UnrecoverableError>()
                         .format()
                         .to_string()
                 ); break;
 
-            case InvocationManager::SystemError:
+            case CompilationUnit::SystemError:
                 log(
                     "sys call error: ",
                     diag_handle
-                        .get<InvocationManager::SystemError>()
+                        .get<CompilationUnit::SystemError>()
                         .format()
                         .to_string()
                 ); break;
