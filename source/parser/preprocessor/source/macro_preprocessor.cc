@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <filesystem>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -48,6 +49,8 @@ class MacroProcessor {
             baz::bar::foo!; // error since foo! isn't defined in baz unless baz uses the module bar
             baz::(bar::foo!); // alternate
         */
+
+        return false;
     }
 
     void parse() {

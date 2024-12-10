@@ -22,7 +22,3 @@ class AClass<T, Es...> // without extending an interface
 {
 
 };
-
-int main() {
-
-}
