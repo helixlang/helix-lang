@@ -24,13 +24,9 @@
 #include <string>
 
 CXIRCompiler::ExecResult CXIRCompiler::exec(const std::string &cmd) {
-    SECURITY_ATTRIBUTES sa;
-    sa.nLength              = sizeof(SECURITY_ATTRIBUTES);
-    sa.bInheritHandle       = TRUE;
-    sa.lpSecurityDescriptor = nullptr;
-
-    HANDLE hReadPipe  = nullptr;
-    HANDLE hWritePipe = nullptr;
+    SECURITY_ATTRIBUTES sa         = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    HANDLE              hReadPipe  = nullptr;
+    HANDLE              hWritePipe = nullptr;
 
     if (CreatePipe(&hReadPipe, &hWritePipe, &sa, 0) == 0) {
         throw std::runtime_error("CreatePipe failed! Error: " + std::to_string(GetLastError()));
@@ -43,21 +39,15 @@ CXIRCompiler::ExecResult CXIRCompiler::exec(const std::string &cmd) {
                                  std::to_string(GetLastError()));
     }
 
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&pi, sizeof(pi));
-
-    STARTUPINFO si;
-    ZeroMemory(&si, sizeof(si));
-
-    si.cb         = sizeof(si);
-    si.hStdOutput = hWritePipe;
-    si.hStdError  = hWritePipe;
+    PROCESS_INFORMATION pi = {};
+    STARTUPINFO         si = {};
+    si.cb                  = sizeof(si);
+    si.hStdOutput          = hWritePipe;
+    si.hStdError           = hWritePipe;
     si.dwFlags |= STARTF_USESTDHANDLES;
 
-    const std::string &command = cmd;
-
     if (!CreateProcess(nullptr,
-                       const_cast<char *>(command.c_str()),
+                       const_cast<char *>(cmd.c_str()), // NOLINT
                        nullptr,
                        nullptr,
                        TRUE,
@@ -72,36 +62,50 @@ CXIRCompiler::ExecResult CXIRCompiler::exec(const std::string &cmd) {
     }
 
     CloseHandle(hWritePipe);
-    WaitForSingleObject(pi.hProcess, INFINITE);
 
-    std::array<char, 128> buffer{};
     std::string           result;
-    DWORD                 bytesRead = 0;
+    std::array<char, 128> buffer{};
 
-    while (true) {
-        if (ReadFile(hReadPipe, buffer.data(), buffer.size(), &bytesRead, nullptr) == 0) {
-            if (GetLastError() == ERROR_BROKEN_PIPE) {
-                break;
+    DWORD bytesRead = 0;
+
+    std::thread readerThread([&]() {
+        while (true) {
+            if (ReadFile(hReadPipe, buffer.data(), buffer.size(), &bytesRead, nullptr) == 0) {
+                if (GetLastError() == ERROR_BROKEN_PIPE) {
+                    break;
+                }
+                throw std::runtime_error("ReadFile failed! Error: " +
+                                         std::to_string(GetLastError()));
             }
-
-            throw std::runtime_error("ReadFile failed! Error: " + std::to_string(GetLastError()));
-        }
-        if (bytesRead > 0) {
             result.append(buffer.data(), bytesRead);
         }
+    });
+
+    DWORD waitResult = WaitForSingleObject(pi.hProcess, 10000);  // 10 sec timeout
+    if (waitResult == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);
+        readerThread.join();
+        CloseHandle(hReadPipe);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        throw std::runtime_error("Process timed out!");
     }
 
-    CloseHandle(hReadPipe);
-    CloseHandle(pi.hThread);
+    readerThread.join();
 
     DWORD exitCode = 0;
     if (GetExitCodeProcess(pi.hProcess, &exitCode) == 0) {
+        CloseHandle(hReadPipe);
         CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
         throw std::runtime_error("GetExitCodeProcess failed! Error: " +
                                  std::to_string(GetLastError()));
     }
 
+    CloseHandle(hReadPipe);
     CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
     return {result, static_cast<int>(exitCode)};
 }
 

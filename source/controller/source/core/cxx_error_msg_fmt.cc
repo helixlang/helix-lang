@@ -13,77 +13,118 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
-#include <unordered_map>
+#include <map>
 
+#include "controller/include/shared/file_system.hh"
 #include "controller/include/tooling/tooling.hh"
 #include "generator/include/CX-IR/loc.hh"
+
 
 /// key is the line number in the output, value is the line and column, and length associated in the
 /// source
 
+std::tuple<size_t, size_t> get_meta(const std::string &file_name, size_t line_number) {
+    std::optional<controller::file_system::fs_path> path =
+        __CONTROLLER_FS_N::resolve_path(file_name, true, true);
+
+    if (!path.has_value()) {
+        return {1, 1};
+    }
+
+    auto data = controller::file_system::get_line(file_name, line_number);
+
+    if (!data.has_value()) {
+        return {1, 1};
+    }
+
+    // no skip any whitespcae and add that to coloum nuymber
+    size_t col_num = 1;
+    for (char chr : *data) {
+        switch (chr) {
+            case ' ':
+                [[fallthrough]];
+            case '\t':
+                [[fallthrough]];
+            case '\f':
+                [[fallthrough]];
+            case '\v':
+                ++col_num;
+                continue;
+            default:
+                goto BREAK_LOOP;
+                break;
+        }
+
+    BREAK_LOOP:
+        break;
+    }  // we now have the col num
+
+    // now for len
+    size_t len = 1;
+
+    // strip all whitespace on the right
+    (*data).erase(std::find_if((*data).rbegin(),
+                               (*data).rend(),
+                               [](unsigned char chr) { return std::isspace(chr) == 0; })
+                      .base(),
+                  (*data).end());
+
+    // now get the (*data) length and - col_num
+    return {col_num - 1, (*data).length() - col_num + 1};
+}
+
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_clang_err(std::string clang_out) {
-    std::string filePath;
-    size_t      lineNumber   = 0;
-    size_t      columnNumber = 0;
-    size_t      length       = 0;
+    std::string file_path;
+    size_t      line_number   = 0;
+    size_t      column_number = 0;
     std::string message;
 
     std::istringstream stream(clang_out);
-    std::getline(stream, filePath, ':');  // Extract file path
-    stream >> lineNumber;                 // Extract line number
-    stream.ignore();                      // Ignore the next colon
-    stream >> columnNumber;               // Extract column number
-    stream.ignore();                      // Ignore the next colon
-    std::getline(stream, message);        // Extract the message
+    std::getline(stream, file_path, ':');  // Extract file path
+    stream >> line_number;                 // Extract line number
+    stream.ignore();                       // Ignore the next colon
+    stream >> column_number;               // Extract column number
+    stream.ignore();                       // Ignore the next colon
+    std::getline(stream, message);         // Extract the message
 
     // see if filepath is in std::unordered_map<std::string, SourceMap> SOURCE_MAPS
-    // if it is, call SOURCE_MAPS[filePath].get_pof(lineNumber, columnNumber, length)
+    // if it is, call SOURCE_MAPS[file_path].get_pof(line_number, column_number, length)
 
-    if (filePath.empty()) {
+    if (file_path.empty()) {
         return {token::Token(), "", ""};
     }
 
-    if (generator::CXIR::SOURCE_MAPS.find(filePath) != generator::CXIR::SOURCE_MAPS.end()) {
-        generator::CXIR::SourceMap     &source_map = generator::CXIR::SOURCE_MAPS[filePath];
-        generator::CXIR::SourceLocation loc        = source_map.find_loc(lineNumber, columnNumber);
-        if (!loc.is_placeholder) {
-            lineNumber   = loc.line;
-            columnNumber = loc.column;
-            length       = loc.length;
-        } else {
-            return {token::Token(), "", ""};
-        }
-    }
+    // open the cached file jump to the line and get the length and col
+    auto meta = get_meta(file_path, line_number);
 
-    token::Token pof = token::Token(lineNumber,
-                                    columnNumber,
-                                    length,
-                                    columnNumber + lineNumber,
+    token::Token pof = token::Token(line_number,
+                                    std::get<0>(meta),
+                                    std::get<1>(meta),
+                                    (std::get<0>(meta) + line_number),
                                     "/*error*/",
-                                    filePath,
+                                    file_path,
                                     "<other>");
 
-    return {pof, message, filePath};
+    return {pof, message, file_path};
 }
 
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_gcc_err(std::string gcc_out) {
     return parse_clang_err(gcc_out);
 }
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_out) {
-    std::string filePath;
-    size_t      lineNumber = 0;
-    size_t      columnNumber = 0;
+    std::string file_path;
+    size_t      line_number = 0;
     std::string message;
 
     std::istringstream stream(msvc_out);
-    if (!std::getline(stream, filePath, '(')) {
+    if (!std::getline(stream, file_path, '(')) {
         return {token::Token(), "", ""};
     }
 
     bool isFile = false;
 
     try {
-        std::filesystem::path path(filePath);
+        std::filesystem::path path(file_path);
         isFile = !path.empty();
     } catch (...) { isFile = false; }
 
@@ -91,7 +132,7 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_o
         return {token::Token(), "", ""};
     }
 
-    stream >> lineNumber;           // Extract line number
+    stream >> line_number;  // Extract line number
     // fixme: make msvc output column number
     stream.ignore();                // Ignore the next bracket
     stream.ignore();                // Ignore the next colon
@@ -99,24 +140,15 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_o
 
     token::Token pof;
 
-    if (generator::CXIR::SOURCE_MAPS.find(filePath) != generator::CXIR::SOURCE_MAPS.end()) {
-        generator::CXIR::SourceMap     &source_map = generator::CXIR::SOURCE_MAPS[filePath];
-        generator::CXIR::SourceLocation loc        = source_map.find_loc(lineNumber, columnNumber);
+    auto meta = get_meta(file_path, line_number);
+    
+    pof = token::Token(line_number,
+                       std::get<0>(meta),
+                       std::get<1>(meta),
+                       (std::get<0>(meta) + line_number),
+                       "/*error*/",
+                       file_path,
+                       "<other>");
 
-        if (!loc.is_placeholder) {
-            pof = token::Token(loc.line,
-                               loc.column,
-                               loc.length,
-                               loc.column + loc.line,
-                               "/*error*/",
-                               filePath,
-                               "<other>");
-        } else {
-            return {token::Token(), "", ""};
-        }
-    } else {
-        pof = token::Token(lineNumber, 0, 1, 1, "/*error*/", filePath, "<other>");
-    }
-
-    return {pof, message, filePath};
+    return {pof, message, file_path};
 }

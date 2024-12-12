@@ -243,7 +243,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         error::Panic(error::CodeError{
             .pof          = &pof,
             .err_code     = 0.8245,
-            .mark_pof     = false,
+            .mark_pof     = true,
             .err_fmt_args = {msg.substr(msg.find_first_not_of(' '))},
             .level        = level,
             .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),

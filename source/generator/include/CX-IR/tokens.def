@@ -131,6 +131,7 @@
     GENERATE(CXX_PP_DEFINE,         "#define"           ) \
     GENERATE(CXX_PP_INCLUDE,        "#include"          ) \
     GENERATE(CXX_PP_IFDEF,          "#ifdef"            ) \
+    GENERATE(CXX_PP_IF,             "#ifdef"            ) \
     GENERATE(CXX_PP_IFNDEF,         "#ifndef"           ) \
     GENERATE(CXX_PP_ELIF,           "#elif"             ) \
     GENERATE(CXX_PP_ELSE,           "#else"             ) \
@@ -138,6 +139,7 @@
     GENERATE(CXX_PP_UNDEF,          "#undef"            ) \
     GENERATE(CXX_PP_LINE,           "#line"             ) \
     GENERATE(CXX_PP_ERROR,          "#error"            ) \
+    GENERATE(CXX_PP_WARNING,        "#warning"          ) \
     GENERATE(CXX_PP_PRAGMA,         "#pragma"           ) \
     /* helix_prims c++ rep */                             \
     GENERATE(HELIX_I8,              "char"              ) \

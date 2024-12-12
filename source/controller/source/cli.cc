@@ -51,6 +51,7 @@ For support or to report issues, contact:
   support@helix-lang.com
 
 Thank you for using Helix!
+DISCLAIMER: All of these options are subject to change in future versions of helix. (until this message is removed)
 )");
         args::HelpFlag       help(parser, "help", "Display this help menu", {'h', "help"});
         args::Flag version(parser, "version", "Display the version information", {'v', "version"});

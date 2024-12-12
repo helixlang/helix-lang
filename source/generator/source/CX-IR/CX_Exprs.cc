@@ -349,7 +349,7 @@ CX_VISIT_IMPL(MapPairExpr) {
 }
 
 CX_VISIT_IMPL(MapLiteralExpr) {
-    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "hashmap");
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "map");
     BRACE_DELIMIT(COMMA_SEP(values););
 }
 
