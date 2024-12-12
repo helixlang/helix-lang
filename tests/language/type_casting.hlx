@@ -176,5 +176,6 @@ extend Book with JsonIfy {
 42
 0x7ff000000000
 f = 0x7ff000000000, h = 0x7ff000000000, g = 0xff1
+destroying
 // END TEST
 */

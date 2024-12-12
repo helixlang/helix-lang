@@ -1,0 +1,66 @@
+class Water {
+    let val: i32;
+
+    fn Water(self, val: i32) {
+        self.val = val;
+    }
+
+    op as fn (self) -> string {
+        return "class: Water";
+    }
+}
+
+// basic extension
+// directly adds everything defined in the extension into the class itself
+extend Water {
+    fn to_json(self) -> &self {
+        return "class: Water";
+    }
+}
+
+class BinaryTreeNode requires <T> {
+    let value: T;
+    let left:  *BinaryTreeNode::<T>?;
+    let right: *BinaryTreeNode::<T>?;
+
+    fn BinaryTreeNode(self, value: T):
+        panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
+
+    fn insert(self, value: T):
+        panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
+
+    fn find(self, value: T) -> bool:
+        panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
+}
+
+extend BinaryTreeNode::<i32> {
+     fn BinaryTreeNode(self, value: i32) {
+        self.value = value;
+        self.left  = null;
+        self.right = null;
+    }
+    fn insert(self, value: i32) {
+        if value < self.value {
+            if self.left? {
+                self.left.insert(value);
+            } else {
+                self.left = BinaryTreeNode(value);
+            }
+        } else {
+            if self.right? {
+                self.right.insert(value);
+            } else {
+                self.right = BinaryTreeNode(value);
+            }
+        }
+    }
+    fn find(self, value: i32) -> bool {
+        if value == self.value {
+            return true;
+        } else if value < self.value {
+            return self.left? && self.left.find(value);
+        } else {
+            return self.right? && self.right.find(value);
+        }
+    }
+}

@@ -25,6 +25,11 @@ fn main() -> i32 {
 }
 
 /*
+| windows vvvv
+error: C2338: static_assert failed: 'InvalidC must satisfy Haggler interface'
+| windows vvvv
+error: C2338: static_assert failed: 'MissingMethodC must satisfy Haggler interface'
+
 --------- do not remove this comment, it is used by the test script to validate the output ---------
 // START ERRORS
 error: static assertion failed: InvalidC must satisfy Haggler interface

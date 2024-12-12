@@ -1,3 +1,0 @@
--- `sudo alternatives --config ld`: set the linker to use lld,
--- perl must be installed
--- zlib and zstd are optional

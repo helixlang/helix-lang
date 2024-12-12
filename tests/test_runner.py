@@ -6,8 +6,9 @@ import logging
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+USE_THREADING = os.name != "nt"
+
 # Unicode color and emoji definitions
-USE_THREADING = True
 COLOR_GREEN = "\033[92m"  # Green
 COLOR_RED = "\033[91m"    # Red
 COLOR_YELLOW = "\033[93m" # Yellow

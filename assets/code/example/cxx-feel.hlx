@@ -1,0 +1,39 @@
+import std::Memory;
+
+class Sound requires <T> {
+    prot let value: T;
+
+    fn Sound(self, value: T) {
+        self.value = Memory::move(value);
+    }
+
+    fn play(self) {
+        print(f"Playing sound: {self.value}");
+    }
+
+    fn stop(self) {
+        print(f"Stopping sound: {self.value}");
+    }
+}
+
+class WoodenSpeaker derives pub Sound::<string> {
+    fn WoodenSpeaker(self, value: T) {
+        Sound(Memory::move(value));
+    }
+
+    fn play(self) {
+        print(f"Playing sound on wooden speaker: {self.value}");
+    }
+}
+
+fn main() -> i32 {
+    let sound = Sound::<string>("beep");
+    sound.play(); // Playing sound: beep
+    sound.stop(); // Stopping sound: beep
+
+    let wooden_speaker = WoodenSpeaker("beep");
+    wooden_speaker.play(); // Playing sound on wooden speaker: beep
+    wooden_speaker.stop(); // Stopping sound: beep
+
+    return 0;
+}
