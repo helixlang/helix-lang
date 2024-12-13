@@ -39,28 +39,27 @@ extend BinaryTreeNode::<i32> {
         self.left  = null;
         self.right = null;
     }
+
     fn insert(self, value: i32) {
         if value < self.value {
-            if self.left? {
+            if self.left?:
                 self.left.insert(value);
-            } else {
+            else:
                 self.left = BinaryTreeNode(value);
-            }
         } else {
-            if self.right? {
+            if self.right?:
                 self.right.insert(value);
-            } else {
+            else:
                 self.right = BinaryTreeNode(value);
-            }
         }
     }
+
     fn find(self, value: i32) -> bool {
-        if value == self.value {
+        if value == self.value:
             return true;
-        } else if value < self.value {
+        else if value < self.value:
             return self.left? && self.left.find(value);
-        } else {
+        else:
             return self.right? && self.right.find(value);
-        }
     }
 }
