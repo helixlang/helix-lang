@@ -17,6 +17,10 @@
 
 **Robustness**:       Provides tools and features that ensure code stability and reduce runtime errors, along with a cross-platform standard library.
 
+<div>
+  <img src="../assets/bumper.png", width="100%" alt="Bumper">
+</div>
+
 ---
 
 ## Table of Contents
@@ -63,16 +67,6 @@
   - [License](#license)
   - [Acknowledgements](#acknowledgements)
   - [Links](#links)
-  - [Project Status](#project-status)
-    - [Development Checklist](#development-checklist)
-  - [Quick Start](#quick-start-1)
-    - [Installation](#installation)
-    - [Running Your First Script](#running-your-first-script)
-  - [Community](#community)
-  - [License](#license-1)
-  - [Acknowledgements](#acknowledgements-1)
-    - [Discover More About Helix](#discover-more-about-helix)
-    - [Key Changes and Enhancements:](#key-changes-and-enhancements)
 
 ---
 
@@ -113,11 +107,10 @@ Helix is designed with a nod to C++ developers, blending familiar syntax and par
 ### Code Comparison between Helix and C++
 
 <div>
-  <img src="../assets/cxx-like-helix-ex.png" width="48%" alt="Helix Example", align="left">
-  <img src="../assets/cxx-like-cxx-ex.png" width="52%" alt="C++ Example", align="right">
-  <img src="../assets/bumper.png", width="100%" alt="Bumper">
+  <img src="../assets/cxx-like-helix-ex.png" width="47%" alt="Helix Example" style="float:left; margin-right: 3%; vertical-align: top;">
+  <img src="../assets/cxx-like-cxx-ex.png" width="52%" alt="C++ Example" style="float:right; margin-left: 3%; vertical-align: top;">
+  <img src="../assets/bumper.png" width="100%" alt="Bumper">
 </div>
-
 
 - **Template and Class Syntax**: Both Helix and C++ use template mechanisms to enable generic programming. Helix’s `requires` keyword functions similarly to C++ templates, but with a more readable syntax. For instance, where C++ uses `<typename T>`, Helix uses `requires <T>` to declare generic types.
 - **Function and Method Definitions**: Helix mirrors C++ in how functions and methods are defined and used, maintaining the same logic flow but simplifying syntax to increase clarity and reduce common pitfalls.
@@ -142,8 +135,8 @@ Helix has seamless integration with C++ codebases, enabling developers to utiliz
 Helix's FFI system is designed to be intuitive and straightforward, minimizing the learning curve and allowing for quick adoption in projects that already rely on C++:
 
 <div>
-  <img src="../assets/interoperability-with-cxx-hh.png" width="44%" alt="Helix Implementing C++", align="left">
-  <img src="../assets/interoperability-with-cxx-helix.png" width="56%" alt="C++ Header", align="right">
+  <img src="../assets/interoperability-with-cxx-hh.png" width="43%" alt="Helix Implementing C++", style="float:left; margin-right: 3%; vertical-align: top;">
+  <img src="../assets/interoperability-with-cxx-helix.png" width="56%" alt="C++ Header", style="float:right; margin-left: 3%; vertical-align: top;">
   <img src="../assets/bumper.png", width="100%" alt="Bumper">
 </div>
 
@@ -460,94 +453,3 @@ Happy coding with Helix! 🚀
 - [Official Website](https://helix-lang.com)
 - [Documentation](https://helix-lang.com/docs)
 - [Tutorials](https://helix-lang.com/tutorials)
-For a revised README that stays grounded and avoids unnecessary hype while showcasing the features and capabilities of Helix, here is a complete, restructured version:
-
-```md
-<div align="center">
-  <img src="../assets/helix-logo.svg" alt="Helix Programming Language Logo" width="100%">
-</div>
-
-| [Website](https://www.helix-lang.com) | [Introduction](#introduction) | [Quick Start](#quick-start) | [Project Status](#project-status) | [Community](#community) | [License](#license) | [Acknowledgements](#acknowledgements) |
-
-# Introduction to Helix
-Helix is a high-performance, statically typed programming language that draws inspiration from Rust, Python, and C++. It's designed to fill specific gaps in system programming by offering a more flexible type system, better memory safety features, and a familiar yet modern syntax.
-
-## Why Helix?
-- **Performance**: Matches the efficiency of C with more expressive capabilities.
-- **Safety**: Enhances safe memory management while allowing some flexibility for advanced users.
-- **Simplicity**: Offers a clean syntax that simplifies learning and enhances code readability.
-
-## Features of Helix
-- **Expressive Syntax**: Merges the simplicity of Python with the robust capabilities of C++.
-- **Advanced Type System**: Supports strong type checking, generics, and user-defined types with minimal overhead.
-- **Memory Management**: Implements a novel approach to memory safety without a garbage collector, reducing runtime overhead.
-- **Interoperability**: Designed to interoperate seamlessly with C++ codebases, facilitating easier adoption in existing projects.
-
-### Example: Basic Helix Usage
-```helix
-// Demonstrates defining a function and basic file operations in Helix
-fn main() {
-    print("Hello, World!");
-}
-```
-
-## Project Status
-Helix is under active development with its primary components in various stages of completion. We're currently focused on refining the core language features and expanding the standard library.
-
-### Development Checklist
-- [x] Syntax Definition
-- [ ] Standard Library Implementation
-- [ ] Compiler Optimization Techniques
-- [ ] Tooling and IDE Integration
-
-## Quick Start
-
-### Installation
-Ensure you have a modern C++ compiler and Python installed on your system. Clone the repository and build the project using:
-
-```bash
-git clone https://github.com/helixlang/helix-lang.git
-cd helix-lang
-xmake build
-```
-
-### Running Your First Script
-Save the following code in a file named `hello.hlx`, then compile and run it using the Helix compiler:
-
-```bash
-helix hello.hlx
-```
-
-## Community
-Helix thrives on community collaboration. We welcome contributions of all forms; whether you're tweaking the compiler or enhancing the documentation, your input is valuable.
-
-- [Contribute](https://github.com/helixlang/helix-lang/pulls)
-- [Report Issues](https://github.com/helixlang/helix-lang/issues)
-
-## License
-Helix is open-sourced under the MIT license, allowing you to use it freely in your personal or commercial projects.
-
-## Acknowledgements
-A heartfelt thank you to all the contributors who have helped shape Helix. Your dedication and insight are integral to its ongoing development.
-
-<div align="center">
-  <a href="https://github.com/helixlang/helix-lang/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=helixlang/helix-lang">
-  </a>
-</div>
-
----
-
-### Discover More About Helix
-- [Documentation](https://helix-lang.com/docs)
-- [Community Discussions](https://helix-lang.com/community)
-```
-
-### Key Changes and Enhancements:
-- **Streamlined Introduction**: Starts with a concise introduction to what Helix is and why it might be appealing to prospective users.
-- **Clear Features Section**: Lays out the core features and advantages of Helix, avoiding over-promotion and focusing on factual benefits.
-- **Updated Project Status**: Provides a realistic view of the current development stage, encouraging transparency.
-- **Simplified Quick Start**: Directs new users through the installation and initial testing process in a straightforward manner.
-- **Community Engagement**: Encourages community involvement in a welcoming tone, highlighting the importance of contributions to the project's success.
-
-This README is designed to provide all the essential information succinctly while ensuring it is accessible to newcomers and detailed enough for potential contributors or adopters. It balances technical insight with approachability, reflecting the mature yet evolving nature of Helix.
