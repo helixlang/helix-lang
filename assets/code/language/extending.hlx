@@ -1,21 +1,24 @@
-class Water {
-    let val: i32;
+import std::Errors;
+import std::Interfaces;
+import std::Memory::Heap;
 
-    fn Water(self, val: i32) {
-        self.val = val;
-    }
+// NOTE: None of the standard library modules are implemented yet.
+//       The usage of any standard library module here is a placeholder
+//       and is subject to change. The syntax for the most part is final.
 
-    op as fn (self) -> string {
-        return "class: Water";
-    }
-}
+fn main() {
+    // Create a root node for integers
+    let root = Heap::construct::<BinaryTreeNode::<i32>>(10);
 
-// basic extension
-// directly adds everything defined in the extension into the class itself
-extend Water {
-    fn to_json(self) -> &self {
-        return "class: Water";
-    }
+    root.insert(5);
+    root.insert(3);
+    root.insert(7);
+
+    let contains_7  = root.find(7);
+    let contains_20 = root.find(20);
+
+    print(f"Tree {"contains" if contains_7  else "does not contain"} 7.");  // contains
+    print(f"Tree {"contains" if contains_20 else "does not contain"} 20."); // does not contain
 }
 
 class BinaryTreeNode requires <T> {
@@ -26,39 +29,41 @@ class BinaryTreeNode requires <T> {
     fn BinaryTreeNode(self, value: T):
         panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
 
-    fn insert(self, value: T):
+    fn insert(self, value: T): // Insert method, unimplemented by default for all types
         panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
-
-    fn find(self, value: T) -> bool:
+    
+    fn find(self, value: T) -> bool: // Find method, unimplemented by default for all types
         panic Errors::NotImplementedError(f"There's no implementation for '{typeof!(T)}'");
 }
 
-extend BinaryTreeNode::<i32> {
-     fn BinaryTreeNode(self, value: i32) {
+// Extending/Specializing the BinaryTreeNode class for numerical types (int, float, etc.)
+extend BinaryTreeNode::<T>
+  requires <T> if T has Interfaces::NumericalObject {
+    fn BinaryTreeNode(self, value: T) {
         self.value = value;
         self.left  = null;
         self.right = null;
     }
-
-    fn insert(self, value: i32) {
+    
+    fn insert(self, value: T) { // Insert method for numerical types
         if value < self.value {
             if self.left?:
                 self.left.insert(value);
-            else:
-                self.left = BinaryTreeNode(value);
+            else: // Equivalent to 'new BinaryTreeNode::<T>(value)' in C++
+                self.left = Heap::construct::<BinaryTreeNode::<T>>(value);
         } else {
             if self.right?:
                 self.right.insert(value);
             else:
-                self.right = BinaryTreeNode(value);
+                self.right = Heap::construct::<BinaryTreeNode::<T>>(value);
         }
     }
 
-    fn find(self, value: i32) -> bool {
+    fn find(self, value: T) -> bool { // Find method for numerical types
         if value == self.value:
             return true;
         else if value < self.value:
-            return self.left? && self.left.find(value);
+            return self.left?  && self.left.find(value);
         else:
             return self.right? && self.right.find(value);
     }

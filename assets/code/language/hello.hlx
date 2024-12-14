@@ -1,3 +1,5 @@
+// file: hello_world.hlx
+
 fn main() -> i32 {
     print("Welcome to Helix 🚀");
     return 0;

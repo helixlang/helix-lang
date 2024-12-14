@@ -1,5 +1,9 @@
 import std::Memory;
 
+// NOTE: None of the standard library modules are implemented yet.
+//       The usage of any standard library module here is a placeholder
+//       and is subject to change. The syntax for the most part is final.
+
 class Sound requires <T> {
     prot let value: T;
 

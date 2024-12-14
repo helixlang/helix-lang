@@ -1,8 +1,9 @@
-// The Helix type system
-
 import std::Errors;
 import std::Interfaces;
 import std::Memory::Heap;
+
+// NOTE: None of the standard library modules are implemented yet. The usage of any standard library
+//       module here is a placeholder and is subject to change. The syntax for the most part is final.
 
 fn main() -> i32 {
     let int_holder = Holder::<int>(69);

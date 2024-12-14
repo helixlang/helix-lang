@@ -1,0 +1,31 @@
+import std::Interfaces;
+
+// DISCLAIMER: The standard library is not implemented (yet™) and is subject to change
+
+fn factorial(n: i32) -> i32 {
+    if n == 0 {
+        return 1;
+    }
+    
+    return n * factorial(n - 1);
+}
+
+fn selection_sort(arr: list::<T>) if T has Interfaces::Comparable {
+    let n = arr.len();
+    
+    for i in 0..n {
+        let min_idx = i;
+        
+        for j in (i+1)..n {
+            if arr[j] < arr[min_idx] {
+                min_idx = j;
+            }
+        }
+        
+        if min_idx != i {
+            let temp = arr[min_idx];
+            arr[min_idx] = arr[i];
+            arr[i]       = temp;
+        }
+    }
+}
