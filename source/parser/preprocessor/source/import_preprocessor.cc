@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "controller/include/Controller.hh"
 #include "controller/include/tooling/tooling.hh"
 #include "generator/include/CX-IR/CXIR.hh"
 #include "neo-panic/include/error.hh"
@@ -44,11 +45,9 @@
 // parser::preprocessor::import_tree
 
 __PREPROCESSOR_BEGIN {
-    using NormalizedImport =
-        std::tuple<std::filesystem::path, size_t, parser::preprocessor::ImportProcessor::Type>;
-
     struct NormalizedImportHasher {
-        std::size_t operator()(const parser::preprocessor::NormalizedImport &key) const {
+        std::size_t
+        operator()(const parser::preprocessor::ImportProcessor::NormalizedImport &key) const {
             return std::hash<std::filesystem::path>{}(std::get<0>(key)) ^
                    (std::hash<unsigned long>{}(std::get<1>(key)) << 1) ^
                    (std::hash<parser::preprocessor::ImportProcessor::Type>{}(std::get<2>(key))
@@ -315,7 +314,7 @@ __PREPROCESSOR_BEGIN {
                       inline_cpp.cend());
     }
 
-    void ImportProcessor::parse() {
+    void ImportProcessor::process() {
         /// make an ast parser
         __TOKEN_N::TokenList::TokenListIter           iter = tokens.begin();
         __AST_NODE::Statement                         ast_parser(iter);
@@ -584,7 +583,9 @@ __PREPROCESSOR_BEGIN {
                 if (alias.empty()) {
                     if (what_was_imported.index() == 0) {
                         /// get the stem since thats the alias
-                        std::string elem = std::get<std::filesystem::path>(what_was_imported).stem().generic_string();
+                        std::string elem = std::get<std::filesystem::path>(what_was_imported)
+                                               .stem()
+                                               .generic_string();
 
                         alias.push_back({__TOKEN_N::tokens::IDENTIFIER, elem, start});
                     } else {
@@ -628,57 +629,77 @@ __PREPROCESSOR_BEGIN {
             }
         }
 
+        /// add the imports to the unit
+        this->extend(normalized, import_dirs, parsed_args, start_pos, start);
+    }
+
+    void ImportProcessor::append(const std::filesystem::path              &path,
+                                 size_t                                    rel_to_index,
+                                 Type                                      type,
+                                 size_t                                    start_pos,
+                                 const std::vector<std::filesystem::path> &import_dirs,
+                                 __CONTROLLER_CLI_N::CLIArgs              &parsed_args,
+                                 __TOKEN_N::Token                         &start) {
+        CompilationUnit unit;  // create a new compile unit instance
+        parsed_args.file =
+            (import_dirs[rel_to_index] / path).generic_string();  // set the file path
+
+        // check if the file exists and is a regular file by this point this should always be
+        // true but just in case we check
+        if (!std::filesystem::is_regular_file(parsed_args.file)) [[unlikely]] {
+            error::Panic(error::CodeError{
+                .pof      = &start,
+                .err_code = 0.0001,
+                .mark_pof = true,
+                .fix_fmt_args{},
+                .err_fmt_args{"import path could not be resolved"},
+                .opt_fixes{},
+            });
+        }
+
+        if (type == Type::Module) {
+            /// thing is once the basic ver is done, i need to be able to do cache compilation
+            /// basicly make a lock.json file that stores the hash of the file, the path to the
+            /// compiled file, and the path to the source file, on each compile check the hash
+            /// and if it matches the source file, use the compiled file, if not recompile
+
+            /// this does not work right now since stuff like templates can not be instantiated
+            /// from another file and be defined in another.
+
+            // auto [action, ec] = unit.build_unit(parsed_args, false);
+            // COMPILE_ACTIONS.emplace_back(std::move(action));  /// this needs to be included in
+            /// the final compile action list
+
+            auto [action, ec] = unit.build_unit(parsed_args, false, true);
+
+            if (ec == 1) {  /// if there was an error, skip this import
+                return;
+            }
+
+            generator::CXIR::CXIR forward_decls = unit.generate_cxir(false);
+            this->imports.push_back(std::move(forward_decls));  /// this gets passed as an ptr
+                                                                /// during cxir generation
+
+        } else if (type == Type::Header) {
+            __TOKEN_N::TokenList import_tokens = unit.pre_process(parsed_args, false);
+
+            this->tokens.insert(
+                this->tokens.cbegin() +
+                    static_cast<std::ptrdiff_t>(
+                        start_pos == std::numeric_limits<size_t>::max() ? 0 : start_pos),
+                import_tokens.cbegin(),
+                import_tokens.cend());
+        }
+    }
+
+    void ImportProcessor::extend(const std::vector<NormalizedImport>      &normalized,
+                                 const std::vector<std::filesystem::path> &import_dirs,
+                                 __CONTROLLER_CLI_N::CLIArgs              &parsed_args,
+                                 size_t                                    start_pos,
+                                 __TOKEN_N::Token                         &start) {
+
         for (const auto &[path, rel_to_index, type] : normalized) {
-            CompilationUnit unit;  // create a new compile unit instance
-            parsed_args.file =
-                (import_dirs[rel_to_index] / path).generic_string();  // set the file path
-
-            // check if the file exists and is a regular file by this point this should always be
-            // true but just in case we check
-            if (!std::filesystem::is_regular_file(parsed_args.file)) [[unlikely]] {
-                error::Panic(error::CodeError{
-                    .pof      = &start,
-                    .err_code = 0.0001,
-                    .mark_pof = true,
-                    .fix_fmt_args{},
-                    .err_fmt_args{"import path could not be resolved"},
-                    .opt_fixes{},
-                });
-            }
-
-            if (type == Type::Module) {
-                /// thing is once the basic ver is done, i need to be able to do cache compilation
-                /// basicly make a lock.json file that stores the hash of the file, the path to the
-                /// compiled file, and the path to the source file, on each compile check the hash
-                /// and if it matches the source file, use the compiled file, if not recompile
-
-                /// this does not work right now since stuff like templates can not be instantiated
-                /// from another file and be defined in another.
-
-                // auto [action, ec] = unit.build_unit(parsed_args, false);
-                // COMPILE_ACTIONS.emplace_back(std::move(action));  /// this needs to be included in
-                                                                     /// the final compile action list
-
-                auto [action, ec] = unit.build_unit(parsed_args, false, true);
-
-                if (ec == 1) {  /// if there was an error, skip this import
-                    continue;
-                }
-
-                generator::CXIR::CXIR forward_decls = unit.generate_cxir(false);
-                this->imports.push_back(std::move(forward_decls));  /// this gets passed as an ptr
-                                                                    /// during cxir generation
-
-            } else if (type == Type::Header) {
-                __TOKEN_N::TokenList import_tokens = unit.pre_process(parsed_args, false);
-
-                tokens.insert(tokens.cbegin() + static_cast<std::ptrdiff_t>(
-                                                    start_pos == std::numeric_limits<size_t>::max()
-                                                        ? 0
-                                                        : start_pos),
-                              import_tokens.cbegin(),
-                              import_tokens.cend());
-            }
+            this->append(path, rel_to_index, type, start_pos, import_dirs, parsed_args, start);
         }
     }
 
@@ -711,7 +732,7 @@ __PREPROCESSOR_BEGIN {
                             .err_fmt_args{"path found in multiple locations: " +
                                           (import_dirs[index] / path).generic_string()},
                             .opt_fixes{},
-                            .level    = error::WARN,
+                            .level = error::WARN,
                         });
                     }
 
@@ -762,7 +783,7 @@ __PREPROCESSOR_BEGIN {
                     .fix_fmt_args{},
                     .err_fmt_args{"import path could not be resolved"},
                     .opt_fixes{},
-                    .level    = error::ERR,
+                    .level = error::ERR,
                 });
             }
 
@@ -919,7 +940,7 @@ __PREPROCESSOR_BEGIN {
                 .fix_fmt_args{},
                 .err_fmt_args{"could not locate import"},
                 .opt_fixes{},
-                .level    = error ::ERR,
+                .level = error ::ERR,
             });
         }
 

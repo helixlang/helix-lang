@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "controller/include/tooling/tooling.hh"
+#include "controller/include/shared/logger.hh"
 
 int main(int argc, char **argv) {
     std::vector<neo::json> errors;
@@ -49,6 +50,10 @@ int main(int argc, char **argv) {
         print(error_json);
 
         return 1;  // soft error
+    }
+
+    if (!LSP_MODE && (result == 1 || error::HAS_ERRORED)) {
+        print(string(colors::bold) + string(colors::fg8::red) + "error: " + string(colors::reset) + "aborting... due to previous errors");
     }
 
     return result;

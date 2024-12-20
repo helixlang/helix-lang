@@ -66,7 +66,7 @@
         .fix_fmt_args{},                 \
         .err_fmt_args{msg},              \
         .opt_fixes{},                    \
-        .level    = error::ERR,          \
+        .level = error::ERR,             \
     })
 #ifndef WARN_PANIC_FIX
 #define WARN_PANIC_FIX(msg, fix, marker) \
@@ -77,7 +77,7 @@
         .fix_fmt_args{fix},              \
         .err_fmt_args{msg},              \
         .opt_fixes{},                    \
-        .level    = error::WARN,         \
+        .level = error::WARN,            \
     })
 #endif
 #endif
@@ -96,6 +96,9 @@ __PREPROCESSOR_BEGIN {
             Module,
             Header,
         };
+
+        using NormalizedImport =
+        std::tuple<std::filesystem::path, size_t, parser::preprocessor::ImportProcessor::Type>;
 
         using ImportType                = std::variant<std::filesystem::path, __TOKEN_N::TokenList>;
         using ImportAlias               = __TOKEN_N::TokenList;
@@ -139,7 +142,21 @@ __PREPROCESSOR_BEGIN {
         static void
         insert_inline_cpp(__TOKEN_N::TokenList &tokens, const InstLoc &loc, const InstCXX &cxx);
 
-        void parse();
+        void process();
+
+        void append(const std::filesystem::path                        &path,
+                    size_t                                    rel_to_index,
+                    Type                                      type,
+                    size_t                                    start_pos,
+                    const std::vector<std::filesystem::path> &import_dirs,
+                    __CONTROLLER_CLI_N::CLIArgs              &parsed_args,
+                    __TOKEN_N::Token                         &start);
+
+        void extend(const std::vector<NormalizedImport> &normalized,
+                    const std::vector<std::filesystem::path>                 &import_dirs,
+                    __CONTROLLER_CLI_N::CLIArgs                              &parsed_args,
+                    size_t                                                    start_pos,
+                    __TOKEN_N::Token                                         &start);
 
         /// \returns a resolved path (maybe), which index it was found at, and
         ///          the type of the path that was found, and a vec of also matched paths

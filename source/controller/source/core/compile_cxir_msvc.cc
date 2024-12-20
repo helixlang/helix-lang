@@ -23,6 +23,7 @@
 #include "controller/include/tooling/tooling.hh"
 #include "parser/preprocessor/include/preprocessor.hh"
 #include "token/include/config/Token_config.def"
+#include "token/include/private/Token_list.hh"
 
 #ifndef DEBUG_LOG
 #define DEBUG_LOG(...)                            \
@@ -30,6 +31,18 @@
         helix::log<LogLevel::Debug>(__VA_ARGS__); \
     }
 #endif
+
+namespace CXIR {
+    std::string strip(const std::string& str, const std::string& chars = " \t\n\r") {
+        size_t start = str.find_first_not_of(chars);
+        if (start == std::string::npos) {
+            return "";
+        }
+
+        size_t end = str.find_last_not_of(chars);
+        return str.substr(start, end - start + 1);
+    }
+}
 
 CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &action) const {
     bool is_verbose       = action.flags.contains(EFlags(flag::types::CompileFlags::Verbose));
@@ -118,6 +131,8 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         "/nologo",
         "/Zc:__cplusplus",
         ((action.flags.contains(flag::types::CompileFlags::Debug)) ? "/RTC1" : ""),
+        cxx::flags::fullFilePathFlag,
+        cxx::flags::noErrorReportingFlag,
 
 
         // cxx::flags::noDefaultLibrariesFlag,
@@ -187,10 +202,16 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         lines.push_back(line);
     }
 
+    DEBUG_LOG("parsing output");
     for (auto & line : lines) {
         ErrorPOFNormalized err = CXIRCompiler::parse_msvc_err(line);
-
+        
+        DEBUG_LOG("parsed error: ", std::get<1>(err));
         if (std::get<0>(err).token_kind() == __TOKEN_N::WHITESPACE) {
+            continue;
+        }
+
+        if (std::get<1>(err).empty() || std::get<2>(err).empty()) {
             continue;
         }
 
@@ -200,7 +221,8 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
             }
 
             continue;
-
+            
+            DEBUG_LOG("file not found (this is a bug)");
             // FIXME: for some fucking reason this causes some sort of memory corruption
             //        and caused the compiler to exit prematurely with a exit code of 0
             //        this is a temporary fix until I can figure out what is causing it
@@ -213,15 +235,36 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
             continue;
         }
 
-        std::pair<size_t, size_t> err_t = {std::get<1>(err).find_first_not_of(' '),
-                                           std::get<1>(err).find('C') -
-                                               std::get<1>(err).find_first_not_of(' ') - 1};
+        std::string raw_err = CXIR::strip(std::get<1>(err));
 
-        error::Level level = std::map<string, error::Level>{
-            {"error", error::Level::ERR},                       //
-            {"warning", error::Level::WARN},                    //
-            {"note", error::Level::NOTE}                        //
-        }[std::get<1>(err).substr(err_t.first, err_t.second)];  //
+        // we either get: ('error'/'warn'/'note')':' 'C' ...
+        // or we get: ('error'/'warn'/'note')':' ...
+        size_t err_t = 0;
+        size_t c_pos = raw_err.find('C');
+        size_t colon_pos = raw_err.find(':');
+        size_t first_non_space = raw_err.find_first_not_of(' ');
+
+        // Validate if the 'C' is part of an MSVC error code (e.g., C4005)
+        if (c_pos != std::string::npos && std::isdigit(raw_err[c_pos + 1])) {
+            // 'C' is part of an MSVC error code
+            err_t = (c_pos-1) - first_non_space;
+        } else if (colon_pos != std::string::npos) {
+            // Fallback to ':' position
+            err_t = colon_pos - first_non_space;
+        } else {
+            // No valid MSVC error code or ':' found; handle the edge case
+            err_t = std::string::npos;
+        }
+
+        DEBUG_LOG("getting err code for '", raw_err.substr(0, err_t), "'");
+        
+        error::Level level;
+        std::string e_level = raw_err.substr(0, err_t);
+
+        if (e_level == "error") {level = error::Level::ERR; }
+        else if (e_level == "warning") {level = error::Level::WARN; }
+        else if (e_level == "note") {level = error::Level::NOTE; }
+        else {level = error::Level::FATAL; }
 
         auto pof = std::get<0>(err);
         try {  // if the file is a core lib file, ignore all but errors
@@ -238,19 +281,25 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
             }
         } catch (...) {}
 
-        std::string msg = std::get<1>(err).substr(err_t.first + err_t.second + 1);
+        std::string msg = CXIR::strip(raw_err.substr(err_t + 1));
 
+        DEBUG_LOG("panicking with error: '", raw_err, "'");
+        DEBUG_LOG("token: ", pof.to_json());
+        
         error::Panic(error::CodeError{
             .pof          = &pof,
             .err_code     = 0.8245,
             .mark_pof     = true,
-            .err_fmt_args = {msg.substr(msg.find_first_not_of(' '))},
+            .fix_fmt_args = {},
+            .err_fmt_args = {msg},
             .level        = level,
             .indent       = static_cast<size_t>((level == error::NOTE) ? 1 : 0),
         });
     }
 
-    if (compile_result.return_code == 0) {
+    DEBUG_LOG("finished parsing output");
+
+    if (compile_result.return_code == 0 && !error::HAS_ERRORED) {
         helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
                                    " and compiled cxir");
         helix::log<LogLevel::Progress>("compiled successfully to " + action.cc_output.generic_string());

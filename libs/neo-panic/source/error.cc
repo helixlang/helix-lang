@@ -483,8 +483,9 @@ void Panic::process_full_line() {
     auto full_line = __CONTROLLER_FS_N::get_line(final_err.file, final_err.line);
 
     if (!full_line.has_value()) {
-        // TODO: throw error
-        std::exit(288);
+        final_err.full_line = "$ out of bounds $";
+        final_err.line       = 1;
+        return;
     }
 
     while (!full_line->empty() && full_line->back() == ' ') {  // trim trailing spaces
@@ -526,7 +527,11 @@ void Panic::show_error(bool internal_core_lib_err) {
         return;
     }
 
-    lines_vec lines = get_surrounding_lines(final_err.file, final_err.line);
+    lines_vec lines;
+    if (final_err.full_line != "$ out of bounds $") {
+        lines = get_surrounding_lines(final_err.file, final_err.line);
+    }
+     
     string    markings;
     string    formatted_error;
     string    whitespace = string(level_len, ' ');

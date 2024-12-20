@@ -208,15 +208,7 @@ __CXIR_CODEGEN_BEGIN {
                 return "\n" + value + " ";
             }
 
-            if (value == ";") {
-                return "\n" + value + " ";
-            }
-
-            if (line == 0) {
-                return " " + value + "\n";
-            }
-
-            return "\n#line " + std::to_string(line) + " \"" + file_name + "\"\n" + value + "\n";
+            return value + " ";
         }
 
         [[nodiscard]] std::string to_clean_CXIR() const {

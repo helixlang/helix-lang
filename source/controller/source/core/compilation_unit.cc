@@ -155,7 +155,7 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
 
     import_processor =
         std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
-    import_processor->parse();
+    import_processor->process();
 
     if (error::HAS_ERRORED) {
         return {};
@@ -207,7 +207,6 @@ std::pair<CXXCompileAction, int> CompilationUnit::build_unit(
     ast = parse_ast(tokens, in_file_path);
 
     if (!ast) {
-        helix::log<LogLevel::Error>("aborting...");
         return {{}, 1};
     }
 
@@ -244,7 +243,6 @@ std::pair<CXXCompileAction, int> CompilationUnit::build_unit(
     std::filesystem::path out_file = determine_output_file(parsed_args, in_file_path);
 
     if (error::HAS_ERRORED) {
-        helix::log<LogLevel::Error>("aborting... due to previous errors");
         return {{}, 1};
     }
 

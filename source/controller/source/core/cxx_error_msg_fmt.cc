@@ -111,18 +111,29 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_clang_err(std::string clang
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_gcc_err(std::string gcc_out) {
     return parse_clang_err(gcc_out);
 }
+
+std::string preprocess_msvc_output(const std::string &msvc_out) {
+    std::regex with_block(R"(with\s*\[([^\]]+)\])");
+    return std::regex_replace(msvc_out, with_block, R"(with($1))");
+}
+
 CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_out) {
+    // Preprocess the MSVC output to inline 'with' blocks and simplify parsing
+    msvc_out = preprocess_msvc_output(msvc_out);
+
     std::string file_path;
     size_t      line_number = 0;
     std::string message;
 
     std::istringstream stream(msvc_out);
+
+    // Extract the file path up to the opening parenthesis '('
     if (!std::getline(stream, file_path, '(')) {
         return {token::Token(), "", ""};
     }
 
+    // Verify if the extracted portion is a valid file path
     bool isFile = false;
-
     try {
         std::filesystem::path path(file_path);
         isFile = !path.empty();
@@ -132,16 +143,34 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_o
         return {token::Token(), "", ""};
     }
 
-    stream >> line_number;  // Extract line number
-    // fixme: make msvc output column number
-    stream.ignore();                // Ignore the next bracket
-    stream.ignore();                // Ignore the next colon
-    std::getline(stream, message);  // Extract the message
+    // Parse the line number between the parentheses
+    char opening_parenthesis = msvc_out[file_path.size()];  // First character after file_path
+    if (opening_parenthesis != '(') {
+        return {token::Token(), "", ""};  // Invalid format
+    }
 
+    char closing_parenthesis;
+    stream >> line_number >> closing_parenthesis;
+
+    if (closing_parenthesis != ')') {
+        return {token::Token(), "", ""};  // Invalid format
+    }
+
+    // Ensure the colon after the closing parenthesis
+    char colon;
+    stream >> colon;
+    if (colon != ':') {
+        return {token::Token(), "", ""};
+    }
+
+    // Extract the error message
+    std::getline(stream, message);
+
+    // Generate the token
     token::Token pof;
 
     auto meta = get_meta(file_path, line_number);
-    
+
     pof = token::Token(line_number,
                        std::get<0>(meta),
                        std::get<1>(meta),
@@ -152,3 +181,4 @@ CXIRCompiler::ErrorPOFNormalized CXIRCompiler::parse_msvc_err(std::string msvc_o
 
     return {pof, message, file_path};
 }
+

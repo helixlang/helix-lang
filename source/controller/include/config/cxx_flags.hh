@@ -27,7 +27,7 @@ constexpr CF optimizationSize{"-Os", "-Os", "/O1", "-Os"};
 constexpr CF linkStatic{"-static", "-static", "/MT", "-static"};
 constexpr CF linkShared{"-shared", "-shared", "/LD", "-shared"};
 constexpr CF positionIndependent{"-fPIC", "-fPIC", "/LD", "-fPIC"};
-constexpr CF cxxStandardFlag{"-xc++", "-xc++", "/TP", "-xc++"}; // force c++ mode
+constexpr CF cxxStandardFlag{"-xc++", "-xc++", "/TP", "-xc++"};  // force c++ mode
 constexpr CF noOptimization{"-fno-inline", "-fno-inline", "/Ob0", "-fno-inline"};
 constexpr CF defineFlag{"-D", "-D", "/D", "-D"};
 constexpr CF includeFlag{"-I", "-I", "/I", "-I"};
@@ -78,9 +78,19 @@ constexpr CF noOmitFramePointerFlag{"-fno-omit-frame-pointer",
                                     "-fno-omit-frame-pointer",
                                     "/diagnostics:caret",
                                     "-fno-omit-frame-pointer"};
-constexpr CF enableExceptionsFlag{"-fexceptions",
-                                  "-fexceptions",
-                                  "/EHsc",
-                                  "-fexceptions"};
+constexpr CF enableExceptionsFlag{"-fexceptions", "-fexceptions", "/EHsc", "-fexceptions"};
+
+constexpr CF fullFilePathFlag{"-fdiagnostics-absolute-paths",
+                              "-fdiagnostics-absolute-paths",
+                              "/FC",
+                              "-fdiagnostics-absolute-paths"};
+constexpr CF showCaretsFlag{"-fshow-caret",
+                           "-fshow-caret",
+                           "/diagnostics:caret",
+                           "-fshow-caret"};
+constexpr CF noErrorReportingFlag{"-fno-error-report",
+                                  "-fno-error-report",
+                                  "/errorReport:None",
+                                  "-fno-error-report"};
 }  // namespace cxx::flags
 #endif  // __CXX_FLAGS_H__

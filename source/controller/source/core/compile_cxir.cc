@@ -43,10 +43,10 @@ void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
             }
         } catch (...) {
             if (error::HAS_ERRORED) {
-                helix::log<LogLevel::Error>("aborting... due to previous errors");
                 return;
             }
 
+            error::HAS_ERRORED = true;
             helix::log<LogLevel::Error>("failed to compile using msvc or clang");
         }
     } else {
@@ -114,6 +114,7 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         cxx::flags::noOmitFramePointerFlag,
         cxx::flags::noColorDiagnosticsFlag,
         cxx::flags::noDiagnosticsFixitFlag,
+        cxx::flags::fullFilePathFlag,
         cxx::flags::noDiagnosticsShowLineNumbersFlag,
         cxx::flags::noDiagnosticsShowOptionFlag,
         cxx::flags::caretDiagnosticsMaxLinesFlag,

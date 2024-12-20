@@ -20,6 +20,7 @@
 #include "token/include/private/Token_base.hh"
 #include "utils.hh"
 
+static size_t f_index = 0;
 
 __CXIR_CODEGEN_BEGIN {
     std::string normalize_file_name(std::string file_name) {
@@ -55,7 +56,7 @@ __CXIR_CODEGEN_BEGIN {
                 return;
             }
 
-            cxir += "\n#line 1 R\"(" + file_name + ")\"\n";
+            // cxir += "\n#line 1 R\"(" + file_name + ")\"\n";
 
             if (SOURCE_MAPS.find(file_name) == SOURCE_MAPS.end()) {
                 SOURCE_MAPS[file_name] = SourceMap();
@@ -121,8 +122,6 @@ __CXIR_CODEGEN_BEGIN {
         std::string              cxir;
 
         // get the first file name
-        size_t f_index = 0;
-
         for (const auto &token : tokens) {
             file_name = ::generator::CXIR::get_file_name(token);
 
@@ -146,7 +145,7 @@ __CXIR_CODEGEN_BEGIN {
             return "#error \"Lost the original file name\"";
         }
 
-        cxir += "\n#line 1 R\"(" + file_macros.begin()->second + ")\"\n";
+        cxir += "\n#line 1 " + file_macros.begin()->second + "\n";
 
         for (size_t i = 0; i < tokens.size(); ++i) {
             const auto &token = tokens[i];
