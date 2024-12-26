@@ -15,6 +15,10 @@
 
 #include "utils.hh"
 
+// make a function to search the body of the class and search the body of all the functions/ops for
+// the presence of panic statements, if so then check if the return type is marked as a questionable
+// if not then error out saying that the function/operation is marked as panic but the return type is
+// not marked as questionable
 
 CX_VISIT_IMPL(ClassDecl) {
     auto add_udt_body = [node](CXIR                                         *self,

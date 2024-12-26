@@ -111,7 +111,7 @@ CX_VISIT_IMPL(ElseState) {
     if (node.type != __AST_NODE::ElseState::ElseType::Else) {
         ADD_TOKEN(CXX_IF);
         PAREN_DELIMIT(  //
-            if (node.type != __AST_NODE::ElseState::ElseType::ElseUnless) {
+            if (node.type == __AST_NODE::ElseState::ElseType::ElseUnless) {
                 ADD_TOKEN(CXX_EXCLAMATION);
             }
 
@@ -306,9 +306,17 @@ CX_VISIT_IMPL(ContinueState) {
 CX_VISIT_IMPL(CatchState) {
     NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_CATCH);
-    PAREN_DELIMIT(                    //
-        ADD_NODE_PARAM(catch_state);  //
-    );                                //
+
+    if (!node.catch_state) {
+        PAREN_DELIMIT(                    //
+            ADD_TOKEN(CXX_ELLIPSIS);      //
+        );
+    } else {
+        PAREN_DELIMIT(                    //
+            ADD_NODE_PARAM(catch_state);  //
+        );                                //
+    }
+    
     ADD_NODE_PARAM_BODY();
 }
 
@@ -337,19 +345,20 @@ CX_VISIT_IMPL(FinallyState) {
 CX_VISIT_IMPL(TryState) {
     NO_EMIT_FORWARD_DECL;
 
-    // Is this nullable?
-    if (node.finally_state) {           //
-        ADD_NODE_PARAM(finally_state);  //
-    }
+    ADD_NODE_PARAM(finally_state);
 
     ADD_TOKEN(CXX_TRY);
     ADD_NODE_PARAM_BODY();
+
+    ADD_ALL_NODE_PARAMS(catch_states);
 }
 
 CX_VISIT_IMPL(PanicState) {
     NO_EMIT_FORWARD_DECL;
-    ADD_TOKEN(CXX_THROW);
-    ADD_NODE_PARAM(expr);
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "$panic");
+    PAREN_DELIMIT(                    //
+        ADD_NODE_PARAM(expr);        //
+    );                                //
     ADD_TOKEN(CXX_SEMICOLON);
 }
 

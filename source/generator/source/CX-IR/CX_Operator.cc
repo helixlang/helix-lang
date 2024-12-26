@@ -89,19 +89,19 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         }
 
         // if its a contains op
-        // the codegen makes 1 function: auto $contains() -> bool {}
+        // the codegen makes 1 function: auto operator$contains() -> bool {}
 
         else if (op_t.type == OpType::ContainsOp) {
             /// add the fucntion
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$contains", *op_t.tok);
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$contains", *op_t.tok);
         }
 
         // if its a cast op
-        // the codegen makes 1 function: auto $cast(<type>*) -> <type> {}
+        // the codegen makes 1 function: auto operator$cast(<type>*) -> <type> {}
 
         else if (op_t.type == OpType::CastOp) {
             /// add the fucntion
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$cast", *op_t.tok);
 
             auto type =
                 __AST_N::make_node<__AST_NODE::Type>(__AST_N::make_node<__AST_NODE::UnaryExpr>(
@@ -193,10 +193,10 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
                 } else if (op_t.type == OpType::ContainsOp) {
                     /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$contains", *op_t.tok);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$contains", *op_t.tok);
                 } else if (op_t.type == OpType::CastOp) {
                     /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$cast", *op_t.tok);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$cast", *op_t.tok);
                 }
             } else {
                 ADD_TOKEN(CXX_OPERATOR);     //
