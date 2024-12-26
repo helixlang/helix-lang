@@ -369,15 +369,15 @@ __AST_NODE_BEGIN {
     class CatchState final : public Node {
         BASE_CORE_METHODS(CatchState);
 
-        // := 'catch' (NamedVarSpecifier ((',' NamedVarSpecifier)*)?)? SuiteState (CatchState |
+        // := 'catch' (NamedVarSpecifier | Type)? SuiteState (CatchState |
         // FinallyState)?
 
-        CatchState(NodeT<NamedVarSpecifier> catch_state, NodeT<SuiteState> body)
-            : catch_state(std::move(catch_state))
+        CatchState(NodeT<> catch_state, NodeT<SuiteState> body)
+            : catch_state(catch_state == nullptr ? nullptr : std::move(catch_state))
             , body(std::move(body)) {}
 
-        NodeT<NamedVarSpecifier> catch_state;
-        NodeT<SuiteState>        body;
+        NodeT<>           catch_state;
+        NodeT<SuiteState> body;
     };
 
     class FinallyState final : public Node {

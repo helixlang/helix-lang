@@ -1477,7 +1477,7 @@ AST_NODE_IMPL_VISITOR(Jsonify, TryState) {
 AST_NODE_IMPL(Statement, CatchState) {
     IS_NOT_EMPTY;
 
-    // := 'catch' (NamedVarSpecifier) SuiteState (CatchState)?
+    // := 'catch' (NamedVarSpecifier | Type)? SuiteState (CatchState)?
 
     __TOKEN_N::Token starting_tok;
     bool             except_closing_paren = false;
@@ -1490,9 +1490,21 @@ AST_NODE_IMPL(Statement, CatchState) {
         starting_tok         = CURRENT_TOK;
         iter.advance();  // skip '('
     }
+    
+    // either have a var like: e: Exception
+    // or just a type like: Exception
+    // or none at all
+    ParseResult<> catch_state;
 
-    ParseResult<NamedVarSpecifier> catch_state = parse<NamedVarSpecifier>(true);
-    RETURN_IF_ERROR(catch_state);
+    if (CURRENT_TOKEN_IS(__TOKEN_N::IDENTIFIER) && HAS_NEXT_TOK && NEXT_TOK.token_kind() == __TOKEN_N::PUNCTUATION_COLON) {
+        catch_state = parse<NamedVarSpecifier>(true);
+        RETURN_IF_ERROR(catch_state);
+    } else if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_OPEN_BRACE) || CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COLON)) {
+        catch_state = nullptr;
+    } else {
+        catch_state = expr_parser.parse<Type>();
+        RETURN_IF_ERROR(catch_state);
+    }
 
     if (except_closing_paren) {
         if (CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) {
@@ -1508,7 +1520,7 @@ AST_NODE_IMPL(Statement, CatchState) {
     ParseResult<SuiteState> body = parse<SuiteState>();
     RETURN_IF_ERROR(body);
 
-    return make_node<CatchState>(catch_state.value(), body.value());
+    return make_node<CatchState>(catch_state.has_value() ? catch_state.value() : nullptr, body.value());
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, CatchState) {
