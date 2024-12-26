@@ -1,20 +1,29 @@
 fn test() -> std::Questionable::<i32> {
-    return __inline_cpp("std::Panic::Frame(new std::errors::RuntimeError(\"this is a panic\"), \"source/helix.hlx\", 1)");
+    panic std::errors::RuntimeError("this is a panic");
+}
+
+fn see_if_this_works() {
+    let x: std::Questionable::<i32> = test();
+
+    try {
+        x as i32;
+    } catch std::errors::RuntimeError {
+        print("woah a runtime error how?");
+    } catch {
+        print("some other error");
+    }
+
+    // if (x == null) {
+    //     print("null");
+    // } else if (x == std::errors::RuntimeError()) {
+    //     print("error: some error here");
+    // } else {
+    //     print(x as i32);
+    // }
 }
 
 fn main() -> i32 {
-    let x: std::Questionable::<i32> = test();
-    
-    if (x == null) {
-        print("null");
-    } else if (x == std::errors::RuntimeError()) {
-        print("error: ", (x as std::errors::RuntimeError).__inline_cpp("$panic()"));
-    } else if (x has std::errors::RuntimeError) {
-        print("err in thing");
-    } else {
-        print(x as i32);
-    }
-
+    see_if_this_works();
     return 0;
 }
 

@@ -27,7 +27,7 @@ class ConstrainedPub with ConstrainedI::<Bar> {
 }
 
 // Function that uses constrained interfaces
-fn use_constrained() requires <T, U> if T has ConstrainedI::<U>, U has SimpleI {
+fn use_constrained() requires <T, U> if T has ConstrainedI::<U> && U has SimpleI {
     let instance: T;
     print(instance.mandem(U()));
 }
