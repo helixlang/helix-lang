@@ -74,19 +74,20 @@
      __TOKEN_N::DELIMITER_SPACE,   \
      __TOKEN_N::WHITESPACE}
 
-#define IS_UNARY_OPERATOR             \
-    {__TOKEN_N::OPERATOR_ADD,         \
-     __TOKEN_N::OPERATOR_SUB,         \
-     __TOKEN_N::OPERATOR_BITWISE_NOT, \
-     __TOKEN_N::OPERATOR_LOGICAL_NOT, \
-     __TOKEN_N::OPERATOR_POW,         \
-     __TOKEN_N::OPERATOR_ABS,         \
-     __TOKEN_N::OPERATOR_INC,         \
-     __TOKEN_N::OPERATOR_DEC,         \
-     __TOKEN_N::OPERATOR_RANGE,       \
-     __TOKEN_N::OPERATOR_MUL,         \
-     __TOKEN_N::OPERATOR_MAT,         \
-     __TOKEN_N::OPERATOR_BITWISE_AND, \
+#define IS_UNARY_OPERATOR                  \
+    {__TOKEN_N::OPERATOR_ADD,              \
+     __TOKEN_N::OPERATOR_SUB,              \
+     __TOKEN_N::OPERATOR_BITWISE_NOT,      \
+     __TOKEN_N::OPERATOR_LOGICAL_NOT,      \
+     __TOKEN_N::OPERATOR_POW,              \
+     __TOKEN_N::OPERATOR_ABS,              \
+     __TOKEN_N::OPERATOR_INC,              \
+     __TOKEN_N::OPERATOR_DEC,              \
+     __TOKEN_N::OPERATOR_RANGE,            \
+     __TOKEN_N::PUNCTUATION_QUESTION_MARK, \
+     __TOKEN_N::OPERATOR_MUL,              \
+     __TOKEN_N::OPERATOR_MAT,              \
+     __TOKEN_N::OPERATOR_BITWISE_AND,      \
      __TOKEN_N::OPERATOR_RANGE_INCLUSIVE}
 
 #define IS_OPERATOR                              \
@@ -209,7 +210,6 @@
      __TOKEN_N::PUNCTUATION_COMMA,               \
      __TOKEN_N::PUNCTUATION_SEMICOLON,           \
      __TOKEN_N::PUNCTUATION_COLON,               \
-     __TOKEN_N::PUNCTUATION_QUESTION_MARK,       \
      __TOKEN_N::PUNCTUATION_DOT,                 \
      __TOKEN_N::PUNCTUATION_SINGLE_LINE_COMMENT, \
      __TOKEN_N::PUNCTUATION_MULTI_LINE_COMMENT,  \

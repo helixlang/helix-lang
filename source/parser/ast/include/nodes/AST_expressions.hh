@@ -411,6 +411,7 @@ __AST_NODE_BEGIN {
         NodeT<>                  value;
         NodeT<GenericInvokeExpr> generics;
         bool                     nullable  = false;
+        token::Token             nullable_marker;
         bool                     is_fn_ptr = false;
         FnPtr                    fn_ptr{};  // never set unless is_fn_ptr is true
         Modifiers                specifiers = Modifiers(Modifiers::ExpectedModifier::TypeSpec);

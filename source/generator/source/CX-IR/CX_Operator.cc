@@ -13,6 +13,7 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include "generator/include/config/Gen_config.def"
 #include "utils.hh"
 
 CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
@@ -150,9 +151,8 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
 
     if (node.func->body && node.func->body->body) {
         // adds and removes any nested functions
-        BRACE_DELIMIT( //
-            std::erase_if(node.func->body->body->body, ModifyNestedFunctions(this));
-        ); //
+        BRACE_DELIMIT(                                                                  //
+            std::erase_if(node.func->body->body->body, ModifyNestedFunctions(this)););  //
     } else {
         ADD_TOKEN(CXX_SEMICOLON);
     }
@@ -197,6 +197,12 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
                 } else if (op_t.type == OpType::CastOp) {
                     /// add the fucntion
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$cast", *op_t.tok);
+                } else if (op_t.type == OpType::PanicOp) {
+                    /// add the fucntion
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$panic", *op_t.tok);
+                } else if (op_t.type == OpType::QuestionOp) {
+                    /// add the fucntion
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$question", *op_t.tok);
                 }
             } else {
                 ADD_TOKEN(CXX_OPERATOR);     //
@@ -251,6 +257,33 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
                       ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "end", *op_t.tok);
                       PAREN_DELIMIT();
                       ADD_TOKEN(CXX_SEMICOLON);  //
+        );
+    } else if (in_udt && op_t.type == OpType::CastOp) {
+        /// add excplit cast function: explicit operator <type>() { return
+        /// operator$cast<type>(static_cast<type*>(nullptr)); }
+        ADD_TOKEN(CXX_EXPLICIT);
+        ADD_TOKEN(CXX_OPERATOR);
+        ADD_PARAM(node.func->returns);
+        ADD_TOKEN(CXX_LPAREN);
+        ADD_TOKEN(CXX_RPAREN);
+
+        BRACE_DELIMIT(              //
+            ADD_TOKEN(CXX_RETURN);  //
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$cast", *op_t.tok);
+            ANGLE_DELIMIT(                                       //
+                ADD_PARAM(node.func->returns);                   //
+            );                                                   //
+            PAREN_DELIMIT(                                       //
+                ADD_TOKEN(CXX_STATIC_CAST);                      //
+                ANGLE_DELIMIT(                                   //
+                    ADD_PARAM(node.func->returns);               //
+                    ADD_TOKEN_AS_VALUE(CXX_CORE_OPERATOR, "*");  //
+                );                                               //
+                ADD_TOKEN(CXX_LPAREN);
+                ADD_TOKEN(CXX_NULLPTR);
+                ADD_TOKEN(CXX_RPAREN);
+                ADD_TOKEN(CXX_SEMICOLON);  //
+            );                             //
         );
     }
 }

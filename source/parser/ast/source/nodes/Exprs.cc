@@ -1641,7 +1641,22 @@ AST_NODE_IMPL_VISITOR(Jsonify, InstOfExpr) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-/* DEPRECATED: a Type is deduced from context and at this stage is considered a Expression */
+/* Change in self-hosted parser
+type should look like so:
+class TypeNode {
+    enum State { Function, Tuple, Specified, ... };
+
+    State state;
+    union {
+        SpecifiedTypeNode *specified;
+        FunctionTypeNode  *fn;
+        TupleTypeNode     *tuple;
+        ...
+    } data;
+};
+
+this is to make the type system more flexible and easier to work with
+*/
 AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and stricter rules, such
                                    // as no types can contain a binary expression
     // if E(2) does not exist, check if its a & | * token, since if it is,
@@ -1818,7 +1833,7 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
                 break;
             }
 
-                // TODO: add support for scope path expressions
+            // TODO: add support for scope path expressions
 
             default:
                 if (is_excepted(tok, IS_UNARY_OPERATOR)) {
@@ -1837,6 +1852,7 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
         }
     }
 
+    RETURN_IF_ERROR(EXPR);
     node->value = EXPR.value();
 
     if (node->value->getNodeType() == nodes::UnaryExpr) {

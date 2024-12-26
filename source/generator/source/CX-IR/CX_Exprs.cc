@@ -85,7 +85,12 @@ CX_VISIT_IMPL(UnaryExpr) {
             }
 
             if (node.op.token_kind() == token::PUNCTUATION_QUESTION_MARK) {
-                node.op.get_value() = "";
+                // codegen: opd.operator$question()
+                ADD_NODE_PARAM(opd);
+                ADD_TOKEN_AT_LOC(CXX_DOT, node.op);
+                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$question", node.op);
+                ADD_TOKEN(CXX_LPAREN);
+                ADD_TOKEN(CXX_RPAREN);
             }
 
             return;

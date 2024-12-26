@@ -36,7 +36,7 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
         __TOKEN_N::Token marker;
 
         if (node.value->getNodeType() == __AST_NODE::nodes::UnaryExpr) {
-            marker = __AST_N::as<__AST_NODE::UnaryExpr>(node.value)->op;
+            marker = node.nullable_marker;
         }
 
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "helix", marker);
@@ -46,7 +46,7 @@ CX_VISIT_IMPL(Type) {  // TODO Modifiers
         ADD_TOKEN(CXX_SCOPE_RESOLUTION);
 
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$question", marker);
-        ANGLE_DELIMIT(ADD_NODE_PARAM(value); ADD_NODE_PARAM(generics););
+        ANGLE_DELIMIT(ADD_PARAM(__AST_N::as<__AST_NODE::UnaryExpr>(node.value)->opd); ADD_NODE_PARAM(generics););
 
         return;
     }
