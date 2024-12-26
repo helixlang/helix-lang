@@ -383,13 +383,13 @@ Panic::Panic(const CodeError &err)
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
     }
 
-    HAS_ERRORED = (err.level != NONE && err.level >= ERR) || (err.level == NONE && err_map_at->level >= ERR);
+    HAS_ERRORED = (err.level != NONE and err.level >= ERR) or (err.level == NONE and err_map_at->level >= ERR);
 
     final_err.color_mode = "16bit";
     final_err.error_type = "code";
 
     // if filename ends with $helix.core.lib remove it and mark the show error to be as a corelib
-    // err
+    // err (DEPRECATED - only here for backwards compatibility)
     if (err.pof->file_name().ends_with("$helix.core.lib")) {
         std::string recovered_f_name = err.pof->file_name();
         internal_core_lib_err        = true;

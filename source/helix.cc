@@ -56,6 +56,8 @@ int main(int argc, char **argv) {
         print(string(colors::bold) + string(colors::fg8::red) + "error: " + string(colors::reset) + "aborting... due to previous errors");
     } else if (not LSP_MODE and !error::HAS_ERRORED) {
         print(string(colors::bold) + string(colors::fg8::green) + "success: " + string(colors::reset) + "compilation successful");
+    } else if (not LSP_MODE) {
+        print(string(colors::bold) + string(colors::fg8::yellow) + "warning: " + string(colors::reset) + "unknown... continuing?");
     }
 
     return result;
