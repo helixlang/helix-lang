@@ -13,7 +13,9 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include "generator/include/config/Gen_config.def"
 #include "utils.hh"
+#include "generator/include/CX-IR/reserved.hh"
 
 class Foo {
     public:
@@ -50,7 +52,7 @@ CX_VISIT_IMPL(BinaryExpr) {
 
         case token::KEYWORD_IN: {
             // lhs in rhs
-            // becomes: rhs.$contains(lhs)
+            // becomes: rhs.operator$contains(lhs)
 
             ADD_NODE_PARAM(rhs);
             ADD_TOKEN_AT_LOC(CXX_DOT, node.op);
@@ -151,19 +153,11 @@ CX_VISIT_IMPL(UnaryExpr) {
 
 CX_VISIT_IMPL(IdentExpr) {
     // if self then set to (*this)
-    if (node.name.value() == "self") {
-        ADD_TOKEN(CXX_LPAREN);
-        ADD_TOKEN(CXX_ASTERISK);
-        ADD_TOKEN(CXX_THIS);
-        ADD_TOKEN(CXX_RPAREN);
+    if (reserved_transformations.contains(node.name.value())) {
+        reserved_transformations[node.name.value()](this, node.name);
         return;
     }
-
-    if (node.name.value() == "int") {
-        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$int", node.name);
-        return;
-    }
-
+    
     ADD_TOKEN_AS_TOKEN(CXX_CORE_IDENTIFIER, node.name);
 }
 
@@ -256,6 +250,56 @@ CX_VISIT_IMPL(FunctionCallExpr) {
         auto arg_str = arg_ptr->value;
         arg_str.get_value() =
             arg_str.value().substr(1, arg_str.value().size() - 2);  // remove quotes
+
+        // remove any escaped chars (e.g. \" -> " or \\ -> \ and so on, but not \n or \t and so on)
+        auto unescape_string = [](std::string &str) {
+            for (size_t i = 0; i < str.size(); ++i) {
+                if (str[i] == '\\') {
+                    if (i + 1 < str.size()) {
+                        switch (str[i + 1]) {
+                            case '\\':
+                            case '\'':
+                            case '\"':
+                            case '?':
+                                str.erase(i, 1);
+                                break;
+                            case 'a':
+                                str[i] = '\a';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 'b':
+                                str[i] = '\b';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 'f':
+                                str[i] = '\f';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 'n':
+                                str[i] = '\n';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 'r':
+                                str[i] = '\r';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 't':
+                                str[i] = '\t';
+                                str.erase(i + 1, 1);
+                                break;
+                            case 'v':
+                                str[i] = '\v';
+                                str.erase(i + 1, 1);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+        };
+
+        unescape_string(arg_str.get_value());
         ADD_TOKEN_AS_TOKEN(CXX_INLINE_CODE, arg_str);
 
         return;
@@ -508,22 +552,17 @@ CX_VISIT_IMPL(InstOfExpr) {
 
             break;
         case __AST_NODE::InstOfExpr::InstanceType::Has:
-            // we gotta add the value to the generics of type
+            // since type is just an expr we would do
+            // lhs.operator$contains(type);
 
-            // see if we need to have value be a type or an expression based on usage
-            // if (node.value->getNodeType() == __AST_NODE::nodes::Type) {
-            if (node.type->generics == nullptr || node.type->generics->args.empty()) {
-                node.type->generics = std::make_shared<__AST_NODE::GenericInvokeExpr>(node.value);
-            } else {
-                node.type->generics->args.insert(node.type->generics->args.begin(), node.value);
-            }
-            // }
-
-            // value 'has' type
-            // T has Foo::<int>
-            // becomes: Foo<T, int>
-
+            ADD_NODE_PARAM(value);
+            ADD_TOKEN_AT_LOC(CXX_DOT, node.marker);
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$contains", node.marker);
+            ADD_TOKEN(CXX_LPAREN);
             ADD_NODE_PARAM(type);
+            ADD_TOKEN(CXX_RPAREN);
+
+            break;
     }
 }
 

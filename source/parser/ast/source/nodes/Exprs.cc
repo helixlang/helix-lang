@@ -1600,6 +1600,7 @@ AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs) {
     // := E 'has' E | E 'derives' E
 
     InstOfExpr::InstanceType op = InstOfExpr::InstanceType::Derives;
+    token::Token tok;
 
     IS_NULL_RESULT(lhs) {
         lhs = parse();
@@ -1614,12 +1615,21 @@ AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs) {
         op = InstOfExpr::InstanceType::Has;
     }
 
+    tok = iter.current();
+
     iter.advance();  // skip 'has' or 'derives'
 
-    ParseResult<Type> rhs = parse<Type>();
+    ParseResult<> rhs;
+
+    if (op == InstOfExpr::InstanceType::Has) {
+        rhs = parse();
+    } else {
+        rhs = parse<Type>();
+    }
+
     RETURN_IF_ERROR(rhs);
 
-    return make_node<InstOfExpr>(lhs.value(), rhs.value(), op);
+    return make_node<InstOfExpr>(lhs.value(), rhs.value(), op, tok);
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, InstOfExpr) {

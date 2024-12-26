@@ -16,11 +16,14 @@
 #ifndef __AST_EXPRESSIONS_H__
 #define __AST_EXPRESSIONS_H__
 
+#include <utility>
+
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/private/AST_nodes.hh"
 #include "parser/ast/include/types/AST_modifiers.hh"
 #include "parser/ast/include/types/AST_types.hh"
 #include "token/include/config/Token_config.def"
+#include "token/include/private/Token_base.hh"
 
 __AST_NODE_BEGIN {
     class LiteralExpr final : public Node {  // := LITERAL
@@ -374,13 +377,15 @@ __AST_NODE_BEGIN {
             Derives,
         };
 
-        InstOfExpr(NodeT<> value, NodeT<Type> type, InstanceType op)
+        InstOfExpr(NodeT<> value, NodeT<> type, InstanceType op, token::Token marker)
             : value(std::move(value))
             , type(std::move(type))
+            , marker(std::move(marker))
             , op(op) {}
 
         NodeT<>      value;
-        NodeT<Type>  type;
+        NodeT<>      type;
+        token::Token marker;
         InstanceType op;
     };
 
