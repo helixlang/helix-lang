@@ -1,0 +1,1 @@
+IF MY SDK dies AGAIN, fix: set SDKROOT to /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk

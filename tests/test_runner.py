@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""r
+To execute this script with HELIX_BIN_PATH set dynamically, run:
+  
+"""
 import os
 import sys
 import subprocess
