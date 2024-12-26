@@ -52,8 +52,10 @@ int main(int argc, char **argv) {
         return 1;  // soft error
     }
 
-    if (!LSP_MODE && (result == 1 || error::HAS_ERRORED)) {
+    if ((not LSP_MODE) and (result != 0 or error::HAS_ERRORED)) {
         print(string(colors::bold) + string(colors::fg8::red) + "error: " + string(colors::reset) + "aborting... due to previous errors");
+    } else if (not LSP_MODE and !error::HAS_ERRORED) {
+        print(string(colors::bold) + string(colors::fg8::green) + "success: " + string(colors::reset) + "compilation successful");
     }
 
     return result;
