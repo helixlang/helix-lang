@@ -52,7 +52,7 @@ void CXIRCompiler::compile_CXIR(CXXCompileAction &&action, bool dry_run) const {
     } else {
         ret = CXIR_CXX(action);
     }
-    
+
     action.cleanup();
     return;
 #else
@@ -84,7 +84,8 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
     std::string compile_cmd = action.cxx_compiler + " ";
 
     // get the path to the core lib
-    auto core = __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core" / "include" / "core.h";
+    auto core =
+        __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core" / "include" / "core.h";
 
     if (!std::filesystem::exists(core)) {
         helix::log<LogLevel::Error>("core lib not found, verify the installation");
@@ -120,13 +121,16 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
         cxx::flags::caretDiagnosticsMaxLinesFlag,
         cxx::flags::noElideTypeFlag,
         cxx::flags::linkTimeOptimizationFlag,
-        
 
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
-    defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
-    defined(__MACH__)
-        "-Wl,-w,-rpath,/usr/local/lib",
-#endif
+        ((action.flags.contains(flag::types::CompileFlags::Debug))
+             ? cxx::flags::SanitizeFlag
+             : cxx::flags::None),
+
+        // #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) ||      \
+//     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__) || \
+//     defined(__MACH__)
+        //         "-Wl,-w,-rpath,/usr/local/lib",
+        // #endif
         cxx::flags::warnAllFlag,
         cxx::flags::outputFlag,
         "\"" + action.cc_output.generic_string() + "\""  // output
@@ -192,10 +196,10 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
             helix::log<LogLevel::Info>("<------------ output");
 
             if (compile_result.return_code == 0) {
-                helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
-                                           " and compiled cxir");
-                helix::log<LogLevel::Progress>("compiled successfully to " +
-                                           action.cc_output.generic_string());
+                helix::log_opt<LogLevel::Progress>(action.flags.contains(flag::types::CompileFlags::Verbose), "lowered " + action.helix_src.generic_string() +
+                                               " and compiled cxir");
+                helix::log_opt<LogLevel::Progress>(action.flags.contains(flag::types::CompileFlags::Verbose), "compiled successfully to " +
+                                               action.cc_output.generic_string());
                 return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
             }
 
@@ -238,9 +242,10 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_CXX(const CXXCompileAction &actio
     }
 
     if (compile_result.return_code == 0) {
-        helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
-                                   " and compiled cxir");
-        helix::log<LogLevel::Progress>("compiled successfully to " + action.cc_output.generic_string());
+        helix::log_opt<LogLevel::Progress>(action.flags.contains(flag::types::CompileFlags::Verbose), "lowered " + action.helix_src.generic_string() +
+                                       " and compiled cxir");
+        helix::log_opt<LogLevel::Progress>(action.flags.contains(flag::types::CompileFlags::Verbose), "compiled successfully to " +
+                                       action.cc_output.generic_string());
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }
 

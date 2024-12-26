@@ -133,7 +133,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
         ((action.flags.contains(flag::types::CompileFlags::Debug)) ? "/RTC1" : ""),
         cxx::flags::fullFilePathFlag,
         cxx::flags::noErrorReportingFlag,
-
+        ((action.flags.contains(flag::types::CompileFlags::Debug))
+             ? cxx::flags::SanitizeFlag
+             : cxx::flags::None),
 
         // cxx::flags::noDefaultLibrariesFlag,
         // cxx::flags::noCXXSTDLibrariesFlag,
@@ -300,9 +302,9 @@ CXIRCompiler::CompileResult CXIRCompiler::CXIR_MSVC(const CXXCompileAction &acti
     DEBUG_LOG("finished parsing output");
 
     if (compile_result.return_code == 0 && !error::HAS_ERRORED) {
-        helix::log<LogLevel::Progress>("lowered " + action.helix_src.generic_string() +
+        helix::log_opt<LogLevel::Progress>(is_verbose, "lowered " + action.helix_src.generic_string() +
                                    " and compiled cxir");
-        helix::log<LogLevel::Progress>("compiled successfully to " + action.cc_output.generic_string());
+        helix::log_opt<LogLevel::Progress>(is_verbose, "compiled successfully to " + action.cc_output.generic_string());
 
         return {compile_result, flag::ErrorType(flag::types::ErrorType::Success)};
     }

@@ -92,5 +92,10 @@ constexpr CF noErrorReportingFlag{"-fno-error-report",
                                   "-fno-error-report",
                                   "/errorReport:None",
                                   "-fno-error-report"};
+constexpr CF SanitizeFlag{"-fsanitize=all",
+                                    "-fsanitize=all",
+                                    "/fsanitize=address /RTCc /RTC1 /sdl /RTCu /RTCsu /RTCs",
+                                    "-fsanitize=all"};
+constexpr CF None {"", "", "", ""};
 }  // namespace cxx::flags
 #endif  // __CXX_FLAGS_H__
