@@ -115,7 +115,7 @@ slowly start rewriting the following in helix itself:
   - [ ] Argument handling
   - [ ] Subcommand support
   - [ ] Config file integration
-  
+
 -- `sudo alternatives --config ld`: set the linker to use lld,
 -- perl must be installed
 -- zlib and zstd are optional
@@ -146,7 +146,7 @@ class Location {
     let end: usize;
 
     fn Location(self, file: *File, start: usize, end: usize);
-    
+
     fn value(self) -> string?;
     fn line(self) -> usize;
     fn column(self) -> usize;
@@ -179,7 +179,7 @@ class Token {
     }
 
     fn Token(self, kind: TokenKind, value: string, location: Location?);
-    
+
     fn remap(self, token: &Token, mode: RemapMode) -> bool;
     fn location(self) -> Location; // Error if location is null
     fn value(self) -> string?;
@@ -246,6 +246,24 @@ class File {
 class MemoryMappedFile;
 ```
 
+### Imports
+The imports in helix need a quite major rework, all paths are compile time resolved.
+default import resolution order:
+1. relative to the file itself.
+2. relative to the cwd.
+3. relative to the helix root/sys root (this is also the path for lib-helix).
+4. any path provided through the `-I` flag.
+   if any import is found more then once the first one found is used also rasing a warning saying that the import is ambiguous. (to suppress either pass `-W[no]-ambiguous-imports` or add a `// helix(no-warn): ...` replace the ... to the error code to suppress)
+
+the import behavior is as follows:
+Helix has 2 kinds of imports both which have an alternative form:
+string imports and module imports, both can have an ffi form.
+- both imports allow for full path resolution and are used for importing files directly from the filesystem
+- string imports are global unless aliased (like in c++), a full absolute path can be provided but if not the compiler would search in the default import resolution order.
+- module imports are always aliased unless `::*` is used, the alias is the last part of the path.
+- by default the compiler will resolve imports without imports, so if you did `std::io::println` the compiler would look for start by looking for `std/std.hlx` (library), if thats not found, the check for `std/io/io.hlx` (module) and if that is not found it will look for `std/io/println.hlx` (function), if the fucntion specified in the path is not found it will continue too look though all the possible paths, once exhaused or the signature doesnt match then it raises an error.
+- imports only allow for simplification of paths so doing `import std::io::println` just allows you to use `println` instead of `std::io::println`.
+
 ### Compiler CLI Options
 The compiler (helix) CLI will adopt the following options for flexibility and clarity:
 
@@ -275,6 +293,11 @@ The compiler (helix) CLI will adopt the following options for flexibility and cl
 | `--verbose`               | Enables detailed logging of the compilation process.                                                                                      |
 | `--quiet`                 | Suppresses all compiler output except for errors.                                                                                         |
 | `--suppress`              | Outputs only to stderr, leaving stdout empty.                                                                                             |
+| `--sysroot`               | Sets the system root directory for the compiler to search for system libraries.                                                           |
+| `-std`, `--standard`      | Sets the Helix language standard to use for compilation.                                                                                  |
+| `--prelude`               | Specifies a custom prelude file to include in the compilation process. (avoiding the default prelude)                                     |
+| `--no-prelude`            | Disables the default prelude file from being included in the compilation process.                                                         |
+| `--no-stdlib`             | Disables the standard library from being included in the compilation process.                                                             |
 | `--cxx-flags`             | Passes additional flags to the underlying C++ compiler. Syntax: `--cxx-flags "-flag1 -flag2"`.                                            |
 | `--ld-flags`              | Provides linker-specific flags for custom linking behavior. Syntax: `--ld-flags "-flag1 -flag2"`.                                         |
 
@@ -326,6 +349,15 @@ The compiler (helix) CLI will adopt the following options for flexibility and cl
 | `--c [-no] -export`        | Toggles exporting global symbols.                                        |
 | `--c [-no] -mutable`       | Toggles mutable variables. (if `-no` all variables are always immutable) |
 | `--c [-no] -legacy`        | Toggles legacy feature support.                                          |
+
+**Environment Variables**
+
+| **Variable**               | **Description**                                                          |
+|----------------------------|--------------------------------------------------------------------------|
+| `HELIX_FLAGS`              | Additional flags to pass into the helix compiler                         |
+| `HELIX_IMPORTS`            | Delimited by `:` compiler searches in these paths for imported files     |
+| `HELIX_LIBRARIES`          | Delimited by `:` compiler searches in these paths for libs               |
+| `HELIX_PATH`               | Path to the Helix Root dir `helix/`                                      |
 
 ## Parser
 Implement a **LALR(1)** parser to handle ambiguous grammars and improve error recovery.
