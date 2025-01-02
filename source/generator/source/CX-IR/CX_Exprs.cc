@@ -14,6 +14,9 @@
 ///-------------------------------------------------------------------------------------- C++ ---///
 
 #include "generator/include/config/Gen_config.def"
+#include "parser/ast/include/config/AST_config.def"
+#include "parser/ast/include/nodes/AST_expressions.hh"
+#include "parser/ast/include/types/AST_types.hh"
 #include "utils.hh"
 #include "generator/include/CX-IR/reserved.hh"
 
@@ -84,15 +87,6 @@ CX_VISIT_IMPL(UnaryExpr) {
                 CODEGEN_ERROR(node.op, "type cannot have postfix specifier");
             }
 
-            if (node.op.token_kind() == token::PUNCTUATION_QUESTION_MARK) {
-                // codegen: opd.operator$question()
-                ADD_NODE_PARAM(opd);
-                ADD_TOKEN_AT_LOC(CXX_DOT, node.op);
-                ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$question", node.op);
-                ADD_TOKEN(CXX_LPAREN);
-                ADD_TOKEN(CXX_RPAREN);
-            }
-
             return;
         }
 
@@ -122,6 +116,17 @@ CX_VISIT_IMPL(UnaryExpr) {
 
         ADD_NODE_PARAM(opd);
         ADD_TOKEN_AS_TOKEN(CXX_CORE_OPERATOR, node.op);
+
+        return;
+    }
+
+    if ((node.type == __AST_NODE::UnaryExpr::PosType::PostFix) && (node.op.token_kind() == token::PUNCTUATION_QUESTION_MARK)) {
+        // codegen: opd.operator$question()
+        ADD_NODE_PARAM(opd);
+        ADD_TOKEN_AT_LOC(CXX_DOT, node.op);
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$question", node.op);
+        ADD_TOKEN(CXX_LPAREN);
+        ADD_TOKEN(CXX_RPAREN);
 
         return;
     }
@@ -372,8 +377,8 @@ CX_VISIT_IMPL(ArrayLiteralExpr) {
 }
 
 CX_VISIT_IMPL(TupleLiteralExpr) {
-    if (!node.values.empty() && (node.values.size() > 0) &&
-        (node.values[0]->getNodeType() == __AST_NODE::nodes::Type)) {
+    if ((!node.values.empty() && (node.values.size() > 0) &&
+        (node.values[0]->getNodeType() == __AST_NODE::nodes::Type)) || node.in_type) {
 
         ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "tuple");
         ANGLE_DELIMIT(COMMA_SEP(values););
@@ -559,6 +564,29 @@ CX_VISIT_IMPL(InstOfExpr) {
         case __AST_NODE::InstOfExpr::InstanceType::Has:
             // since type is just an expr we would do
             // lhs.operator$contains(type);
+
+            if (node.in_requires) {
+                // we gotta add the value to the generics of type
+                if (node.type->getNodeType() == __AST_NODE::nodes::Type) {
+                    __AST_N::NodeT<__AST_NODE::Type> type = __AST_N::as<__AST_NODE::Type>(node.type);
+                    
+                    if (type->generics == nullptr || type->generics->args.empty()) {
+                        type->generics = std::make_shared<__AST_NODE::GenericInvokeExpr>(node.value);
+                    } else {
+                        type->generics->args.insert(type->generics->args.begin(), node.value);
+                    }
+
+                    // value 'has' type
+                    // T has Foo::<int>
+                    // becomes: Foo<T, int>
+
+                    ADD_PARAM(type);
+                    return;
+                }
+
+                CODEGEN_ERROR(node.marker, "lhs of 'has' requires a type, but got a expression instead.");
+                return;
+            }
 
             ADD_NODE_PARAM(value);
             ADD_TOKEN_AT_LOC(CXX_DOT, node.marker);

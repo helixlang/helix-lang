@@ -383,7 +383,7 @@ Panic::Panic(const CodeError &err)
         throw std::runtime_error("err code \'" + std::to_string(err.err_code) + "\' not found");
     }
 
-    HAS_ERRORED = (err.level != NONE and err.level >= ERR) or (err.level == NONE and err_map_at->level >= ERR);
+    HAS_ERRORED = HAS_ERRORED ? true : ((err.level != NONE and err.level >= ERR) or (err.level == NONE and err_map_at->level >= ERR));
 
     final_err.color_mode = "16bit";
     final_err.error_type = "code";

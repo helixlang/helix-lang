@@ -96,6 +96,10 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
                     return;
                 }
             }
+        } else if (child->getNodeType() == __AST_NODE::nodes::LetDecl) {
+            __AST_N::NodeT<__AST_NODE::LetDecl> node = __AST_N::as<__AST_NODE::LetDecl>(child);
+            visit(*node, true);
+            return;
         }
 
         child->accept(*this);
