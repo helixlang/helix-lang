@@ -23,6 +23,7 @@
 #include "parser/ast/include/nodes/AST_expressions.hh"
 #include "parser/ast/include/private/AST_nodes.hh"
 #include "parser/ast/include/types/AST_types.hh"
+#include "token/include/config/Token_config.def"
 
 // va
 // var_decl := 'let' Ident (':' E)? ('=' expr)? ';'
@@ -281,10 +282,12 @@ __AST_NODE_BEGIN {
 
         // := 'yield' expr ';'
 
-        explicit YieldState(NodeT<> value)
-            : value(std::move(value)) {}
+        explicit YieldState(NodeT<> value, __TOKEN_N::Token marker)
+            : value(std::move(value))
+            , marker(std::move(marker)) {}
 
         NodeT<> value;
+        __TOKEN_N::Token marker;
     };
 
     class DeleteState final : public Node {
@@ -418,10 +421,12 @@ __AST_NODE_BEGIN {
 
         // := 'panic' E ';'
 
-        explicit PanicState(NodeT<> expr)
-            : expr(std::move(expr)) {}
+        explicit PanicState(NodeT<> expr, __TOKEN_N::Token marker)
+            : expr(std::move(expr))
+            , marker(std::move(marker)) {}
 
         NodeT<> expr;
+        __TOKEN_N::Token marker;
     };
 
 }  // namespace __AST_NODE_BEGIN

@@ -21,7 +21,6 @@
 #include "parser/ast/include/types/AST_types.hh"
 #include "utils.hh"
 
-
 CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     ADD_NODE_PARAM(generics);
 
@@ -36,6 +35,7 @@ CX_VISIT_IMPL_VA(FuncDecl, bool no_return_t) {
     //      const eval -> consteval
 
     add_func_modifiers(this, node.modifiers);
+    check_for_yield_and_panic(node.body, node.returns);
 
     if (!no_return_t) {
         ADD_TOKEN(CXX_AUTO);  // auto

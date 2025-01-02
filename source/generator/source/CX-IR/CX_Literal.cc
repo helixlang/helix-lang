@@ -172,12 +172,14 @@ CX_VISIT_IMPL(LiteralExpr) {
         add_literal(node.value);
         ADD_TOKEN(CXX_COMMA);
 
-        for (auto &format_spec : node.format_args) {
-            PAREN_DELIMIT(format_spec->accept(*this););
-            ADD_TOKEN(CXX_COMMA);
-        }
+        if (!node.format_args.empty()) {
+            for (const auto &format_spec : node.format_args) {
+                PAREN_DELIMIT(format_spec->accept(*this););
+                ADD_TOKEN(CXX_COMMA);
+            }
 
-        if (node.format_args.size() > 0) {
+            tokens.pop_back();  // remove trailing comma
+        } else { // since we added a comma a couple of lines above
             tokens.pop_back();  // remove trailing comma
         }
 

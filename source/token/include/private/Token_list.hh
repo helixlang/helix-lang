@@ -75,6 +75,22 @@ __TOKEN_BEGIN {
             TokenList                                    remaining();
             u64 remaining_n() const { return end - cursor_position; }
             u64 position() const { return cursor_position; }
+            TokenList& as_list() { return tokens.get(); }
+        
+            void insert(Token token) {
+                tokens.get().insert(tokens.get().cbegin() + static_cast<std::vector<Token>::difference_type>(cursor_position), std::move(token));
+                ++end;
+            }
+
+            void insert(u64 pos, Token token) {
+                if (pos > end) {
+                    tokens.get().push_back(std::move(token));
+                    end++;
+                } else {
+                    tokens.get().insert(tokens.get().cbegin() + static_cast<std::vector<Token>::difference_type>(pos), std::move(token));
+                    end++;
+                }
+            }
         };
 
         mutable const_iterator it;

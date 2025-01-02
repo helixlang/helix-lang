@@ -42,6 +42,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
     }
 
     handle_static_self_fn_decl(_node, tok, in_udt);
+    check_for_yield_and_panic(node.func->body, node.func->returns);
 
     // ---------------------------- add generator state ---------------------------- //
     if (in_udt && op_t.type == OpType::GeneratorOp) {

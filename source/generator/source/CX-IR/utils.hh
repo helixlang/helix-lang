@@ -664,8 +664,8 @@ struct OpType {
         // panic operator signature is `op panic fn (self) -> string {}` or `static op panic fn ()
         // -> string {}`
         if (op.op.size() == 1 && op.op.back() == __TOKEN_N::KEYWORD_PANIC) {
-            if (($self && op.func->params.size() == 1) ||
-                ($static && op.func->params.empty()) && op.func->returns &&
+            if ((($self && op.func->params.size() == 1) ||
+                ($static && op.func->params.empty())) && op.func->returns &&
                     op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr &&
                     __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value)->name.value() ==
                         "string") {
@@ -831,6 +831,43 @@ class ModifyNestedFunctions {
         return true;
     }
 };
+
+inline void check_for_yield_and_panic(const __AST_N::NodeT<__AST_NODE::SuiteState> &body, const __AST_N::NodeT<__AST_NODE::Type> &return_type) {
+    // we check for 2 rules here panic and yield
+    // panic: if the body of a function/operator contains a panic statement then the return type must be nullable
+    // yield: if the body of a function/operator contains a yield statement then the return type must have a yield specifier
+
+    if (body == nullptr) {
+        return;
+    }
+
+    bool has_panic = false;
+    bool has_yield = false;
+
+    __TOKEN_N::Token panic_marker;
+    __TOKEN_N::Token yield_marker;
+
+    for (auto &child : body->body->body) {
+        if (child->getNodeType() == __AST_NODE::nodes::PanicState) {
+            has_panic = true;
+            panic_marker = __AST_N::as<__AST_NODE::PanicState>(child)->marker;
+
+        } else if (child->getNodeType() == __AST_NODE::nodes::YieldState) {
+            has_yield = true;
+            yield_marker = __AST_N::as<__AST_NODE::YieldState>(child)->marker;
+        }
+    }
+
+    if (has_panic && !return_type->nullable) {
+        error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3008});
+        error::Panic(error::CodeError{.pof = &panic_marker, .err_code = 0.3018, false, {}, {}, {}, error::Level::NONE, 1});
+    }
+
+    if (has_yield && !return_type->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
+        error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3009});
+        error::Panic(error::CodeError{.pof = &yield_marker, .err_code = 0.3019, false, {}, {}, {}, error::Level::NONE, 1});
+    }
+}
 
 inline void default_constructor(CXIR *self, const __AST_N::NodeT<__AST_NODE::IdentExpr> &name) {
     self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_PUBLIC));
