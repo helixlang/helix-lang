@@ -39,7 +39,21 @@ __AST_NODE_BEGIN {
      *     NodeT<...> node = expr.parse<...>();
      */
     class Expression {  // THIS IS NOT A NODE
-        AST_CLASS_BASE(Expression, EXPRS) {};
+        template <typename T = Node>
+        using p_r = parser ::ast ::ParseResult<T>;
+        token ::TokenList ::TokenListIter &iter;
+        std ::vector<p_r<>>                parse_stack;
+
+      public:
+        Expression()                              = delete;
+        Expression(const Expression &)            = default;
+        Expression &operator=(const Expression &) = delete;
+        Expression(Expression &&)                 = default;
+        Expression &operator=(Expression &&)      = delete;
+        ~Expression()                             = default;
+        p_r<> parse(bool in_requires = false);
+        explicit Expression(token ::TokenList ::TokenListIter &iter)
+            : iter(iter) {};
 
         ParseResult<> parse_primary();
         template <typename T, typename... Args>
@@ -124,7 +138,7 @@ __AST_NODE_BEGIN {
         ParseResult<TernaryExpr>       parse_TernaryExpr(ParseResult<> lhs = nullptr);
         ParseResult<ParenthesizedExpr> parse_ParenthesizedExpr(ParseResult<> expr = nullptr);
         ParseResult<CastExpr>          parse_CastExpr(ParseResult<> lhs);
-        ParseResult<InstOfExpr>        parse_InstOfExpr(ParseResult<> lhs = nullptr);
+        ParseResult<InstOfExpr>        parse_InstOfExpr(ParseResult<> lhs = nullptr, bool in_requires = false);
         ParseResult<Type>              parse_Type();
         ParseResult<AsyncThreading>    parse_AsyncThreading();
         ParseResult<FunctionCallExpr>  parse_FunctionCallExpr(ParseResult<> lhs = nullptr, NodeT<GenericInvokeExpr> generic_invoke = nullptr);

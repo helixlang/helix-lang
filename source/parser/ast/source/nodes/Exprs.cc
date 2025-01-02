@@ -156,8 +156,7 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
         node = parse<LiteralExpr>();
     } else if (is_excepted(tok, IS_IDENTIFIER)) {
         node = parse<IdentExpr>();
-        /// if the next token is a '::' then its a scope path
-        /// or a dot path, so we need to check if the next token
+
         if (CURRENT_TOK == __TOKEN_N::OPERATOR_SCOPE) {
             node = parse<ScopePathExpr>(node);
         } else if (CURRENT_TOK == __TOKEN_N::PUNCTUATION_DOT) {
@@ -198,18 +197,17 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
             /// object initializer otherwise we parse E(1) and
             /// check if the next token is a ':', if it is,
             /// then its a map otherwise its a set
+            /// we also have to make sure the prev node type is an expr
 
-            iter.advance();  // skip '{'
+            iter.advance();  // skip '{' only thing allowed is either, a map, a set or an obj init
 
             if (CURRENT_TOK.token_kind() == __TOKEN_N::PUNCTUATION_CLOSE_BRACE) {
                 if (iter.peek_back(2).has_value() &&
                     iter.peek_back(2).value().get() != __TOKEN_N::IDENTIFIER) {
                     return std::unexpected(
-                        PARSE_ERROR_MSG("blank brace statements are disallowed due to ambiguity in "
-                                        "parsing, use a more explict initializer"));
+                        PARSE_ERROR_MSG("blank brace expressions are disallowed due to ambiguity in "
+                                        "parsing. This behavior will be allowed in the future."));
                 }
-
-                node = parse<ObjInitExpr>(true);
             } else if (CURRENT_TOK == __TOKEN_N::PUNCTUATION_DOT) {
                 node = parse<ObjInitExpr>(true);
             } else {
@@ -218,7 +216,7 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
 
                 if (CURRENT_TOK == __TOKEN_N::PUNCTUATION_COLON) {
                     node = parse<MapLiteralExpr>(first);
-                } else {
+                } else { // we dont check for a comma since {1} is a valid set
                     node = parse<SetLiteralExpr>(first);
                 }
             }
@@ -248,7 +246,7 @@ AST_BASE_IMPL(Expression, parse_primary) {  // NOLINT(readability-function-cogni
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-complexity)
+parser ::ast ::ParseResult<> parser::ast::node::Expression::parse(bool in_requires) {  // NOLINT(readability-function-cognitive-complexity)
     IS_NOT_EMPTY;                   /// simple macro to check if the iterator is empty, expands to:
                                     /// if(iter.remaining_n() == 0) { return std::unexpected(...); }
 
@@ -319,8 +317,11 @@ AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-com
             case __TOKEN_N::PUNCTUATION_OPEN_BRACE:
                 if (iter.peek().has_value() && (iter.peek().value().get().token_kind() ==
                                                 __TOKEN_TYPES_N::PUNCTUATION_CLOSE_BRACE)) {
-                    expr = parse<ObjInitExpr>(false, expr);
-                    RETURN_IF_ERROR(expr);
+                    if (ObjInitExpr::is_allowed(expr->get()->getNodeType())) {
+                        expr = parse<ObjInitExpr>(false, expr);
+                        RETURN_IF_ERROR(expr);
+                    } // blank obj init
+                    
                     break;
                 }
 
@@ -335,17 +336,23 @@ AST_BASE_IMPL(Expression, parse) {  // NOLINT(readability-function-cognitive-com
                     continue_loop = false;
                     break;
                 }
-                expr = parse<ObjInitExpr>(false, expr);
-                RETURN_IF_ERROR(expr);
+
+                if (ObjInitExpr::is_allowed(expr->get()->getNodeType())) {
+                    expr = parse<ObjInitExpr>(false, expr);
+                    RETURN_IF_ERROR(expr);
+                } else {
+                    continue_loop = false;
+                }
+
                 break;
 
             case __TOKEN_N::KEYWORD_HAS:
             case __TOKEN_N::KEYWORD_DERIVES:
-                expr = parse<InstOfExpr>(expr);
+                expr = parse<InstOfExpr>(expr, in_requires);
                 RETURN_IF_ERROR(expr);
                 break;
 
-            case __TOKEN_N::PUNCTUATION_QUESTION_MARK:
+            // c-style ternary operator are not allowed, only python style ternary operators
             case __TOKEN_N::KEYWORD_IF:
                 expr = parse<TernaryExpr>(expr);
                 RETURN_IF_ERROR(expr);
@@ -827,7 +834,7 @@ AST_NODE_IMPL(Expression, GenericInvokeExpr) {
         return make_node<GenericInvokeExpr>(nullptr);
     }
 
-    ParseResult<> first = parse_primary();
+    ParseResult<> first = parse<Type>();
     RETURN_IF_ERROR(first);
 
     NodeT<GenericInvokeExpr> generics = make_node<GenericInvokeExpr>(first.value());
@@ -836,11 +843,38 @@ AST_NODE_IMPL(Expression, GenericInvokeExpr) {
         CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA) {
             iter.advance();  // skip ','
 
-            ParseResult<> arg = parse_primary();
+            ParseResult<> arg = parse<Type>();
             RETURN_IF_ERROR(arg);
 
             generics->args.push_back(arg.value());
         }
+
+    // either a > or >> is expected
+    if (CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_CLOSE_ANGLE) &&
+        CURRENT_TOKEN_IS_NOT(__TOKEN_N::OPERATOR_BITWISE_R_SHIFT)) {
+        return std::unexpected(PARSE_ERROR_MSG("expected '>' to close generic arguments, but found '" +
+                                               CURRENT_TOK.token_kind_repr() + "'"));
+    }
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::OPERATOR_BITWISE_R_SHIFT)) {
+        // break this node into two nodes of PUNCTUATION_CLOSE_ANGLE
+        // we are at the '>>' token
+        // we need to make it '>' and '>'
+        __TOKEN_N::Token &cur_tok = iter.current().get();
+        __TOKEN_N::Token new_tok(
+            cur_tok.line_number(),
+            cur_tok.column_number() + 1,
+            cur_tok.length() - 1,
+            cur_tok.offset() + 1,
+            ">",
+            cur_tok.file_name()
+        );
+
+        cur_tok.set_value(">");
+        cur_tok.set_kind(__TOKEN_N::PUNCTUATION_CLOSE_ANGLE);
+        
+        iter.insert(new_tok);
+    }
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_ANGLE);
     iter.advance();  // skip '>'
@@ -1595,12 +1629,12 @@ AST_NODE_IMPL_VISITOR(Jsonify, CastExpr) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs) {
+AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs, bool in_requires) {
     IS_NOT_EMPTY;
     // := E 'has' E | E 'derives' E
 
     InstOfExpr::InstanceType op = InstOfExpr::InstanceType::Derives;
-    token::Token tok;
+    token::Token             tok;
 
     IS_NULL_RESULT(lhs) {
         lhs = parse();
@@ -1622,14 +1656,21 @@ AST_NODE_IMPL(Expression, InstOfExpr, ParseResult<> lhs) {
     ParseResult<> rhs;
 
     if (op == InstOfExpr::InstanceType::Has) {
-        rhs = parse();
+        if (in_requires) {
+            rhs = parse<Type>();
+        } else {
+            rhs = parse();
+        }
     } else {
         rhs = parse<Type>();
     }
 
     RETURN_IF_ERROR(rhs);
 
-    return make_node<InstOfExpr>(lhs.value(), rhs.value(), op, tok);
+    auto node = make_node<InstOfExpr>(lhs.value(), rhs.value(), op, tok);
+    node->in_requires = in_requires;
+
+    return node;
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, InstOfExpr) {
@@ -1685,20 +1726,22 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
         IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_OPEN_PAREN);
         iter.advance();  // skip '('
 
-        ParseResult<Type> arg = parse<Type>();
-        RETURN_IF_ERROR(arg);
-
-        fn_ptr.params.emplace_back(arg.value());
-
-        while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
-            if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) {
-                break;  // exit the loop
-            }
-
+        if (CURRENT_TOKEN_IS_NOT(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) { // blank params
             ParseResult<Type> arg = parse<Type>();
             RETURN_IF_ERROR(arg);
 
             fn_ptr.params.emplace_back(arg.value());
+
+            while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
+                if (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_CLOSE_PAREN)) {
+                    break;  // exit the loop
+                }
+
+                ParseResult<Type> arg = parse<Type>();
+                RETURN_IF_ERROR(arg);
+
+                fn_ptr.params.emplace_back(arg.value());
+            }
         }
 
         IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_CLOSE_PAREN);
@@ -1833,7 +1876,7 @@ AST_NODE_IMPL(Expression, Type) {  // TODO - REMAKE using the new Modifiers and 
                 break;
             }
 
-            // TODO: add support for scope path expressions
+                // TODO: add support for scope path expressions
 
             default:
                 if (is_excepted(tok, IS_UNARY_OPERATOR)) {

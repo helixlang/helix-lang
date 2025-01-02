@@ -280,6 +280,7 @@ __AST_NODE_BEGIN {
         explicit TupleLiteralExpr(NodeT<> value) { values.emplace_back(std::move(value)); }
 
         NodeV<> values;
+        bool in_type = false;
     };
 
     class SetLiteralExpr final : public Node {  // := '{' E (',' E)* '}'
@@ -316,6 +317,25 @@ __AST_NODE_BEGIN {
         explicit ObjInitExpr(NodeT<NamedArgumentExpr> args) {
             this->kwargs.emplace_back(std::move(args));
         }
+
+        static bool is_allowed(__AST_NODE::nodes node_t) {
+            switch (node_t) {
+                case __AST_NODE::nodes::IdentExpr:
+                    [[fallthrough]];
+                case __AST_NODE::nodes::GenericInvokeExpr:
+                    [[fallthrough]];
+                case __AST_NODE::nodes::ScopePathExpr:
+                    [[fallthrough]];
+                case __AST_NODE::nodes::DotPathExpr:
+                    [[fallthrough]];
+                case __AST_NODE::nodes::PathExpr:
+                    [[fallthrough]];
+                case __AST_NODE::nodes::Type:
+                    return true;
+                default:
+                    return false;
+            }
+        };
 
         explicit ObjInitExpr(bool /* unused */) {}
 
@@ -386,6 +406,7 @@ __AST_NODE_BEGIN {
         NodeT<>      value;
         NodeT<>      type;
         token::Token marker;
+        bool in_requires = false;
         InstanceType op;
     };
 
