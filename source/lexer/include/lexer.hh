@@ -53,6 +53,7 @@ class Lexer {
     inline __TOKEN_N::Token get_eof();
 
     inline char advance(u16 n = 1);
+    inline char reverse(u16 n = 1);
     inline char current();
     inline void bare_advance(u16 n = 1);
 

@@ -15,13 +15,17 @@
 
 #include "lexer/include/lexer.hh"
 
+#include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "lexer/include/cases.def"
 #include "neo-panic/include/error.hh"
 #include "neo-pprint/include/hxpprint.hh"
 #include "token/include/Token.hh"
+#include "token/include/config/Token_cases.def"
+#include "token/include/private/Token_generate.hh"
 
 namespace parser::lexer {
 Lexer::Lexer(std::string source, const std::string &filename)
@@ -468,15 +472,46 @@ inline __TOKEN_N::Token Lexer::parse_operator() {
                 end_loop = true;
                 break;
         }
+
         bare_advance();
     }
 
-    return {line,
+    // we might have a few operaotrs in here, something like >>> would be a >> and a > but this parser will
+    // treat it asx >>> bing a single token
+    string current_token;
+
+    // break the token into a smaller token if current token is not a valid token
+    token::Token tok {line,
             column - (currentPos - start),
             currentPos - start,
             offset,
             source.substr(start, currentPos - start),
             file_name};
+
+check_if_invalid_tok:
+    if (tok == token::OTHERS) { // invalid token
+        // we need to break the token into smaller tokens
+        current_token = tok.value();
+
+        current_token.pop_back(); // >>> would become >>
+        --currentPos;
+
+        tok = {line,
+            tok.column_number(),
+            current_token.length(),
+            tok.offset() - 1,
+            current_token,
+            file_name};
+
+        if (current_token.length() == 0) {
+            throw error::Panic(error::create_old_CodeError(
+                &tok, 1.0011, {}, std::vector<string>{std::string(1, current())}));
+        }
+
+        goto check_if_invalid_tok; // if the token is still invalid
+    }
+
+    return tok;
 }
 
 inline __TOKEN_N::Token Lexer::parse_punctuation() {  // gets here bacause of something like . | :
@@ -569,6 +604,36 @@ inline void Lexer::bare_advance(u16 n) {
     if (n > 1) {
         return bare_advance(n - 1);
     }
+}
+
+inline char Lexer::reverse(u16 n) {
+    if (currentPos == 0) {
+        return '\0'; // Prevent going out of bounds
+    }
+
+    --currentPos;
+
+    switch (source[currentPos]) {
+        case '\n': {
+            --line;
+            column = 0;
+            
+            while ((currentPos - column >= 0) && (source[currentPos - column] != '\n')) {
+                ++column;
+            }
+
+            break;
+        } default:
+            --column;
+            --offset;
+            break;
+    }
+
+    if (n > 1) {
+        return reverse(n - 1);
+    }
+
+    return current();
 }
 
 inline char Lexer::current() {
