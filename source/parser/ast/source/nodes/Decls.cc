@@ -272,15 +272,15 @@ AST_NODE_IMPL(Declaration, TypeBoundList) {
     // FIXME: TypeBoundList := InstOfExpr (('||' | '&&') InstOfExpr)*
     // TypeBoundList := InstOfExpr (',' InstOfExpr)*)?
 
-    ParseResult<InstOfExpr> bound = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>());
+    ParseResult<InstOfExpr> bound = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>(), true);
     RETURN_IF_ERROR(bound);
 
     NodeT<TypeBoundList> node = make_node<TypeBoundList>(bound.value());
 
-    while (CURRENT_TOKEN_IS(__TOKEN_N::PUNCTUATION_COMMA)) {
-        iter.advance();  // skip ','
+    while (CURRENT_TOKEN_IS(__TOKEN_N::tokens::OPERATOR_LOGICAL_AND)) {
+        iter.advance();  // skip '&&'
 
-        ParseResult<InstOfExpr> next = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>());
+        ParseResult<InstOfExpr> next = expr_parser.parse<InstOfExpr>(expr_parser.parse<Type>(), true);
         RETURN_IF_ERROR(next);
 
         node->bounds.emplace_back(next.value());

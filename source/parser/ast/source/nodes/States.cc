@@ -936,7 +936,12 @@ AST_NODE_IMPL_VISITOR(Jsonify, SwitchState) {
 AST_NODE_IMPL(Statement, YieldState) {
     IS_NOT_EMPTY;
 
+    // := 'yield' E ';'
+
+    __TOKEN_N::Token marker;
+
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_YIELD);
+    marker = CURRENT_TOK;
     iter.advance();
 
     ParseResult<> expr = expr_parser.parse();
@@ -945,7 +950,7 @@ AST_NODE_IMPL(Statement, YieldState) {
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
     iter.advance();
 
-    return make_node<YieldState>(expr.value());
+    return make_node<YieldState>(expr.value(), marker);
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, YieldState) {
@@ -1535,8 +1540,10 @@ AST_NODE_IMPL(Statement, PanicState) {
     IS_NOT_EMPTY;
 
     // := 'panic' E ';'
+    __TOKEN_N::Token marker;
 
     IS_EXCEPTED_TOKEN(__TOKEN_N::KEYWORD_PANIC);
+    marker = CURRENT_TOK;
     iter.advance();  // skip 'panic'
 
     ParseResult<> expr = expr_parser.parse();
@@ -1545,7 +1552,7 @@ AST_NODE_IMPL(Statement, PanicState) {
     IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
     iter.advance();  // skip ';'
 
-    return make_node<PanicState>(expr.value());
+    return make_node<PanicState>(expr.value(), marker);
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, PanicState) { json.section("PanicState", get_node_json(node.expr)); }
