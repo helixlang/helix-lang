@@ -28,7 +28,11 @@ class CustomType {
     let ptr: *char;
     let len: usize;
 
-    fn __pyObject__() -> PyObject* {
+    op as fn () -> PyObject* {
+        /// ...
+    }
+
+    op delete fn () {
         /// ...
     }
 }

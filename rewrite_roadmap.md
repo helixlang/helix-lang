@@ -327,7 +327,7 @@ The compiler (helix) CLI will adopt the following options for flexibility and cl
 | `--c [-no] -ffi`             | Enables/disables support for Foreign Function Interfaces (FFI).                          |
 | `--c [-no] -semicolon`       | Configures whether semicolons are mandatory or optional (auto-detected).                 |
 | `--c [-no] -union-inference` | Enables/disables union inference. `let x = 1; x = "hello";`, infer `x`: `int \| string`. |
-
+| `--c [-no] -eval`            | Enables/disables compile-time evaluation of statements marked `eval`, this is useful for c++ compatibility, where templates get generated as templates and do not get expanded at compile time. |
 
 
 | **Option**                 | **Description**                                                          |

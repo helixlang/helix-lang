@@ -1,0 +1,325 @@
+/* Expressions */
+/// expressions are spit into two categories: primary and secondary, primary expressions are the base that have no ambiguity
+/// secondary expressions are the ones that are built on top of primary expressions and have a higher precedence
+//  since generic access expressions are primary expressions things like binary operations have to be parenthesized
+//  assignment expressions are binary expressions with the assignment operator
+//  make sure all nodes have a list to store attributes like comments, compiler directives, proc macros, etc
+
+// allows for things like: 'fn_that_takes_const_ptr(const &x)'
+// ffi allows the maintainers to know that the function is a foreign function and does not grantee safety
+ExpressionQualifiers ::= "const" | "unsafe" | "await" | "ffi";
+
+GenericAccessExpression    ::= "<" (PrimaryExpression ("," PrimaryExpression)*)? ">";                    // <T, T> | <T>
+QualScopeAccess            ::= ( "::" (Identifier GenericAccessExpression?) )                                          // ::V | ::V<T>
+                           | (Identifier GenericAccessExpression?) ("::" (Identifier GenericAccessExpression?))* PrimaryExpression?; // T::V<T> | T::V<T>::E
+
+MemberPath         ::= PrimaryExpression ("." PrimaryExpression | QualifiedMemberPath);   // E.E | E
+QualifiedScopePath ::= (Identifier GenericAccessExpression?)    | QualScopeAccess;
+PathExpression     ::= MemberPath | QualifiedScopePath;
+
+TryCatchExpression        ::= "try" PrimaryExpression ("catch" CatchArguments? PrimaryExpression)*;
+ObjectInitializer         ::= Type "{" ((Identifier "=" Expression ("," Identifier "=" Expression)*)?)? "}";
+ImplicitObjectInitializer ::= "{" ("." Identifier "=" Expression ("," "." Identifier "=" Expression)*)? "}";
+TernaryExpression         ::= PrimaryExpression "if" PrimaryExpression "else" PrimaryExpression;
+BinaryExpression          ::= PrimaryExpression (AssignmentOperators | BinaryOperators) PrimaryExpression;
+UnaryExpression           ::= (UnaryPrefix PrimaryExpression) | (PrimaryExpression UnaryPostfix);
+FunctionCallExpression    ::= PathExpression "(" (Expression ("," Expression)*)? ")";
+ArrayAccessExpression     ::= PathExpression "[" Expression "]";
+InstOfExpression          ::= PathExpression ("has" | "derives") Type;
+CastExpression            ::= PathExpression "as" Type;
+OperatorFunctionCall      ::= "op" (BinaryOperators
+                          |         UnaryOperators
+                          |   ("r"  UnaryPostfixOperators)
+                          |   ("l"? UnaryPrefixOperators)); // x.op +(y)
+
+
+PrimaryExpression ::= PathExpression | Literal | "(" Expression ")" | ImplicitObjectInitializer | Identifier;
+
+Expression  ::= ExpressionQualifiers? (PrimaryExpression      | UnaryExpression   | CastExpression
+            |   TernaryExpression   |  FunctionCallExpression | BinaryExpression  | TryCatchExpression
+            |   InstOfExpression    |  ArrayAccessExpression  | ObjectInitializer | OperatorFunctionCall);
+
+TypedArgument         ::= "const"? Identifier ":" Type; // add a bool for disallowing const here
+UnTypedArgument       ::= "const"? Identifier;
+
+UnTypedDefaultedArgumentList ::= UnTypedArgument ("=" Expression)? ("," UnTypedArgument ("=" Expression)?)*;
+DefaultedArgumentList ::= TypedArgument   ("=" Expression)? ("," TypedArgument ("=" Expression)?)*;
+TypedArgumentList     ::= TypedArgument   ("," TypedArgument)*;
+UnTypedArgumentList   ::= UnTypedArgument ("," UnTypedArgument)*;
+
+/* Statements */
+// statements are the building blocks of code, they are the smallest unit of code that can be executed
+
+ScopeBlock          ::= ("{" (Statement)* "}") | ":" (Statement) ";";
+VisibilityModifiers ::= "pub"   | "priv"   | "prot";
+StorageModifier     ::= "const" | "static" | "async" | "inline" | "eval" | "ffi";
+UnsafeModifier      ::= "unsafe";
+
+/* Control Flow */
+// finally can also be used as a bare statement
+
+CatchArguments      ::= ("(" (TypedArgumentList | Type) ")") | (TypedArgumentList | Type);
+CatchBlock          ::= "catch" CatchArguments? ScopeBlock;
+FinallyBlock        ::= "finally" ScopeBlock;
+TryCatchBlock       ::= "try" ScopeBlock CatchBlock* FinallyBlock?;
+WithBlock           ::= "with" Expression "as" ((TypedStructuredBinding | UnTypedStructuredBinding) | (TypedArgument | UnTypedArgument))? ScopeBlock;
+IfStatement         ::= ( "if" | "unless") Expression ScopeBlock
+                        (("else" ("if" | "unless") Expression ScopeBlock)*)?
+                        ( "else" ScopeBlock)?;
+
+/* Loops */
+// if no expression is provided to a while loop it's an infinite loop
+// adding eval to a for loop, will make the compiler attempt to unroll the loop at compile time if possible
+
+WhileStatement      ::= "while" Expression? ScopeBlock;
+
+PythonForStatement  ::= "for" (UnTypedArgumentList | TypedArgumentList) "in" Expression ScopeBlock;
+CStyleForStatement  ::= "eval"? "for" (("(" Statement? ";" Expression? ";" Expression? ")") | Statement? ";" Expression? ";" Expression?) ScopeBlock;
+ForStatement        ::= PythonForStatement | CStyleForStatement;
+
+/* Jump Statements */
+
+PanicStatement      ::= "panic"  Expression;
+YieldStatement      ::= "yield"  Expression?;
+ReturnStatement     ::= "return" Expression?;
+BreakStatement      ::= "break";
+ContinueStatement   ::= "continue";
+
+GotoLabelStatement  ::= "label!" "(" Identifier ")" ScopeBlock;
+GotoStatement       ::= "goto!"  "(" Identifier ")";
+
+/* Match Statements */
+// 3 kinds of body, fall through, return and scoped
+// : = fall through, -> = return, {} = scoped
+
+CaseBody        ::= (":"  (Statement | ("{" Statement* "}")))
+                |   ("->" (Statement | ("{" Statement* "}")))
+                |   ("{"   Statement*   "}");
+CasePattern     ::= (("case" Expression) | "default") CaseBody;
+MatchStatement  ::= "match" Expression "{" CasePattern* "}";
+SwitchStatement ::= "switch" Expression "{" CasePattern* "}";
+
+Statement ::= (ForStatement    | Expression     | ScopeBlock        | FinallyBlock
+          |    TryCatchBlock   | IfStatement    | WhileStatement    | StatementDeclarations
+          |    ReturnStatement | BreakStatement | ContinueStatement | GotoLabelStatement
+          |    GotoStatement   | YieldStatement | PanicStatement    | MatchStatement
+          |    SwitchStatement | WithBlock      | ("{" Statement* "}")) ";";
+
+/* Declarations */
+BuiltInDirectives ::= "#[" "volatile"     "]" // makes the compiler not optimize the variable or dereference it in any way
+                  |   "#[" "packed"       "]" // packs the struct or class to the smallest size possible
+                  |   "#[" "unlikely"     "]" // marks the branch as unlikely to be taken
+                  |   "#[" "likely"       "]" // marks the branch as likely to be taken
+                  |   "#[" "no_panic"     "]" // enforce that the function does not panic (error if it does)
+                  |   "#[" "internal"     "]" // makes the function or variable only accessible within the module
+                  |   "#[" "experimental" "]" // marks the function or variable as experimental (warning if used)
+                  |   "#[" "force_inline" "]" // forces the compiler to inline the function
+                  |   "#[" "no_inline"    "]" // forces the compiler to not inline the function
+                  |   "#[" "deprecated"  ("(" StringLiteral ")")? "]"  // marks the function or variable as deprecated (warning if used)
+                  |   "#[" "must_use"    ("(" StringLiteral ")")? "]"  // marks the function or variable as must use (warning if not used)
+                  |   "#[" "alignas"      "(" Number        ")"   "]"; // sets the alignment of the variable/declaration
+
+/* Variable Declarations */
+
+TypedStructuredBinding   ::= "(" TypedArgumentList ")";
+UnTypedStructuredBinding ::= "(" UnTypedArgumentList ")";
+
+DestructuredVar      ::= (TypedStructuredBinding | UnTypedStructuredBinding) "=" Expression;
+StructuredVar        ::= (TypedArgument | UnTypedArgument) "=" Expression;
+
+// ffi variables allow for ffi mangling as defined by the abi rule se | "eval";
+VariableDeclaration ::= VisibilityModifiers?
+                        ("const" | (("let" | "static" | FFIBase) UnsafeModifier?))
+                        StorageModifier?
+                        (DestructuredVar | StructuredVar)
+                        (("," (DestructuredVar | StructuredVar))*)?;
+
+/* FFIs */
+FFIBase  ::= "ffi" StringLiteral;
+FFIScope ::= FFIBase ScopeBlock;
+
+/* Generics/With */
+RequiresDeclaration ::= "requires" RequiresParameters RequiresConstraint?;
+RequiresParameter   ::= ("const" UnsafeModifier? Identifier ":" Type) | Identifier;
+RequiresParameters  ::=  "<" (RequiresParameter*)? ">";
+RequiresConstraint  ::= ( "if" | "unless") Expression
+                        (("else" ("if" | "unless") Expression ScopeBlock)*)?
+                        ( "else" ScopeBlock)?;
+
+WithDeclaration    ::= "with" Type (("," Type)*)?;
+DerivesDeclaration ::= "derives" (UnsafeModifier? VisibilityModifiers?) Type (("," (UnsafeModifier? VisibilityModifiers?) Type)*)?;
+
+/* Function Declarations */
+FunctionBase ::= FFIBase?
+                 VisibilityModifiers?
+                 UnsafeModifier?
+                 ("const" | "static" | FFIBase)?
+                 StorageModifier?;
+
+FunctionDeclaration ::= FunctionBase "fn" QualifiedScopePath "(" DefaultedArgumentList? ")" ArrowReturn? RequiresDeclaration? (ScopeBlock | ";");
+OperatorDeclaration ::= FunctionBase "op" Operator "fn" QualifiedScopePath? "(" DefaultedArgumentList? ")" ArrowReturn? RequiresDeclaration? (ScopeBlock | ";");
+
+/* Class Declarations */
+UDTBase ::= FFIBase? VisibilityModifiers? "const"? UnsafeModifier?
+
+ClassDeclaration     ::= UDTBase "class" Identifier (DerivesDeclaration? WithDeclaration? RequiresDeclaration?) ScopeBlock;
+EnumDeclaration      ::= FFIBase? "enum" Identifier ("derives" Type)? (("{" (("," Identifier ("=" Expression)?)*)? "}") | ";");
+TypeDeclaration      ::= FFIBase? UnsafeModifier? "type" Identifier RequiresDeclaration? "=" Type;
+ModuleDeclaration    ::= FFIBase? "inline"? "module" QualifiedScopePath? ScopeBlock;
+StructDeclaration    ::= UDTBase "struct" Identifier (WithDeclaration? RequiresDeclaration?) ScopeBlock;
+InterfaceDeclaration ::= UDTBase "interface" Identifier (WithDeclaration? RequiresDeclaration?) ScopeBlock;
+ExtendsDeclaration   ::= "extend" "unsafe"? QualifiedScopePath (WithDeclaration? RequiresDeclaration?) ScopeBlock;
+
+/* Test Declarations */
+// tests run when the following is passed to the helix compiler: --test
+TestDeclaration ::= "test" StringLiteral ScopeBlock;
+
+Declaration ::=  VariableDeclaration | TypeDeclaration     | OperatorDeclaration | ProcMacroDeclaration
+              |  EnumDeclaration     | FunctionDeclaration | ClassDeclaration    | InterfaceDeclaration
+              |  ModuleDeclaration   | StructDeclaration   | TestDeclaration     | MacroDeclaration
+              |  ExtendsDeclaration  ;
+
+StatementDeclarations ::= ClassDeclaration  | EnumDeclaration     | TypeDeclaration     | VariableDeclaration
+                      |   StructDeclaration | FunctionDeclaration | OperatorDeclaration ;
+
+/* Macros */
+MacroDeclaration     ::= "macro" Identifier "!" ("(" UnTypedDefaultedArgumentList? ")")? (("{" ... "}") | (":" ...)) ";";
+ProcMacroDeclaration ::= "macro" Identifier "!" ("(" DefaultedArgumentList?        ")")? (("{" ... "}") | (":" ...)) ";";
+
+/* Imports */
+SingleImport    ::= (QualifiedScopePath | StringLiteral) ('as' Ident)?;
+MultipleImports ::= SingleImport (',' SingleImport)*;
+QualifiedImport ::= QualifiedScopePath '::' ('{' MultipleImports '}') | ('*');
+Import          ::= 'import' (QualifiedImport | SingleImport) ';';
+GroupImport     ::= 'import' '{' (QualifiedImport | SingleImport ';')* '}';
+
+/* Type System */
+// Helix will not have references instead it has pointers, regular pointers act as references and are not nullable
+// does helix need MemberPointerType? : no
+
+PrimitiveTypes ::= "void" | "bool" | "usize" | "isize" | "f32"  | "f64"  | "f80"
+               |   "f128" | "u8"   | "u16"   | "u32"   | "u64"  | "u128" | "u256"
+               |   "i8"   | "i16"  | "i32"   | "i64"   | "i128" | "i256" ;
+
+BuiltInTypes ::= FunctionPointer
+             |   PrimitiveTypes
+             |   TupleType
+             |   ArrayType
+             |   MapType
+             |   SetType;
+
+UnaryTypes ::= VariadicType
+           |   PointerType
+           |   QuestionType;
+
+ModifierTypes ::= UnsafeType
+              |   ConstType
+              |   GeneratorType;
+
+Type ::= UnsafeModifier?
+     (   BuiltInTypes
+     |   UnaryTypes
+     |   ModifierTypes
+     |   QualScopeAccessType
+     |   ElaboratedType
+     |   PrimaryExpression
+     |   "(" Type ")"); // parenthesized type (different from tuple)
+     /// NOTE: primary expression's in types, the type must be marked eval and would be run at
+     ///       compile time the result of the expression would be the type set. this is to allow
+     ///       for things like: `T::V<"hello">` during invoke and allow for the use:
+     ///       `fn V() requires <const T: string> { eval if T == "hello": ... }
+
+/* Generic Types */
+// NOTE: have to parse nested generics since the op type is not a '>' but a '>>'
+//       e.x: V<V<T>> would tokenize as (V) (<) (V) (<) (T) (>) (>>) NOT (V) (<) (V) (<) (T) (>) (>)
+
+GenericAccessType ::= "<" (Type ("," Type)*)? ">";   // <T, T>  | <T>
+NoQualGenericType ::= Identifier GenericAccessType?; // V<T> | V
+
+/* Qualified Types */
+QualScopeAccessType ::= ("::")? NoQualGenericType     // ::V | V | V<T>
+                       (("::"   NoQualGenericType)*)?; // T::V<T> | T::V<T>::R
+
+/* In-Built Types */
+FunctionPointer ::= "fn" "(" (Type ("," Type)*)? ")" ArrowReturn; // fn (T, V) -> R | fn () -> void
+TupleType       ::= "(" (Type (("," Type)*)?) ")";                // (T, V) | (T, V, R)
+ArrayType       ::= "[" Type (":" Number)? "]";                   // [T] | [T: 6]
+MapType         ::= "{" (Type ":" Type) "}";                      // {T: V}
+SetType         ::= "{" Type "}";                                 // {T}
+
+/* Unary Types */
+VariadicType  ::= "..." Type;  // ...T
+PointerType   ::= "*" Type;    //   *T
+QuestionType  ::= Type "?";    //    T?
+
+/* Type Modifiers */
+UnsafeType     ::= "unsafe" Type;  // unsafe T (also works as volatile)
+ConstType      ::= "const"  Type;  // const  T
+GeneratorType  ::= "yield"  Type;  // yield  T
+
+/* Type hints for the compiler */
+ElaboratedType  ::= ( "interface"    // interface T (interfaces arn't types)
+                |     "struct"       // struct T
+                |     "class"        // class  T
+                |     "enum"         // enum   T
+                |     "type" ) Type; // type   T
+
+/* Contacted */
+ArrowReturn ::= '->' (Type | "!");
+
+/* Base Elements */
+Delimiter   ::= "\t" | "\n" | "EOF" | " "  | ","  | ";" ;
+Identifier  ::= [A-Za-z_][A-Za-z0-9_]*;
+Digit       ::= [0-9];
+BinaryDigit ::= [0-1];
+OctalDigit  ::= [0-7];
+HexDigit    ::= [0-9a-fA-F];
+
+/* Literals */
+NumericSuffix      ::= PrimitiveTypes | Identifier;
+ExponentPart       ::= ('e' | 'E' | 'p' | 'P') ('+' | '-')? Digit+;
+DecimalLiteral     ::= Digit+ ('.' Digit+)? (ExponentPart)? (NumericSuffix)?;
+BinaryLiteral      ::= "0b" BinaryDigit+ (NumericSuffix)?;
+OctalLiteral       ::= "0"  OctalDigit+  (NumericSuffix)?;
+HexadecimalLiteral ::= "0x" HexDigit+    (NumericSuffix)?;
+FloatingLiteral    ::= Digit+ '.' Digit+ (ExponentPart)? (NumericSuffix)?
+                   |   '.'   Digit+ (ExponentPart)? (NumericSuffix)?
+                   |   Digit+ ExponentPart (NumericSuffix)?;
+
+NumericLiteral ::= DecimalLiteral | BinaryLiteral | OctalLiteral | HexadecimalLiteral | FloatingLiteral;
+StringLiteral  ::= '"' [^"]* '"';
+CharLiteral    ::= "'" [^']  "'";
+BoolLiteral    ::= "true" | "false";
+SelfLiteral    ::= "self";      // self == this
+NullLiteral    ::= "&"? "null"; // &null == nullptr
+ArrayLiteral   ::= '[' (Expression (',' Expression)*)? ']'; // [1, 2, 3]
+MapLiteral     ::= '{' (Expression ':' Expression (',' Expression ':' Expression)*)? '}'; // {1: 2, 3: 4}
+SetLiteral     ::= '{' (Expression (',' Expression)*)? '}'; // {1, 2, 3}
+
+Literal ::= NumericLiteral | StringLiteral | CharLiteral  | BoolLiteral
+        |   NullLiteral    | SelfLiteral   | ArrayLiteral | MapLiteral | SetLiteral;
+
+/* Operators */
+// any of these fill in the other side to make a binary operator with the blank side defaulting to (default initializer)
+// helix does not have -> operator since regular pointers are references the ... is used for unpacking
+// delete is overridable, new does not exist since helix has memory placement semantics also l can't be used for delete
+
+AssignmentOperators ::= "="  | "**=" | "+=" | "-="  | "<<="  |  "*="
+                    |   "/=" | "%="  | "@=" | "|="  | ">>="  |  "^="
+                    |   "|=" | "^="  | "&=" ;
+
+BinaryOperators ::= "+"  | "-"  | "*"  | "/"   | "%"  | "@"  | "==="
+                |   "&"  | "|"  | "^"  | "**"  | "<<" | ">>" | "has"
+                |   "==" | "!=" | ">=" | "<="  | "<"  | ">"  | "derives"
+                |   "&&" | "||" | ".." | "..=" ;
+
+UnaryOperators        ::=  ".." | "..=";
+UnaryPostfixOperators ::=  "r"? ("++" | "--" | ".*" | "?" | "...");
+UnaryPrefixOperators  ::= ("l"? ("+"  | "-"  | "~"  | "!" | "++" | "--" | "&" | "*")) | "delete";
+UnaryPrefix           ::= UnaryOperators | UnaryPrefixOperators;
+UnaryPostfix          ::= UnaryOperators | UnaryPostfixOperators;
+Operator              ::= AssignmentOperators  | BinaryOperators | UnaryOperators
+                      |   UnaryPrefixOperators | UnaryPostfixOperators;
+
+/* Built-In Macros */
+BuiltInMacros ::= "sizeof" | "alignof" | "typeof" | "assert" | "file" | "line" | "column" | "function" | "module";
