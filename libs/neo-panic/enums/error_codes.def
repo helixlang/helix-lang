@@ -75,6 +75,7 @@ const helix::CompTimeMap<float, Errors, 150> ERROR_MAP({
     MP(0.3018, Errors{"Panic found here", "", error::NOTE}),
     MP(0.3009, Errors{"This function yields values but is not marked as a generator. Functions that yield must be explicitly marked.", "Add 'yield' to the return type of the function. For example: 'yield i32'.", error::ERR}),
     MP(0.3019, Errors{"Yield found here", "", error::NOTE}),
+    MP(0.4918, Errors{"Defined here", "", error::NOTE}),
 
     // Async, Await, Spawn, Thread errors
     MP(0.4001, Errors{"incorrect usage of async", "ensure correct usage of the async keyword.", error::ERR}),

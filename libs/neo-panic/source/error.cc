@@ -357,6 +357,8 @@ size_t set_level(string &level, const Level &err_level) {
                                               string(colors::fg8::red) + __ret_color)
                                            .size();
             break;
+        default:
+            break;
     }
 
     return level_len;
