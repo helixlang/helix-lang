@@ -238,6 +238,7 @@ symbols from the imports are available when needed for resolution.
 #include "token/include/config/Token_cases.def"
 #include "token/include/config/Token_config.def"
 #include "token/include/private/Token_generate.hh"
+#include "parser/preprocessor/include/preprocessor.hh"
 
 // ---------------------------------------------------------------------------------------------- //
 
@@ -346,14 +347,21 @@ extend Statement for NamedVarSpecifier {
 AST_NODE_IMPL(Statement, NamedVarSpecifier, bool force_type) {
     IS_NOT_EMPTY;
 
-    // := Ident (':' Type)?
+    // := const? Ident (':' Type)?
+    auto node = make_node<NamedVarSpecifier>(true);
+
+    if (CURRENT_TOKEN_IS(__TOKEN_N::KEYWORD_CONST)) {
+        iter.advance();  // skip 'const'
+        node->is_const = true;
+    }
 
     ParseResult<IdentExpr> path = expr_parser.parse<IdentExpr>();
     RETURN_IF_ERROR(path);
 
     if (force_type) {
         if (path.value()->name.value() == "self") {
-            return make_node<NamedVarSpecifier>(path.value());
+            node->path = path.value();
+            return node;
         }
 
         IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_COLON);
@@ -365,10 +373,14 @@ AST_NODE_IMPL(Statement, NamedVarSpecifier, bool force_type) {
         ParseResult<Type> type = expr_parser.parse<Type>();
         RETURN_IF_ERROR(type);
 
-        return make_node<NamedVarSpecifier>(path.value(), type.value());
+        node->path = path.value();
+        node->type = type.value();
+
+        return node;
     }
 
-    return make_node<NamedVarSpecifier>(path.value());
+    node->path = path.value();
+    return node;
 }
 
 AST_NODE_IMPL_VISITOR(Jsonify, NamedVarSpecifier) {
@@ -1021,6 +1033,10 @@ AST_NODE_IMPL(Statement, ImportState, bool is_ffi) {
                 PARSE_ERROR(CURRENT_TOK, "wildcard imports cannot have an alias"));
         }
 
+        // excpt a semi colon:
+        IS_EXCEPTED_TOKEN(__TOKEN_N::PUNCTUATION_SEMICOLON);
+        iter.advance(); // skip ';'
+
         /// convert the single import to a spec import
         NodeT<SpecImport> spec_import = make_node<SpecImport>(single_import.value());
         return make_node<ImportState>(spec_import, is_module);
@@ -1121,7 +1137,7 @@ AST_NODE_IMPL(Statement, SingleImport) {
         case token::LITERAL_TRUE:
         case token::LITERAL_FALSE:
         case token::LITERAL_INTEGER:
-        case token::LITERAL_COMPLIER_DIRECTIVE:
+        case token::LITERAL_COMPILER_DIRECTIVE:
         case token::LITERAL_FLOATING_POINT:
         case token::LITERAL_CHAR:
         case token::LITERAL_NULL:
@@ -1149,10 +1165,55 @@ AST_NODE_IMPL(Statement, SingleImport) {
         path = expr_parser.parse<LiteralExpr>();
         RETURN_IF_ERROR(path);
 
-        if (__AST_N::as<LiteralExpr>(path.value())->contains_format_args) {
+        auto lit_path = __AST_N::as<LiteralExpr>(path.value());
+
+        if (lit_path->contains_format_args) {
             return std::unexpected(
                 PARSE_ERROR(CURRENT_TOK, "f-strings are not allowed in imports."));
         }
+
+        // convert the path to an absoulte one, by doing the following:
+        // 1. check if the path is a relative path
+        // 2. if it is, look for the right file, go in order of:
+        //    - current file directory
+        //    - dirs specifed in include paths
+        //    - if not found then error saying file not found
+        // 3. if the path is an absolute path, then check if the file exists
+
+        // remove the quotes
+        auto str_path = (lit_path->value.value()).substr(1, (lit_path->value.value()).size() - 2);
+        auto fs_path = std::filesystem::path(str_path);
+        auto included_dirs = import_processor->get_dirs();
+
+        if (fs_path.is_relative()) {
+            // check if the file exists in the current file directory
+            auto current_file_dir = std::filesystem::path(CURRENT_TOK.file_name()).parent_path();
+            auto current_file_path = current_file_dir / fs_path;
+
+            if (!std::filesystem::exists(current_file_path)) {
+                bool found = false;
+
+                for (const auto &dir : included_dirs) {
+                    auto dir_path = std::filesystem::path(dir) / fs_path;
+
+                    if (std::filesystem::exists(dir_path)) {
+                        found = true;
+                        current_file_path = dir_path;
+                        break;
+                    }
+                }
+
+                if (found) {
+                    // set the path to the found path
+                    lit_path->value.set_value("\"" + current_file_path.generic_string() + "\"");
+                }
+                
+            } else {
+                lit_path->value.set_value("\"" + current_file_path.generic_string() + "\"");
+            }
+        }
+
+        path = lit_path;
     }
 
     node->path = path.value();
@@ -1594,7 +1655,7 @@ std::vector<__TOKEN_N::Token> get_modifiers(__TOKEN_N::TokenList::TokenListIter 
             case __TOKEN_N::KEYWORD_PUBLIC:
             case __TOKEN_N::KEYWORD_PROTECTED:
             case __TOKEN_N::KEYWORD_INTERNAL:
-            case __TOKEN_N::LITERAL_COMPLIER_DIRECTIVE:
+            case __TOKEN_N::LITERAL_COMPILER_DIRECTIVE:
                 modifiers.push_back(CURRENT_TOK);
                 iter.advance();
                 break;

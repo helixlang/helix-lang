@@ -482,7 +482,7 @@ AST_NODE_IMPL_VISITOR(Jsonify, ConstDecl) {
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_NODE_IMPL(Declaration, ExtendDecl, const std::shared_ptr<__TOKEN_N::TokenList> &modifiers) {
+AST_NODE_IMPL(Declaration, ExtendDecl, const std::shared_ptr<__TOKEN_N::TokenList> & /* unused */) {
     NOT_IMPLEMENTED;
 }
 
@@ -662,7 +662,6 @@ AST_NODE_IMPL(Declaration, EnumDecl, const std::shared_ptr<__TOKEN_N::TokenList>
     // EnumDecl := Modifiers 'enum' (('derives' E.Type)? Ident)? (('{' (EnumMemberDecl (',' EnumMemberDecl)*)? '}') | (':' (EnumMemberDecl) ';'))
 
     NodeT<EnumDecl> node = make_node<EnumDecl>(true);
-    bool anonymous_enum = false;
 
     if (modifiers != nullptr) {
         for (auto &tok : *modifiers) {
@@ -693,8 +692,6 @@ AST_NODE_IMPL(Declaration, EnumDecl, const std::shared_ptr<__TOKEN_N::TokenList>
 
         node->name = name.value();
     } else {
-        anonymous_enum = true;
-
         if (node->derives) {
             return std::unexpected(PARSE_ERROR(CURRENT_TOK, "anonymous enum cannot have specified type"));
         }
