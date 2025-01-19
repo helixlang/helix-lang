@@ -139,6 +139,9 @@ __TOKEN_BEGIN {
         [[nodiscard]] TokenVec::const_iterator begin() const { return TokenVec::begin(); }
         [[nodiscard]] TokenVec::const_iterator end() const { return TokenVec::end(); }
 
+        [[nodiscard]] TokenVec::iterator ibegin() { return TokenVec::begin(); }
+        [[nodiscard]] TokenVec::iterator iend() { return TokenVec::end(); }
+
         inline TokenListIter begin() { return TokenListIter(*this); }
         inline TokenListIter end() { return TokenListIter(*this, this->size()); }
 

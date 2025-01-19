@@ -143,6 +143,8 @@ __PREPROCESSOR_BEGIN {
         insert_inline_cpp(__TOKEN_N::TokenList &tokens, const InstLoc &loc, const InstCXX &cxx);
 
         void process();
+        bool has_processable_import();
+        void force_import(const std::filesystem::path &path, __CONTROLLER_CLI_N::CLIArgs args);
 
         void append(const std::filesystem::path                        &path,
                     size_t                                    rel_to_index,
@@ -157,6 +159,8 @@ __PREPROCESSOR_BEGIN {
                     __CONTROLLER_CLI_N::CLIArgs                              &parsed_args,
                     size_t                                                    start_pos,
                     __TOKEN_N::Token                                         &start);
+
+        std::vector<std::filesystem::path> get_dirs() const { return import_dirs; }
 
         /// \returns a resolved path (maybe), which index it was found at, and
         ///          the type of the path that was found, and a vec of also matched paths

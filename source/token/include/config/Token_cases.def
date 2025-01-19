@@ -24,7 +24,7 @@
      __TOKEN_N::LITERAL_TRUE,               \
      __TOKEN_N::LITERAL_FALSE,              \
      __TOKEN_N::LITERAL_INTEGER,            \
-     __TOKEN_N::LITERAL_COMPLIER_DIRECTIVE, \
+     __TOKEN_N::LITERAL_COMPILER_DIRECTIVE, \
      __TOKEN_N::LITERAL_FLOATING_POINT,     \
      __TOKEN_N::LITERAL_CHAR,               \
      __TOKEN_N::LITERAL_NULL}

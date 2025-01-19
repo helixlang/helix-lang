@@ -29,8 +29,11 @@
 #include <vector>
 
 #include "controller/include/Controller.hh"
+#include "controller/include/config/Controller_config.def"
+#include "controller/include/shared/file_system.hh"
 #include "controller/include/tooling/tooling.hh"
 #include "generator/include/CX-IR/CXIR.hh"
+#include "lexer/include/lexer.hh"
 #include "neo-panic/include/error.hh"
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/nodes/AST_expressions.hh"
@@ -314,6 +317,126 @@ __PREPROCESSOR_BEGIN {
                       inline_cpp.cend());
     }
 
+    bool ImportProcessor::has_processable_import() {
+        bool found_import = false;
+        __TOKEN_N::TokenList::TokenListIter iter = tokens.begin();
+
+        while (iter.remaining_n() > 0) {
+            if (iter->token_kind() == __TOKEN_N::tokens::KEYWORD_FFI) {
+                /// TODO: add checks to see if tokens are empty after advancing
+                bool  has_brace = false;
+                Token ffi_tok   = iter.current();
+
+                ADVANCE_AND_CHECK;  // skip 'ffi'
+
+                if (iter->token_kind() != __TOKEN_N::tokens::LITERAL_STRING) {
+                    Token bad_tok = iter.current();
+
+                    error::Panic(error::CodeError{
+                        .pof      = &bad_tok,
+                        .err_code = 0.0001,
+                        .mark_pof = true,
+                        .fix_fmt_args{},
+                        .err_fmt_args{"expected a string literal after 'ffi'"},
+                        .opt_fixes{},
+                    });
+
+                    std::exit(1);
+                }
+
+                ADVANCE_AND_CHECK;  // skip the language
+
+                if (iter->token_kind() == __TOKEN_N::tokens::PUNCTUATION_OPEN_BRACE) {
+                    has_brace = true;
+                    ADVANCE_AND_CHECK;  // skip the opening brace
+                }
+
+                if (iter->token_kind() != __TOKEN_N::tokens::KEYWORD_IMPORT) {
+                    continue;  // skip parsing the ffi block if it's not an import
+                }
+
+                while (iter->token_kind() != (has_brace
+                                                  ? __TOKEN_N::tokens::PUNCTUATION_CLOSE_BRACE
+                                                  : __TOKEN_N::tokens::PUNCTUATION_SEMICOLON)) {
+                    if (iter.remaining_n() == 0) {
+                        error::Panic(error::CodeError{
+                            .pof      = &ffi_tok,
+                            .err_code = 0.0001,
+                            .mark_pof = true,
+                            .fix_fmt_args{},
+                            .err_fmt_args{std::string("expected a") +
+                                          (has_brace ? " '}'" : " ';'") +
+                                          " to close the 'ffi' block"},
+                            .opt_fixes{},
+                        });
+
+                        std::exit(1);
+                    }
+
+                    ADVANCE_AND_CHECK;  // WARNING: this may fail since we break and dont break
+                                        // again.
+                }
+            }
+
+            if (iter->token_kind() == __TOKEN_N::tokens::KEYWORD_IMPORT) {
+                /// remove all import tokens
+                /// calculate the 'import' token to the ';' or '}' token
+                i32  offset    = 1;
+                bool has_brace = false;
+                __TOKEN_N::Token start = iter.current().get();
+
+                if (!iter.peek(offset).has_value()) {
+                    error::Panic(error::CodeError{
+                        .pof      = &start,
+                        .err_code = 0.0001,
+                        .mark_pof = true,
+                        .fix_fmt_args{},
+                        .err_fmt_args{"expected a something after 'import' keyword"},
+                        .opt_fixes{},
+                    });
+
+                    std::exit(1);
+                }
+
+                if (iter.peek(offset)->get().token_kind() ==
+                    __TOKEN_N::tokens::PUNCTUATION_OPEN_BRACE) {
+                    has_brace = true;
+                    ++offset;  // skip the opening brace
+                }
+
+                while (iter.peek(offset).has_value()) {  // at this stage this is safe
+                    if (!iter.peek(offset).has_value()) {
+                        error::Panic(error::CodeError{
+                            .pof      = &start,
+                            .err_code = 0.0001,
+                            .mark_pof = true,
+                            .fix_fmt_args{},
+                            .err_fmt_args{"expected a ';' or '}' to close the 'import' statement"},
+                            .opt_fixes{},
+                        });
+
+                        std::exit(1);
+                    }
+
+                    if (iter.peek(offset)->get().token_kind() ==
+                        (has_brace ? __TOKEN_N::tokens::PUNCTUATION_CLOSE_BRACE
+                                   : __TOKEN_N::tokens::PUNCTUATION_SEMICOLON)) {
+                        break;
+                    }
+
+                    ++offset;
+                }
+
+                found_import  = true;
+                break;
+            }
+
+            iter.advance();
+        }
+
+        return found_import;
+    }
+
     void ImportProcessor::process() {
         /// make an ast parser
         __TOKEN_N::TokenList::TokenListIter           iter = tokens.begin();
@@ -541,7 +664,7 @@ __PREPROCESSOR_BEGIN {
 
                 path = import_path.pop_front().value();
 
-                for (auto &_ /* unused */ : import_path) {
+                for (auto & __attribute__((unused)) _ /* unused */ : import_path) {
                     path /= import_path.pop_front().value();
                 }
             }
@@ -596,7 +719,24 @@ __PREPROCESSOR_BEGIN {
 
                 if (is_wildcard) {
                     /// insert using namespace ...
-                    insert_inline_cpp(tokens, {start_pos, start}, namespace_path);
+                    bool trivially_import = false;
+
+                    auto file          = (import_dirs[rel_to_index] / path).generic_string();
+                    auto contents      = __CONTROLLER_FS_N::read_file(file);
+                    auto import_tokens = lexer::Lexer(contents, file).tokenize();
+
+                    for (auto &toke : import_tokens) {
+                        if (toke->token_kind() == __TOKEN_N::tokens::LITERAL_COMPILER_DIRECTIVE) {
+                            if (toke->value().contains("trivially_import(true)")) {
+                                trivially_import = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!trivially_import) {
+                        insert_inline_cpp(tokens, {start_pos, start}, namespace_path);
+                    }
                 } else {
                     std::string _alias;
 
@@ -631,6 +771,31 @@ __PREPROCESSOR_BEGIN {
 
         /// add the imports to the unit
         this->extend(normalized, import_dirs, parsed_args, start_pos, start);
+    }
+
+    /// \brief force imports a file into the current compilation unit (must be a module import)
+    /// \param path the absolute path to the file
+    /// \param parsed_args the parsed cli args
+    void ImportProcessor::force_import(const std::filesystem::path           &path,
+                                       __CONTROLLER_CLI_N::CLIArgs /* copy */ parsed_args) {
+        CompilationUnit unit;  // create a new compile unit instance
+        parsed_args.file = path.generic_string();
+
+        // check if the file exists and is a regular file by this point this should always be
+        // true but just in case we check
+        if (!std::filesystem::is_regular_file(parsed_args.file)) [[unlikely]] {
+            error::Panic(error::CompilerError{
+                .err_code = 2.1001, .fix_fmt_args = {}, .err_fmt_args = {path.generic_string()}});
+        }
+
+        auto [action, ec] = unit.build_unit(parsed_args, false, true);
+
+        if (ec == 1) {  /// if there was an error, skip this import
+            return;
+        }
+
+        generator::CXIR::CXIR forward_decls = unit.generate_cxir(false);
+        this->imports.push_back(std::move(forward_decls));
     }
 
     void ImportProcessor::append(const std::filesystem::path              &path,
@@ -794,7 +959,6 @@ __PREPROCESSOR_BEGIN {
 
         bool found_module = false;
         bool found_header = false;
-        bool found_lib    = false;
 
         auto add_ext = [](std::filesystem::path path, std::string ext) -> std::filesystem::path {
             return path.replace_extension(ext);

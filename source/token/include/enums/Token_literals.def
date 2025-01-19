@@ -18,7 +18,7 @@
 #define LITERAL_TOKENS_COUNT 8
 
 #define LITERAL_TOKENS(GENERATE)                                     \
-    GENERATE(LITERAL_COMPLIER_DIRECTIVE, "/* complier_directive */") \
+    GENERATE(LITERAL_COMPILER_DIRECTIVE, "/* compiler_directive */") \
     GENERATE(LITERAL_STRING,             "/* string */"            ) \
     GENERATE(LITERAL_FLOATING_POINT,     "/* float */"             ) \
     GENERATE(LITERAL_CHAR,               "/* char */"              ) \
