@@ -36,21 +36,22 @@
 #include "parser/ast/include/types/AST_types.hh"
 #include "parser/preprocessor/include/preprocessor.hh"
 #include "token/include/private/Token_base.hh"
+#include "parser/preprocessor/include/private/utils.hh"
 
 extern bool LSP_MODE;
+inline bool CORE_IMPORTED = false;
 
 template <typename T>
 void process_paths(std::vector<T>                     &paths,
                    std::vector<std::filesystem::path> &add_to,
                    std::filesystem::path &
                        base_to,  //< must be a file not a dir, it is checked also must be normalized
-                   std::vector<std::filesystem::path> add_after_base,
-                   bool                               is_dir = true) {
+                   const std::vector<std::filesystem::path>& add_after_base) {
     std::vector<std::filesystem::path> normalized_input;
     std::filesystem::path              cwd = __CONTROLLER_FS_N::get_cwd();
     std::filesystem::path              exe = __CONTROLLER_FS_N::get_exe();
 
-    if constexpr (!std::is_same_v<T, std::string> && !std::is_same_v<T, std::filesystem::path>) {
+    if constexpr (!std::same_as<T, std::string> && !std::same_as<T, std::filesystem::path>) {
         throw std::runtime_error("invalid usage of process_paths only string or path vec allowed");
     }
 
@@ -153,9 +154,25 @@ __TOKEN_N::TokenList CompilationUnit::pre_process(__CONTROLLER_CLI_N::CLIArgs &p
 
     helix::log_opt<LogLevel::Progress>(parsed_args.verbose, "preprocessing");
 
-    import_processor =
-        std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
-    import_processor->process();
+    this->import_processor = std::make_shared<__PREPROCESSOR_N::ImportProcessor>(tokens, import_dirs, parsed_args);
+            
+    if (tokens.empty()) {
+        return {};
+    }
+
+    if (!CORE_IMPORTED) { // 1 core import per file
+        CORE_IMPORTED = true;
+
+        auto core = __CONTROLLER_FS_N::get_exe().parent_path().parent_path() / "core" / "core.hlx";
+        auto pos = tokens[0];
+
+        import_processor->force_import(core, parsed_args);
+        // import_processor->insert_inline_cpp(tokens, {0, pos}, sanitize_string(core.generic_string()));
+    }
+    
+    while (import_processor->has_processable_import()) { // recursively process imports
+        import_processor->process();
+    }
 
     if (error::HAS_ERRORED) {
         return {};
@@ -175,7 +192,11 @@ __AST_N::NodeT<__AST_NODE::Program> CompilationUnit::parse_ast(__TOKEN_N::TokenL
                                                                std::filesystem::path in_file_path) {
     remove_comments(tokens);
     ast = __AST_N::make_node<__AST_NODE::Program>(tokens, in_file_path.generic_string());
-
+    if (import_processor != nullptr) {
+        ast->parse(false, import_processor);
+    } else {
+        helix::log<LogLevel::Error>("import processor is null");
+    }
     return ast;
 }
 
@@ -202,15 +223,15 @@ std::pair<CXXCompileAction, int> CompilationUnit::build_unit(
         return {{}, 1};
     }
 
+    helix::log_opt<LogLevel::Progress>(parsed_args.verbose, "parsing ast...");
+    
     ast = parse_ast(tokens, in_file_path);
+    
+    helix::log_opt<LogLevel::Progress>(parsed_args.verbose, "parsed");
 
     if (!ast) {
         return {{}, 1};
     }
-
-    helix::log_opt<LogLevel::Progress>(parsed_args.verbose, "parsing ast...");
-    ast->parse();
-    helix::log_opt<LogLevel::Progress>(parsed_args.verbose, "parsed");
 
     if (parsed_args.emit_ast) {
         __AST_VISITOR::Jsonify json_visitor;

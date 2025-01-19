@@ -59,9 +59,6 @@ std::tuple<size_t, size_t> get_meta(const std::string &file_name, size_t line_nu
         break;
     }  // we now have the col num
 
-    // now for len
-    size_t len = 1;
-
     // strip all whitespace on the right
     (*data).erase(std::find_if((*data).rbegin(),
                                (*data).rend(),
