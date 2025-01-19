@@ -1,8 +1,6 @@
 // test.hlx
-ffi "c++" import "chrono"
+ffi "c++" import "chrono";
 ffi "c++" import "random";
-
-import std::range::*;
 
 fn return_success() -> i32? {
     return 1;  // Always returns success
@@ -73,10 +71,10 @@ fn main() -> i32 {
     print("Running Test Cases:\n");
 
     // run each test 5 times and add them to the times map
-    run_test_case("return_success", return_success);
-    run_test_case("return_null", return_null);
-    run_test_case("cause_panic", cause_panic);
-    run_test_case("random_behavior", random_behavior);
+    run_test_case("return_success",  &return_success);
+    run_test_case("return_null",     &return_null);
+    run_test_case("cause_panic",     &cause_panic);
+    run_test_case("random_behavior", &random_behavior);
 
     for label, durations in times {
         for duration in durations {
@@ -179,12 +177,12 @@ fn main() -> i32 {
 // }
 
 // extend AClass::<T, Es...> with SomeInterface
-//   requires <T: class, ...Es> if (traits::is_class_v::<Es> && ...) {
+//   requires <T: class, ...Es> if (meta::is_class_v::<Es> && ...) {
 //     ...
 // }
 
 // extend AClass::<T, Es...> // without extending an interface
-//   requires <T: class, ...Es> if (traits::is_class_v::<T> && (traits::is_class_v::<Es> && ...)) {
+//   requires <T: class, ...Es> if (meta::is_class_v::<T> && (meta::is_class_v::<Es> && ...)) {
 //     ...
 // }
 

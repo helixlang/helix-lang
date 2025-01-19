@@ -28,6 +28,13 @@ macro ban! () {
 };
 }
 
+fn foo(a: i32 = 0) -> i32 {
+    return a;
+}
+
+foo(1);
+foo(a: 1);
+
 interface foo requires <U> {
     fn foo(self) -> U;
     static fn bar();
@@ -35,9 +42,11 @@ interface foo requires <U> {
     const x: i32;
 }
 
+
 fn something() requires <T> if foo::<int> in T {
     T::bar();
 }
+
 
 
 fn foo() -> i32? | $question::<i32> {
@@ -97,12 +106,10 @@ fn helix_compiler(std::array::<std::string, N> args) -> i32
     if (compile.execute() != CompilationUnit::Success) {
         switch (compile.exit_state) {
             case CompilationUnit::CompilerError:
-                log(
-                    "compiler internal error: ",
+                log("compiler internal error: ",
                     diag_handle
                         .get<CompilationUnit::CompilerError>()
-                        .format()
-                        .to_string()
+                        .format() as string
                 ); break;
 
             case CompilationUnit::CodeError:
@@ -110,8 +117,7 @@ fn helix_compiler(std::array::<std::string, N> args) -> i32
                     "user code error: ",
                     diag_handle
                         .get<CompilationUnit::CodeError>()
-                        .format()
-                        .to_string()
+                        .format() as string
                 ); break;
 
             case CompilationUnit::UnrecoverableError:
@@ -119,8 +125,7 @@ fn helix_compiler(std::array::<std::string, N> args) -> i32
                     "fatal error: ",
                     diag_handle
                         .get<CompilationUnit::UnrecoverableError>()
-                        .format()
-                        .to_string()
+                        .format() as string
                 ); break;
 
             case CompilationUnit::SystemError:
@@ -128,8 +133,7 @@ fn helix_compiler(std::array::<std::string, N> args) -> i32
                     "sys call error: ",
                     diag_handle
                         .get<CompilationUnit::SystemError>()
-                        .format()
-                        .to_string()
+                        .format() as string
                 ); break;
         };
 

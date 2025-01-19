@@ -90,16 +90,16 @@ fn main() -> i32 {
 // template <class T, typename... Es>
 // class $question;
 
-// template <class T, typename... Es> requires std::traits::is_class_v<T> && (std::traits::is_class_v<Es> && ...)
+// template <class T, typename... Es> requires std::meta::is_class_v<T> && (std::meta::is_class_v<Es> && ...)
 // class $question<T, Es...> : public T;
 
-// template <class T, typename... Es> requires(std::traits::is_class_v<Es> && ...)
+// template <class T, typename... Es> requires(std::meta::is_class_v<Es> && ...)
 // class $question<T, Es...>;
 
 /*
 
-extend question<T, Es...> derives T requires <T: class, ...Es> if (traits::is_class_v::<T>  && (traits::is_class_v::<Es> && ...));
-extend question<T, Es...>           requires <T: class, ...Es> if (traits::is_class_v::<Es> && ...);
+extend question<T, Es...> derives T requires <T: class, ...Es> if (meta::is_class_v::<T>  && (meta::is_class_v::<Es> && ...));
+extend question<T, Es...>           requires <T: class, ...Es> if (meta::is_class_v::<Es> && ...);
 extend question<T, Es...> with SomeInterface requires <T: class, ...Es>;
 
 
@@ -110,12 +110,12 @@ class AClass
 }
 
 extend AClass::<T, Es...> with SomeInterface
-  requires <T: class, ...Es> if (traits::is_class_v::<Es> && ...) {
+  requires <T: class, ...Es> if (meta::is_class_v::<Es> && ...) {
     ...
 }
 
 extend AClass::<T, Es...> // without extending an interface
-  requires <T: class, ...Es> if (traits::is_class_v::<T> && (traits::is_class_v::<Es> && ...)) {
+  requires <T: class, ...Es> if (meta::is_class_v::<T> && (meta::is_class_v::<Es> && ...)) {
     ...
 }
 

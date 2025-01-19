@@ -12,16 +12,32 @@ class Foo {
     fn _string!()  -> string {
         return "Foo";
     }
-}
 
+    op + (lhs: Foo, rhs: Foo) -> Foo {
+        return Foo(lhs.a + rhs.a, lhs.b + rhs.b);
+    }
+}
 
 class Foo {
     let a: u8;
     let b: u8;
-
+    
     fn to_string_some_special_name()  -> string {
+
+    }
+
+    unsafe fn to_string_some_special_name()  -> string {
         return "Foo";
     }
+
+    op [] fn (self, index: u32);
+    unsafe op [] fn (self, index: u32);
+}
+
+fn main() {
+    let foo = Foo();
+    unsafe    foo[1];
+    const     foo[1];
 }
 
 class CustomType {
