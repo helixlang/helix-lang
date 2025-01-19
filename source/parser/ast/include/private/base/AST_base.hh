@@ -16,14 +16,20 @@
 #ifndef __AST_BASE_H__
 #define __AST_BASE_H__
 
+#include <memory>
 #include <neo-pprint/include/hxpprint.hh>
 #include <string>
+#include <vector>
+#include <algorithm>
 
+#include "lexer/include/lexer.hh"
 #include "neo-pprint/include/ansi_colors.hh"
 #include "parser/ast/include/config/AST_config.def"
 #include "parser/ast/include/private/base/AST_base_declaration.hh"
+#include "parser/ast/include/private/base/AST_base_expression.hh"
 #include "parser/ast/include/types/AST_types.hh"
 #include "parser/ast/include/types/AST_visitor.hh"
+#include "token/include/private/Token_list.hh"
 
 namespace generator::CXIR{class CXIR;}
 
@@ -70,13 +76,46 @@ __AST_NODE_BEGIN {
         [[nodiscard]] bool         is(nodes node) const override { return node == nodes::Program; }
         [[nodiscard]] std::string get_file_name() const {return filename; }
 
-        Program &parse(bool quiet = false) {
-            auto iter = source_tokens.begin();
+        Program &parse(bool quiet = false, std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr) {
+            /// iter over the tokens looking for compiler directives and remove them from the list
+            /// while adding them to annotations
+            source_tokens.erase(std::remove_if(source_tokens.ibegin(), source_tokens.iend(), [this, quiet](const token::Token& x) {
+                if (x == __TOKEN_N::LITERAL_COMPILER_DIRECTIVE) {
+                    // remove the first 2 char and last char from the token and re tokenize it
+                    parser::lexer::Lexer lexer(
+                        x.value(),
+                        x.file_name(),
+                        x.line_number(),
+                        x.column_number() + 2,
+                        x.offset() + 2);
 
+                    auto tokenized_directive = lexer.tokenize();
+                    auto it = tokenized_directive.begin();
+
+                    Expression expr_parser(it);
+                    auto expr = expr_parser.parse();
+
+                    if (expr.has_value()) {
+                        this->annotations.emplace_back(expr.value());
+                    } else {
+                        this->has_errored = true;
+                        
+                        if (!quiet) {
+                            expr.error().panic();
+                        }
+                    }
+                    
+                    return true;
+                }
+                
+                return false;
+            }), source_tokens.iend());
+            
+            auto iter = source_tokens.begin();
             ParseResult<> expr;
 
             while (iter.remaining_n() != 0) {
-                auto decl = node::Declaration(iter);
+                auto decl = node::Declaration(iter, import_processor);
                 expr      = decl.parse();
 
                 if (!expr.has_value()) {
@@ -101,6 +140,7 @@ __AST_NODE_BEGIN {
 
         NodeV<>                       children;
         NodeV<>                       annotations;
+        token::TokenList              directives;
         bool                          has_errored = false;
         std::string filename;
         std::string entry;

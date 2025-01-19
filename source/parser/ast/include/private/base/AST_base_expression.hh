@@ -42,7 +42,6 @@ __AST_NODE_BEGIN {
         template <typename T = Node>
         using p_r = parser ::ast ::ParseResult<T>;
         token ::TokenList ::TokenListIter &iter;
-        std ::vector<p_r<>>                parse_stack;
 
       public:
         Expression()                              = delete;
@@ -58,57 +57,57 @@ __AST_NODE_BEGIN {
         ParseResult<> parse_primary();
         template <typename T, typename... Args>
         ParseResult<T> parse(Args &&...args) { /* NOLINT */
-            if constexpr (std ::is_same_v<T, LiteralExpr>) {
+            if constexpr (std ::same_as<T, LiteralExpr>) {
                 return parse_LiteralExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, BinaryExpr>) {
+            } else if constexpr (std ::same_as<T, BinaryExpr>) {
                 return parse_BinaryExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, UnaryExpr>) {
+            } else if constexpr (std ::same_as<T, UnaryExpr>) {
                 return parse_UnaryExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, IdentExpr>) {
+            } else if constexpr (std ::same_as<T, IdentExpr>) {
                 return parse_IdentExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, NamedArgumentExpr>) {
+            } else if constexpr (std ::same_as<T, NamedArgumentExpr>) {
                 return parse_NamedArgumentExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ArgumentExpr>) {
+            } else if constexpr (std ::same_as<T, ArgumentExpr>) {
                 return parse_ArgumentExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ArgumentListExpr>) {
+            } else if constexpr (std ::same_as<T, ArgumentListExpr>) {
                 return parse_ArgumentListExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, GenericInvokeExpr>) {
+            } else if constexpr (std ::same_as<T, GenericInvokeExpr>) {
                 return parse_GenericInvokeExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ScopePathExpr>) {
+            } else if constexpr (std ::same_as<T, ScopePathExpr>) {
                 return parse_ScopePathExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, DotPathExpr>) {
+            } else if constexpr (std ::same_as<T, DotPathExpr>) {
                 return parse_DotPathExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ArrayAccessExpr>) {
+            } else if constexpr (std ::same_as<T, ArrayAccessExpr>) {
                 return parse_ArrayAccessExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, PathExpr>) {
+            } else if constexpr (std ::same_as<T, PathExpr>) {
                 return parse_PathExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, FunctionCallExpr>) {
+            } else if constexpr (std ::same_as<T, FunctionCallExpr>) {
                 return parse_FunctionCallExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ArrayLiteralExpr>) {
+            } else if constexpr (std ::same_as<T, ArrayLiteralExpr>) {
                 return parse_ArrayLiteralExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, TupleLiteralExpr>) {
+            } else if constexpr (std ::same_as<T, TupleLiteralExpr>) {
                 return parse_TupleLiteralExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, SetLiteralExpr>) {
+            } else if constexpr (std ::same_as<T, SetLiteralExpr>) {
                 return parse_SetLiteralExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, MapPairExpr>) {
+            } else if constexpr (std ::same_as<T, MapPairExpr>) {
                 return parse_MapPairExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, MapLiteralExpr>) {
+            } else if constexpr (std ::same_as<T, MapLiteralExpr>) {
                 return parse_MapLiteralExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ObjInitExpr>) {
+            } else if constexpr (std ::same_as<T, ObjInitExpr>) {
                 return parse_ObjInitExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, LambdaExpr>) {
+            } else if constexpr (std ::same_as<T, LambdaExpr>) {
                 return parse_LambdaExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, TernaryExpr>) {
+            } else if constexpr (std ::same_as<T, TernaryExpr>) {
                 return parse_TernaryExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ParenthesizedExpr>) {
+            } else if constexpr (std ::same_as<T, ParenthesizedExpr>) {
                 return parse_ParenthesizedExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, CastExpr>) {
+            } else if constexpr (std ::same_as<T, CastExpr>) {
                 return parse_CastExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, InstOfExpr>) {
+            } else if constexpr (std ::same_as<T, InstOfExpr>) {
                 return parse_InstOfExpr(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, Type>) {
+            } else if constexpr (std ::same_as<T, Type>) {
                 return parse_Type(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, AsyncThreading>) {
+            } else if constexpr (std ::same_as<T, AsyncThreading>) {
                 return parse_AsyncThreading(std ::forward<Args>(args)...);
             }
         };

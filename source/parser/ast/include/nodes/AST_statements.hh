@@ -34,12 +34,14 @@ __AST_NODE_BEGIN {
 
         // := Ident (':' E)?
 
+        explicit NamedVarSpecifier(bool /* unused */) {}
         explicit NamedVarSpecifier(NodeT<IdentExpr> path, NodeT<Type> type = nullptr)
             : path(std::move(path))
             , type(std::move(type)) {}
 
         NodeT<IdentExpr> path;
-        NodeT<Type>      type;
+        NodeT<Type>      type = nullptr;
+        bool is_const = false;
     };
 
     class NamedVarSpecifierList final : public Node {

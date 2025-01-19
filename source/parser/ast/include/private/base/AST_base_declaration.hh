@@ -40,50 +40,68 @@ __AST_NODE_BEGIN {
      *     NodeT<...> node = decl.parse<...>();
      */
     class Declaration {
-        AST_CLASS_BASE(Declaration, DECLS), state_parser(iter), expr_parser(iter) {};
+        template <typename T = Node>
+        using p_r = parser::ast::ParseResult<T>;
+        token::TokenList::TokenListIter &iter;
+        std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor;
+
+      public:
+        Declaration()                               = delete;
+        Declaration(const Declaration &)            = default;
+        Declaration &operator=(const Declaration &) = delete;
+        Declaration(Declaration &&)                 = default;
+        Declaration &operator=(Declaration &&)      = delete;
+        ~Declaration()                              = default;
+        p_r<> parse();
+
+        explicit Declaration(token::TokenList::TokenListIter &iter, std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr)
+            : iter(iter)
+            , import_processor(import_processor)
+            , state_parser(iter, import_processor)
+            , expr_parser(iter) {}
 
         template <typename T, typename... Args>
         ParseResult<T> parse(Args &&...args) { /* NOLINT */
-            if constexpr (std ::is_same_v<T, RequiresParamDecl>) {
-                return parse_RequiresParamDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, RequiresParamList>) {
-                return parse_RequiresParamList(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, EnumMemberDecl>) {
-                return parse_EnumMemberDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, UDTDeriveDecl>) {
-                return parse_UDTDeriveDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, TypeBoundList>) {
-                return parse_TypeBoundList(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, TypeBoundDecl>) {
-                return parse_TypeBoundDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, RequiresDecl>) {
-                return parse_RequiresDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, StructDecl>) {
-                return parse_StructDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ConstDecl>) {
-                return parse_ConstDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ClassDecl>) {
-                return parse_ClassDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ExtendDecl>) {
-                return parse_ExtendDecl(std ::forward<Args>(args)...); 
-            } else if constexpr (std ::is_same_v<T, InterDecl>) {
-                return parse_InterDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, EnumDecl>) {
-                return parse_EnumDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, TypeDecl>) {
-                return parse_TypeDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, FuncDecl>) {
-                return parse_FuncDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, VarDecl>) {
-                return parse_VarDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, FFIDecl>) {
-                return parse_FFIDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, LetDecl>) {
-                return parse_LetDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, OpDecl>) {
-                return parse_OpDecl(std ::forward<Args>(args)...);
-            } else if constexpr (std ::is_same_v<T, ModuleDecl>) {
-                return parse_ModuleDecl(std ::forward<Args>(args)...);
+            if constexpr (std::same_as<T, RequiresParamDecl>) {
+                return parse_RequiresParamDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, RequiresParamList>) {
+                return parse_RequiresParamList(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, EnumMemberDecl>) {
+                return parse_EnumMemberDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, UDTDeriveDecl>) {
+                return parse_UDTDeriveDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, TypeBoundList>) {
+                return parse_TypeBoundList(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, TypeBoundDecl>) {
+                return parse_TypeBoundDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, RequiresDecl>) {
+                return parse_RequiresDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, StructDecl>) {
+                return parse_StructDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, ConstDecl>) {
+                return parse_ConstDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, ClassDecl>) {
+                return parse_ClassDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, ExtendDecl>) {
+                return parse_ExtendDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, InterDecl>) {
+                return parse_InterDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, EnumDecl>) {
+                return parse_EnumDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, TypeDecl>) {
+                return parse_TypeDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, FuncDecl>) {
+                return parse_FuncDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, VarDecl>) {
+                return parse_VarDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, FFIDecl>) {
+                return parse_FFIDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, LetDecl>) {
+                return parse_LetDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, OpDecl>) {
+                return parse_OpDecl(std::forward<Args>(args)...);
+            } else if constexpr (std::same_as<T, ModuleDecl>) {
+                return parse_ModuleDecl(std::forward<Args>(args)...);
             }
         }
 

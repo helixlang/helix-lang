@@ -133,6 +133,8 @@ __AST_NODE_BEGIN {
             }
         }
 
+        explicit ArgumentListExpr(bool /* unused */) {}
+
         NodeV<> args;
     };
 
@@ -229,8 +231,8 @@ __AST_NODE_BEGIN {
                 throw std::runtime_error("invalid path, possible memory corruption");
             }
 
-            switch (type) {
-                case PathType::Scope: {
+            switch (path->getNodeType()) {
+                case nodes::ScopePathExpr: {
                     NodeT<ScopePathExpr> scope = __AST_N::as<ScopePathExpr>(path);
                     if (scope->path.empty()) {  // this is a global scope
                         return token::Token(
@@ -240,7 +242,7 @@ __AST_NODE_BEGIN {
                     return scope->path.back()->name;
                     break;
                 }
-                case PathType::Identifier:
+                case nodes::IdentExpr:
                     return __AST_N::as<__AST_NODE::IdentExpr>(path)->name;
                     break;
                 default:
@@ -248,6 +250,37 @@ __AST_NODE_BEGIN {
             }
 
             throw std::runtime_error("invalid path type, possible memory corruption");
+        }
+
+        [[nodiscard]] size_t path_length() const {
+            if (path == nullptr) {
+                return 0;
+            }
+
+            switch (type) {
+                case PathType::Scope:
+                    return __AST_N::as<ScopePathExpr>(path)->path.size();
+                    break;
+                case PathType::Dot: {
+                    size_t length = 0;
+                    NodeT<> current = path;
+
+                    while (auto next = std::dynamic_pointer_cast<DotPathExpr>(current)) {
+                        ++length;
+                        current = next->rhs;
+                    }
+
+                    return length + 1;
+                    break;
+                }
+                case PathType::Identifier:
+                    return 1;
+                    break;
+                default:
+                    print("failed default path", (int)type);
+            }
+
+            return 0;
         }
     };
 
