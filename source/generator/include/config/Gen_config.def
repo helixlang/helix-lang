@@ -21,7 +21,7 @@
 #define __CXIR_CODEGEN_N generator::CXIR
 
 #define CX_VISIT_IMPL(type) \
-    void __CXIR_CODEGEN_N::CXIR::visit(const __AST_NODE::type &node /* NOLINT */)
+    void __CXIR_CODEGEN_N::CXIR::visit(const __AST_NODE::type & __attribute__((unused)) node /* NOLINT */)
 #define CX_VISIT_IMPL_VA(type, ...) \
     void __CXIR_CODEGEN_N::CXIR::visit(const __AST_NODE::type &node /* NOLINT */, __VA_ARGS__)
 

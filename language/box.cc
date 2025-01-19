@@ -307,7 +307,7 @@ void forget_t(T *ptr, _internal::Allocation::Type alloc_t);
 // ---------------------------------------------------------------------------------------------- //
 
 // ------------------------------------- refences/utils.hlx ------------------------------------- //
-namespace std::ref::utils {
+namespace std::utils {
 /// struct to remove reference qualifiers from a type `T`
 ///
 /// `remove` is a type trait that provides a nested typedef `t` which removes reference
@@ -337,14 +337,14 @@ struct remove<T &>;
 /// \tparam T the type from which to remove the rvalue reference
 template <typename T>
 struct remove<T &&>;
-}  // namespace std::ref::utils
+}  // namespace std::utils
 
 namespace std {
 /// forwards an lvalue or rvalue as either an lvalue or rvalue, preserving reference qualifiers
 ///
 /// `forward` is used to forward an argument of type `T`, preserving its lvalue or
 /// rvalue nature, which is especially useful in perfect forwarding scenarios in
-/// templated functions. it utilizes the type trait `ref::utils::remove` to strip
+/// templated functions. it utilizes the type trait `utils::remove` to strip
 /// any reference qualifiers from `T`.
 ///
 /// \tparam T the deduced type of the parameter to forward
@@ -353,7 +353,7 @@ namespace std {
 /// `T`
 /// \throws noexcept this function is marked `noexcept` to ensure it does not throw
 template <typename T>
-T &&forward(typename ref::utils::remove<T>::t &t) noexcept;
+T &&forward(typename utils::remove<T>::t &t) noexcept;
 }  // namespace std
 // ---------------------------------------------------------------------------------------------- //
 
@@ -703,7 +703,7 @@ void forget_t(T *ptr, _internal::Allocation::Type alloc_t) {
 // ---------------------------------------------------------------------------------------------- //
 
 // ------------------------------------- refences/utils.hlx ------------------------------------- //
-namespace std::ref::utils {
+namespace std::utils {
 template <typename T>
 struct remove {
     using t = T;
@@ -718,11 +718,11 @@ template <typename T>
 struct remove<T &&> {
     using t = T;
 };
-}  // namespace std::ref::utils
+}  // namespace std::utils
 
 namespace std {
 template <typename T>
-T &&forward(typename ref::utils::remove<T>::t &t) noexcept {
+T &&forward(typename utils::remove<T>::t &t) noexcept {
     return static_cast<T &&>(t);
 }
 }  // namespace std

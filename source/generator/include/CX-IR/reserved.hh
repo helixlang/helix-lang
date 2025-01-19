@@ -38,7 +38,7 @@ __CXIR_CODEGEN_BEGIN {
 
     TransformMap reserved_transformations{
         {"self",
-         [](CXIR *self, const __TOKEN_N::Token &token) {
+         [](CXIR *self, const __TOKEN_N::Token & /* unused */) {
              self->append(CXX_LPAREN);
              self->append(CXX_ASTERISK);
              self->append(CXX_THIS);
