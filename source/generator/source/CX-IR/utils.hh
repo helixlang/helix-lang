@@ -664,11 +664,11 @@ struct OpType {
         // panic operator signature is `op panic fn (self) -> string {}` or `static op panic fn ()
         // -> string {}`
         if (op.op.size() == 1 && op.op.back() == __TOKEN_N::KEYWORD_PANIC) {
-            if ((($self && op.func->params.size() == 1) ||
-                ($static && op.func->params.empty())) && op.func->returns &&
-                    op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr &&
-                    __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value)->name.value() ==
-                        "string") {
+            if ((($self && op.func->params.size() == 1) || ($static && op.func->params.empty())) &&
+                op.func->returns &&
+                op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr &&
+                __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value)->name.value() ==
+                    "string") {
                 return PanicOp;
             }
 
@@ -684,7 +684,8 @@ struct OpType {
         if (op.op.size() == 1 && op.op.back() == __TOKEN_N::PUNCTUATION_QUESTION_MARK) {
             if ($self && op.func->params.size() == 1 && op.func->returns &&
                 op.func->returns->value->getNodeType() == __AST_NODE::nodes::IdentExpr &&
-                __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value)->name.value() == "bool") {
+                __AST_N::as<__AST_NODE::IdentExpr>(op.func->returns->value)->name.value() ==
+                    "bool") {
                 return QuestionOp;
             }
 
@@ -832,10 +833,12 @@ class ModifyNestedFunctions {
     }
 };
 
-inline void check_for_yield_and_panic(const __AST_N::NodeT<__AST_NODE::SuiteState> &body, const __AST_N::NodeT<__AST_NODE::Type> &return_type) {
+inline void check_for_yield_and_panic(const __AST_N::NodeT<__AST_NODE::SuiteState> &body,
+                                      const __AST_N::NodeT<__AST_NODE::Type>       &return_type) {
     // we check for 2 rules here panic and yield
-    // panic: if the body of a function/operator contains a panic statement then the return type must be nullable
-    // yield: if the body of a function/operator contains a yield statement then the return type must have a yield specifier
+    // panic: if the body of a function/operator contains a panic statement then the return type
+    // must be nullable yield: if the body of a function/operator contains a yield statement then
+    // the return type must have a yield specifier
 
     if (body == nullptr) {
         return;
@@ -849,23 +852,25 @@ inline void check_for_yield_and_panic(const __AST_N::NodeT<__AST_NODE::SuiteStat
 
     for (auto &child : body->body->body) {
         if (child->getNodeType() == __AST_NODE::nodes::PanicState) {
-            has_panic = true;
+            has_panic    = true;
             panic_marker = __AST_N::as<__AST_NODE::PanicState>(child)->marker;
 
         } else if (child->getNodeType() == __AST_NODE::nodes::YieldState) {
-            has_yield = true;
+            has_yield    = true;
             yield_marker = __AST_N::as<__AST_NODE::YieldState>(child)->marker;
         }
     }
 
     if (has_panic && !return_type->nullable) {
         error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3008});
-        error::Panic(error::CodeError{.pof = &panic_marker, .err_code = 0.3018, false, {}, {}, {}, error::Level::NONE, 1});
+        error::Panic(error::CodeError{
+            .pof = &panic_marker, .err_code = 0.3018, false, {}, {}, {}, error::Level::NONE, 1});
     }
 
     if (has_yield && !return_type->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
         error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3009});
-        error::Panic(error::CodeError{.pof = &yield_marker, .err_code = 0.3019, false, {}, {}, {}, error::Level::NONE, 1});
+        error::Panic(error::CodeError{
+            .pof = &yield_marker, .err_code = 0.3019, false, {}, {}, {}, error::Level::NONE, 1});
     }
 }
 
@@ -975,6 +980,136 @@ inline void default_move_assignment(CXIR *self, const __AST_N::NodeT<__AST_NODE:
     self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_ASSIGN));
     self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_DEFAULT, name->name));
     self->append(std::make_unique<CX_Token>(cxir_tokens::CXX_SEMICOLON));
+}
+
+class Validator {
+  public:
+    virtual ~Validator() = default;
+    virtual bool validate(const std::shared_ptr<__AST_NODE::ArgumentExpr> & /* unused */) const {
+        return true;
+    };
+};
+
+template <__AST_NODE::ArgumentExpr::ArgumentType argType,
+          __AST_NODE::LiteralExpr::LiteralType   litType>
+struct ArgumentValidate : public Validator {
+    ArgumentValidate() = delete;
+    explicit ArgumentValidate(std::string value)
+        : expected_value(std::move(value)) {}
+    explicit ArgumentValidate(std::string name, std::string value)
+        : expected_name(std::move(name))
+        , expected_value(std::move(value))
+        , has_name(true) {}
+
+    [[nodiscard]] bool validate(const std::shared_ptr<__AST_NODE::ArgumentExpr> &arg) const {
+        if (arg->type == __AST_NODE::ArgumentExpr::ArgumentType::Positional) {
+            if (has_name) {
+                return false;
+            }
+
+            if (arg->value->getNodeType() != __AST_NODE::nodes::LiteralExpr) {
+                return false;
+            }
+
+            auto literal = __AST_N::as<__AST_NODE::LiteralExpr>(arg->value);
+            return literal->type == litType && literal->value.value() == expected_value;
+        }
+
+        if (arg->type == __AST_NODE::ArgumentExpr::ArgumentType::Keyword) {
+            if (!has_name) {
+                return false;
+            }
+
+            if (arg->value->getNodeType() != __AST_NODE::nodes::NamedArgumentExpr) {
+                return false;
+            }
+
+            auto named = __AST_N::as<__AST_NODE::NamedArgumentExpr>(arg->value);
+            if (named->name->name.value() != expected_name) {
+                return false;
+            }
+
+            auto literal = __AST_N::as<__AST_NODE::LiteralExpr>(named->value);
+            return literal->type == litType && literal->value.value() == expected_value;
+        }
+
+        return false;
+    }
+
+    std::string expected_value;
+    std::string expected_name;
+    bool        has_name = false;
+};
+
+template <size_t NumArgs>
+struct ValidateFunctionDirective {
+    std::string                    directiveName;
+    std::array<Validator, NumArgs> validators;
+
+    template <typename... Validators>
+        requires(sizeof...(Validators) == NumArgs &&
+                 (std::is_base_of_v<Validator, Validators> && ...))
+    ValidateFunctionDirective(std::string name, Validators &&...args)
+        : directiveName(std::move(name))
+        , validators({std::forward<Validator>(args)...}) {
+
+        // make sure all the validators have a bool validate(const
+        // std::shared_ptr<__AST_NODE::ArgumentExpr>& arg) const method
+        static_assert(sizeof...(args) == NumArgs,
+                      "Number of validators must match the number of arguments");
+    }
+
+    [[nodiscard]] bool validate(const std::shared_ptr<__AST_NODE::FunctionCallExpr> &call) const {
+        if ((call->path->path_length() != 1 ||
+             call->path->get_back_name().value() != directiveName) ||
+            (call->args->getNodeType() != __AST_NODE::nodes::ArgumentListExpr)) {
+            return false;
+        }
+
+        auto args = __AST_N::as<__AST_NODE::ArgumentListExpr>(call->args);
+
+        if (args->args.size() != NumArgs) {
+            return false;
+        }
+
+        for (size_t i = 0; i < NumArgs; ++i) {
+            if (args->args[i]->getNodeType() != __AST_NODE::nodes::ArgumentExpr) {
+                return false;
+            }
+
+            auto arg = __AST_N::as<__AST_NODE::ArgumentExpr>(args->args[i]);
+            if (!validators[i].validate(arg)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+};
+
+inline bool contains_trivial_import_directive(const __AST_N::NodeV<> &directives) {
+    if (directives.empty()) {
+        return false;
+    }
+
+    auto validator = __CXIR_CODEGEN_N::ValidateFunctionDirective<1>(
+        "trivially_import",
+        __CXIR_CODEGEN_N::ArgumentValidate<
+            __AST_NODE::ArgumentExpr::ArgumentType::Positional,
+            __AST_NODE::LiteralExpr::LiteralType::Boolean>
+            ("true")
+    );
+
+    return std::ranges::any_of(directives, [&](const auto &directive) {
+        if (directive->getNodeType() == __AST_NODE::nodes::FunctionCallExpr) {
+            auto call = __AST_N::as<__AST_NODE::FunctionCallExpr>(directive);
+
+            if (validator.validate(call)) {
+                return true;
+            }
+        }
+        return false;
+    });
 }
 
 }  // namespace __CXIR_CODEGEN_N

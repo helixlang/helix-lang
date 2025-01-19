@@ -38,7 +38,6 @@ __CXIR_CODEGEN_BEGIN {
     }
 
     void handle_file_change(std::string & file_name,
-                            std::string & cxir,
                             const std::unique_ptr<CX_Token> &token,
                             SourceMap                       &source_map,
                             size_t                          &cxir_line,
@@ -142,6 +141,10 @@ __CXIR_CODEGEN_BEGIN {
 
         if (file_macros.empty()) [[unlikely]] {
             /// we have a big problem here
+            for (auto &tok : tokens) {
+                print("\"", tok->get_file_name(), "\"");
+            }
+
             return "#error \"Lost the original file name\"";
         }
 

@@ -235,9 +235,9 @@ inline __TOKEN_N::Token Lexer::parse_compiler_directive() {
                          offset,
                          source.substr(start + 2, (currentPos - start) - 3),
                          file_name,
-                         "/* complier_directive */"};
+                         "/* compiler_directive */"};
 
-    throw error::Panic(error::CodeError{.pof = &tok, .err_code = 0.7007 /* NOLINT */});
+    return tok;
 }
 
 inline __TOKEN_N::Token Lexer::process_whitespace() {

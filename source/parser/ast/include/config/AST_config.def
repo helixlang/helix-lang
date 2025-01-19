@@ -33,7 +33,7 @@
 #define AST_BASE_IMPL(name, fn) __AST_N::ParseResult<> __AST_NODE::name::fn()
 
 #define AST_NODE_IMPL_VISITOR(visitor, name) \
-    void __AST_VISITOR::visitor::visit(const __AST_NODE::name &node)
+    void __AST_VISITOR::visitor::visit(const __AST_NODE::name & __attribute__((unused)) node)
 
 #define BASE_CORE_METHODS(name)                                                            \
   public:                                                                                  \
@@ -143,7 +143,6 @@
     using p_r = parser::ast::ParseResult<T>;                 \
                                                              \
     __TOKEN_N::TokenList::TokenListIter &iter; /* NOLINT */  \
-    std::vector<p_r<>>                   parse_stack;        \
                                                              \
   public:                                                    \
     name()                        = delete;                  \
@@ -159,7 +158,7 @@
 
 #define null nullptr
 #define GENERATE_IF_STATEMENTS(name)                      \
-    if constexpr (std::is_same_v<T, name>) {              \
+    if constexpr (std::same_as<T, name>) {              \
         return parse_##name(std::forward<Args>(args)...); \
     }
 
@@ -178,5 +177,9 @@
     GENERATE_MACRO_HELPER(VISIT_FUNC) virtual void visit(const __AST_NODE::Program &) = 0;
 #define GENERATE_VISIT_EXTENDS \
     GENERATE_MACRO_HELPER(VISIT_EXTEND) void visit(const __AST_NODE::Program &) override;
+
+namespace parser::preprocessor {
+    class ImportProcessor;
+}
 
 #endif  // __AST_CONFIG_DEF__
