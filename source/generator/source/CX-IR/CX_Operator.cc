@@ -55,7 +55,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
         ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$gen_state", tok);
 
         ADD_TOKEN(CXX_ASSIGN);
-        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", tok);
+        ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$generator", tok);
         PAREN_DELIMIT();
 
         ADD_TOKEN(CXX_SEMICOLON);
@@ -87,7 +87,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
 
         if (op_t.type == OpType::GeneratorOp) {
             /// add the fucntion
-            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$generator", *op_t.tok);
         }
 
         // if its a contains op
@@ -191,7 +191,7 @@ CX_VISIT_IMPL_VA(OpDecl, bool in_udt) {
             if (in_udt && op_t.type != OpType::None) {
                 if (op_t.type == OpType::GeneratorOp) {
                     /// add the fucntion
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "$generator", *op_t.tok);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$generator", *op_t.tok);
                 } else if (op_t.type == OpType::ContainsOp) {
                     /// add the fucntion
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "operator$contains", *op_t.tok);

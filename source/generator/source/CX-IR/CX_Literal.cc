@@ -147,7 +147,7 @@ CX_VISIT_IMPL(LiteralExpr) {
             case token::LITERAL_TRUE:
             case token::LITERAL_FALSE:
             case token::LITERAL_NULL:
-            case token::LITERAL_COMPLIER_DIRECTIVE:
+            case token::LITERAL_COMPILER_DIRECTIVE:
             default:
                 break;
         }

@@ -403,8 +403,21 @@ CX_VISIT_IMPL(MapPairExpr) {
 }
 
 CX_VISIT_IMPL(MapLiteralExpr) {
-    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "map");
-    BRACE_DELIMIT(COMMA_SEP(values););
+    BRACE_DELIMIT(
+        if (!node.values.empty()) {
+            for (auto &i : node.values) {
+                BRACE_DELIMIT(
+                    ADD_PARAM(i->key);
+                    ADD_TOKEN(CXX_COMMA);
+                    ADD_PARAM(i->value);
+                );
+
+                ADD_TOKEN(CXX_COMMA);
+            }
+
+            tokens.pop_back();  // remove last comma
+        }
+    );
 }
 
 CX_VISIT_IMPL(ObjInitExpr) {
@@ -549,7 +562,7 @@ CX_VISIT_IMPL(InstOfExpr) {
             /// std::is_base_of<A, B>::value
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "std");
             ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "traits");
+            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "meta");
             ADD_TOKEN(CXX_SCOPE_RESOLUTION);
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "is_derived_of");
             ANGLE_DELIMIT(              //

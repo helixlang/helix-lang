@@ -390,7 +390,7 @@ CX_VISIT_IMPL(InterDecl) {
                     CXX_CORE_IDENTIFIER, "std", func_decl->get_name_t().back());
                 ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                 ADD_TOKEN_AS_VALUE_AT_LOC(
-                    CXX_CORE_IDENTIFIER, "traits", func_decl->get_name_t().back());
+                    CXX_CORE_IDENTIFIER, "meta", func_decl->get_name_t().back());
                 ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                 ADD_TOKEN_AS_VALUE_AT_LOC(
                     CXX_CORE_IDENTIFIER, "same_as", func_decl->get_name_t().back());
@@ -471,7 +471,7 @@ CX_VISIT_IMPL(InterDecl) {
                         CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
-                        CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
+                        CXX_CORE_IDENTIFIER, "meta", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
@@ -622,7 +622,7 @@ CX_VISIT_IMPL(InterDecl) {
                         CXX_CORE_IDENTIFIER, "std", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
-                        CXX_CORE_IDENTIFIER, "traits", op_decl->func->get_name_t().back());
+                        CXX_CORE_IDENTIFIER, "meta", op_decl->func->get_name_t().back());
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", op_decl->func->get_name_t().back());
@@ -667,7 +667,7 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN(CXX_PTR_ACC);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", var->var->path->name);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "meta", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(
                         CXX_CORE_IDENTIFIER, "convertible_to", var->var->path->name);
@@ -735,7 +735,7 @@ CX_VISIT_IMPL(InterDecl) {
                     ADD_TOKEN(CXX_PTR_ACC);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "std", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "traits", var->var->path->name);
+                    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "meta", var->var->path->name);
                     ADD_TOKEN(CXX_SCOPE_RESOLUTION);
                     ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "same_as", var->var->path->name);
                     ADD_TOKEN(CXX_LESS_THAN);

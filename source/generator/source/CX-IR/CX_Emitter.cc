@@ -13,6 +13,12 @@
 ///                                                                                              ///
 ///-------------------------------------------------------------------------------------- C++ ---///
 
+#include <utility>
+
+#include "generator/include/config/Gen_config.def"
+#include "parser/ast/include/AST.hh"
+#include "parser/ast/include/nodes/AST_expressions.hh"
+#include "parser/ast/include/nodes/AST_statements.hh"
 #include "utils.hh"
 
 void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
@@ -35,15 +41,28 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
     ADD_TOKEN(CXX_PP_DEFINE);
     ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace + "_M");
 
-    ADD_TOKEN(CXX_NAMESPACE);
+    ADD_TOKEN_AT_LOC(
+        CXX_NAMESPACE,
+        token::Token(1,
+                     1,
+                     1,
+                     1,
+                     "",
+                     std::filesystem::path(node.get_file_name()).stem().generic_string(),
+                     " "));
 
     ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "helix");
-    ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace);
-
     ADD_TOKEN(CXX_LBRACE);
 
-    std::vector<__AST_N::NodeT<__AST_NODE::FuncDecl>> main_funcs;
+    bool trivially_import = contains_trivial_import_directive(node.annotations);
+
+    if (!trivially_import) {
+        ADD_TOKEN(CXX_NAMESPACE);
+        ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, _namespace);
+        ADD_TOKEN(CXX_LBRACE);
+    }
+
+    __AST_N::NodeT<__AST_NODE::FuncDecl> main_func = nullptr;
 
     std::for_each(node.children.begin(), node.children.end(), [&](const auto &child) {
         if (child->getNodeType() == __AST_NODE::nodes::FuncDecl) {
@@ -59,6 +78,10 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
                     name[0].value() == "wWinMain" || name[0].value() == "_tmain" ||
                     name[0].value() == "_tWinMain" ||
                     (!node.entry.empty() && name[0].value() == node.entry)) {
+                    if (main_func != nullptr) {
+                        CODEGEN_ERROR(name[0], "multiple main functions are not allowed");
+                    }
+
                     if (node.entry.empty() || name[0].value() != node.entry) {
                         /// there must be a return type
                         if (func->returns == nullptr) {
@@ -66,32 +89,7 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
                         }
                     }
 
-                    auto &func_body = func->body->body->body;
-
-                    /// insert an __inline_cpp("using namespace helix::_namespace;") at the start of
-                    /// the main function
-                    auto make_token = [&node](token::tokens kind, const std::string &value) {
-                        return token::Token(kind, node.get_file_name(), value);
-                    };
-
-                    token::TokenList inline_cpp = {
-                        make_token(token::tokens::IDENTIFIER, "__inline_cpp"),
-                        make_token(token::tokens::PUNCTUATION_OPEN_PAREN, "("),
-                        make_token(token::tokens::LITERAL_STRING,
-                                   "\"using namespace helix; using namespace helix:: " +
-                                       _namespace + "\""),
-                        make_token(token::tokens::PUNCTUATION_CLOSE_PAREN, ")"),
-                        make_token(token::tokens::PUNCTUATION_SEMICOLON, ";"),
-                        make_token(token::tokens::EOF_TOKEN, "")};
-
-                    token::TokenList::TokenListIter inline_cpp_iter = inline_cpp.begin();
-
-                    __AST_NODE::Statement                       parser(inline_cpp_iter);
-                    __AST_N::ParseResult<__AST_NODE::ExprState> inline_cpp_node =
-                        parser.parse<__AST_NODE::ExprState>();
-
-                    func_body.insert(func_body.begin(), inline_cpp_node.value());
-                    main_funcs.push_back(func);
+                    main_func = func;
 
                     return;
                 }
@@ -105,11 +103,85 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
         child->accept(*this);
     });
 
-    tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::CXX_RBRACE));
+    if (main_func != nullptr) {
+        main_func->accept(*this);
 
-    for (auto &func : main_funcs) {
-        func->accept(*this);
+        if (!trivially_import) {
+            ADD_TOKEN(CXX_RBRACE);  // end namespace _namespace
+        }
+
+        ADD_TOKEN(CXX_RBRACE);  // end namespace helix
+        // now add the main function with the same signature and name but replace the body to return
+        // helix:: [passing the name and args]
+
+        main_func->body->body->body.clear();
+
+        {  // this is a function call to the helix::_HX_FN23helix_runtime_initialize()
+            auto scope = __AST_N::make_node<__AST_NODE::ScopePathExpr>(true);
+
+            scope->path.push_back(__AST_N::make_node<__AST_NODE::IdentExpr>(
+                __TOKEN_N::Token(main_func->name->get_back_name().token_kind(),
+                                 "helix",
+                                 main_func->name->get_back_name())));
+
+            scope->access = __AST_N::make_node<__AST_NODE::IdentExpr>(
+                __TOKEN_N::Token(main_func->name->get_back_name().token_kind(),
+                                 "_HX_FN23helix_runtime_initialize",
+                                 main_func->name->get_back_name()));
+
+            auto path  = __AST_N::make_node<__AST_NODE::PathExpr>(scope);
+            path->type = __AST_NODE::PathExpr::PathType::Scope;
+
+            auto args      = __AST_N::make_node<__AST_NODE::ArgumentListExpr>(true);
+            auto func_call = __AST_N::make_node<__AST_NODE::ExprState>(
+                __AST_N::make_node<__AST_NODE::FunctionCallExpr>(path, args));
+
+            main_func->body->body->body.push_back(func_call);
+        }
+
+        {  // this is a function call to to the main function defined by the user
+            auto scope = __AST_N::make_node<__AST_NODE::ScopePathExpr>(true);
+
+            scope->path.push_back(__AST_N::make_node<__AST_NODE::IdentExpr>(
+                __TOKEN_N::Token(main_func->name->get_back_name().token_kind(),
+                                 "helix",
+                                 main_func->name->get_back_name())));
+
+            if (!trivially_import) {
+                scope->path.push_back(__AST_N::make_node<__AST_NODE::IdentExpr>(
+                    __TOKEN_N::Token(main_func->name->get_back_name().token_kind(),
+                                     _namespace,
+                                     main_func->name->get_back_name())));
+            }
+
+            scope->access = __AST_N::make_node<__AST_NODE::IdentExpr>(
+                __TOKEN_N::Token(main_func->name->get_back_name()));
+
+            auto path  = __AST_N::make_node<__AST_NODE::PathExpr>(scope);
+            path->type = __AST_NODE::PathExpr::PathType::Scope;
+
+            auto args = __AST_N::make_node<__AST_NODE::ArgumentListExpr>(true);
+            // __AST_N::make_node<__AST_NODE::ArgumentExpr>()
+            if (!main_func->params.empty()) {
+                for (auto &param : main_func->params) {
+                    args->args.push_back(
+                        __AST_N::make_node<__AST_NODE::ArgumentExpr>(param->var->path));
+                }
+            }
+
+            auto func_call = __AST_N::make_node<__AST_NODE::FunctionCallExpr>(path, args);
+            auto ret       = __AST_N::make_node<__AST_NODE::ReturnState>(func_call);
+            main_func->body->body->body.push_back(ret);  // return helix::...::...(..., ...);
+        }
+
+        main_func->accept(*this);
+    } else {
+        if (!trivially_import) {
+            ADD_TOKEN(CXX_RBRACE);  // end namespace _namespace
+        }
+
+        ADD_TOKEN(CXX_RBRACE);  // end namespace helix
     }
 
-    tokens.push_back(std::make_unique<CX_Token>(cxir_tokens::CXX_CORE_IDENTIFIER, "#endif"));
+    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "#endif");
 }

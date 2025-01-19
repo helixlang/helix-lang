@@ -20,6 +20,10 @@ CX_VISIT_IMPL_VA(NamedVarSpecifier, bool omit_t) {
     // (type | auto) name
 
     if (!omit_t) {
+        if (node.is_const) {
+            ADD_TOKEN(CXX_CONST);
+        }
+        
         if (node.type) {
             ADD_NODE_PARAM(type);
         } else {
