@@ -69,7 +69,7 @@ function get_cxx_standard(abi)
 		return "c++23"
 	elseif abi == "msvc"
 	then
-		return "c++2b"
+		return "c++latest"
 	end
 	return "" -- error?
 end
@@ -82,8 +82,7 @@ function setup_windows()
 	add_syslinks("ntdll", "version")
     -- add /EHsc and /RTC1 flags
     set_policy("check.auto_ignore_flags", false)
-    add_cxflags("/EHsc", "/STACK:10485760")
-
+    add_cxflags("/EHsc")
 	add_includedirs(".\\libs\\llvm-18.1.9-src\\llvm\\include")
 	add_linkdirs(".\\libs\\llvm-18.1.9-src\\llvm\\lib")
 	add_includedirs(".\\libs\\llvm-18.1.9-src\\clang\\include")
