@@ -33,7 +33,7 @@
 #define AST_BASE_IMPL(name, fn) __AST_N::ParseResult<> __AST_NODE::name::fn()
 
 #define AST_NODE_IMPL_VISITOR(visitor, name) \
-    void __AST_VISITOR::visitor::visit(const __AST_NODE::name & __attribute__((unused)) node)
+    void __AST_VISITOR::visitor::visit([[maybe_unused]] const __AST_NODE::name &node)
 
 #define BASE_CORE_METHODS(name)                                                            \
   public:                                                                                  \
