@@ -261,7 +261,8 @@ bool                          is_storage_specifier(const __TOKEN_N::Token &tok);
 
 // ---------------------------------------------------------------------------------------------- //
 
-AST_BASE_IMPL(Statement, parse) {  // NOLINT(readability-function-cognitive-complexity)
+parser ::ast ::ParseResult<>
+parser ::ast ::node ::Statement ::parse(const std::shared_ptr<__TOKEN_N::TokenList> modifiers) {  // NOLINT(readability-function-cognitive-complexity)
     IS_NOT_EMPTY;                  /// simple macro to check if the iterator is empty, expands to:
                                    /// if(iter.remaining_n() == 0) { return std::unexpected(...); }
 
@@ -270,10 +271,24 @@ AST_BASE_IMPL(Statement, parse) {  // NOLINT(readability-function-cognitive-comp
 
     switch (tok.token_kind()) {
         case __TOKEN_N::KEYWORD_IF:
-        case __TOKEN_N::KEYWORD_UNLESS:
+        case __TOKEN_N::KEYWORD_UNLESS: {
+            if (modifiers != nullptr) {
+                bool has_const = false;
+                bool has_eval = false;
+
+                for (auto &tok : *modifiers) {
+                    if (tok.current().get().token_kind() == __TOKEN_N::KEYWORD_CONST) {
+                        has_const = true;
+                    } else if (tok.current().get().token_kind() == __TOKEN_N::KEYWORD_EVAL) {
+                        has_eval = true;
+                    }
+                }
+
+                return parse<IfState>(has_const, has_eval);
+            }
             return parse<IfState>();
 
-        case __TOKEN_N::KEYWORD_RETURN:
+        } case __TOKEN_N::KEYWORD_RETURN:
             return parse<ReturnState>();
 
         case __TOKEN_N::KEYWORD_FOR:
@@ -719,7 +734,7 @@ AST_NODE_IMPL_VISITOR(Jsonify, ElseState) {
 // ---------------------------------------------------------------------------------------------- //
 
 /* TODO: REFACTOR */
-AST_NODE_IMPL(Statement, IfState) {
+AST_NODE_IMPL(Statement, IfState, bool has_const, bool has_eval) {
     IS_NOT_EMPTY;
 
     // := ('if' | 'unless') E SuiteState (ElseState*)?
@@ -740,6 +755,8 @@ AST_NODE_IMPL(Statement, IfState) {
     RETURN_IF_ERROR(condition);
 
     node = make_node<IfState>(condition.value());
+    node->has_const = has_const;
+    node->has_eval  = has_eval;
 
     if (is_unless) {
         node->type = IfState::IfType::Unless;

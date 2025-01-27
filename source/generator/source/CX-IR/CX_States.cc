@@ -128,8 +128,65 @@ CX_VISIT_IMPL(ElseState) {
 }
 
 CX_VISIT_IMPL(IfState) {
+    // const eval if == #if in C/C++
+    // eval if == if constexpr in C++
+    if (node.has_const && node.has_eval) {
+        ADD_TOKEN(CXX_PP_IF);
+
+        if (node.type == __AST_NODE::IfState::IfType::Unless) {  //
+            PAREN_DELIMIT(                                       //
+                ADD_TOKEN(CXX_EXCLAMATION);                      //
+                PAREN_DELIMIT(                                   //
+                    ADD_NODE_PARAM(condition);                   //
+                );                                               //
+            );                                                   //
+        } else {
+            PAREN_DELIMIT(                  //
+                ADD_NODE_PARAM(condition);  //
+            );                              //
+        }
+
+        if (node.body != nullptr) {
+            node.body->body->accept(*this);
+        }
+
+        if (!node.else_body.empty()) {
+            for (auto &else_body : node.else_body) {
+                if (else_body->type == __AST_NODE::ElseState::ElseType::Else) {
+                    ADD_TOKEN(CXX_PP_ELSE);
+                } else {
+                    ADD_TOKEN(CXX_PP_ELIF);
+
+                    if (else_body->type == __AST_NODE::ElseState::ElseType::ElseUnless) {
+                        PAREN_DELIMIT(                                       //
+                            ADD_TOKEN(CXX_EXCLAMATION);                      //
+                            PAREN_DELIMIT(                                   //
+                                ADD_PARAM(else_body->condition);         //
+                            );                                               //
+                        );                                                   //
+                    } else {
+                        PAREN_DELIMIT(                  //
+                            ADD_PARAM(else_body->condition);  //
+                        );                              //
+                    }
+                }
+
+                if (else_body->body != nullptr) {
+                    else_body->body->body->accept(*this);
+                }
+            }
+        }
+
+        ADD_TOKEN(CXX_PP_ENDIF);
+        return;
+    }
+
     NO_EMIT_FORWARD_DECL;
     ADD_TOKEN(CXX_IF);
+
+    if (node.has_eval && !node.has_const) {
+        ADD_TOKEN(CXX_CONSTEXPR);
+    }
 
     if (node.type == __AST_NODE::IfState::IfType::Unless) {  //
         PAREN_DELIMIT(                                       //
@@ -144,9 +201,44 @@ CX_VISIT_IMPL(IfState) {
         );                              //
     }
 
-    ADD_NODE_PARAM_BODY();
+    if (node.body != nullptr) {
+        node.body->accept(*this);
+    } else {
+        tokens.push_back(std ::make_unique<CX_Token>(cxir_tokens ::CXX_SEMICOLON));
+    };
 
-    ADD_ALL_NODE_PARAMS(else_body);
+    if (node.has_eval && !node.has_const) {
+        if (!node.else_body.empty()) {
+            for (auto &else_body : node.else_body) {
+                if (else_body->type == __AST_NODE::ElseState::ElseType::Else) {
+                    ADD_TOKEN(CXX_ELSE);
+                } else {
+                    ADD_TOKEN(CXX_ELSE);
+                    ADD_TOKEN(CXX_IF);
+                    ADD_TOKEN(CXX_CONSTEXPR);
+
+                    if (else_body->type == __AST_NODE::ElseState::ElseType::ElseUnless) {
+                        PAREN_DELIMIT(                                       //
+                            ADD_TOKEN(CXX_EXCLAMATION);                      //
+                            PAREN_DELIMIT(                                   //
+                                ADD_PARAM(else_body->condition);         //
+                            );                                               //
+                        );                                                   //
+                    } else {
+                        PAREN_DELIMIT(                  //
+                            ADD_PARAM(else_body->condition);  //
+                        );                              //
+                    }
+                }
+
+                if (else_body->body != nullptr) {
+                    else_body->body->body->accept(*this);
+                }
+            }
+        }
+    } else {
+        ADD_ALL_NODE_PARAMS(else_body);
+    }
 }
 
 CX_VISIT_IMPL(SwitchCaseState) {
@@ -359,7 +451,7 @@ CX_VISIT_IMPL(TryState) {
 
 CX_VISIT_IMPL(PanicState) {
     NO_EMIT_FORWARD_DECL;
-    ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "$panic");
+    ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "_HX_MC_Q7_PANIC_M", node.marker);
     PAREN_DELIMIT(                    //
         ADD_NODE_PARAM(expr);        //
     );                                //

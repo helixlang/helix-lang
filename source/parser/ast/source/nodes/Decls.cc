@@ -1218,8 +1218,7 @@ AST_BASE_IMPL(Declaration, parse) {
     IS_NOT_EMPTY;
 
     __TOKEN_N::Token tok = CURRENT_TOK;  /// get the current token from the iterator
-    std::shared_ptr<__TOKEN_N::TokenList> modifiers =
-        nullptr;  /// create a pointer to the modifiers
+    std::shared_ptr<__TOKEN_N::TokenList> modifiers = nullptr;  /// create a pointer to the modifiers
 
     /* TODO: make this not happen if bool is passed */
     while (Modifiers::is_modifier(tok)) {
@@ -1282,6 +1281,6 @@ AST_BASE_IMPL(Declaration, parse) {
         case __TOKEN_N::KEYWORD_MODULE:
             return parse<ModuleDecl>(modifiers);
         default:
-            return state_parser.parse();
+            return state_parser.parse(modifiers);
     }
 }

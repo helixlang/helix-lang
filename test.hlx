@@ -59,10 +59,10 @@ fn run_test_case(label: string, test_func: fn() -> i32?) {
         }
 
         if times.contains(label) {
-            times[label].emplace_back(state, duration);
+            times[label].emplace_back(state, duration as i32);
         } else {
             times[label] = list::<tuple::<string, i32>>();
-            times[label].emplace_back(state, duration);
+            times[label].emplace_back(state, duration as i32);
         }
     }
 }
