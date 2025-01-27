@@ -562,7 +562,7 @@ CX_VISIT_IMPL(InstOfExpr) {
             /// std::is_base_of<A, B>::value
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "std");
             ADD_TOKEN(CXX_SCOPE_RESOLUTION);
-            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "meta");
+            ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "Meta");
             ADD_TOKEN(CXX_SCOPE_RESOLUTION);
             ADD_TOKEN_AS_VALUE(CXX_CORE_IDENTIFIER, "is_derived_of");
             ANGLE_DELIMIT(              //
