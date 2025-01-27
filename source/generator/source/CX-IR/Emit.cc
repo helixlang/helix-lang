@@ -92,9 +92,7 @@ __CXIR_CODEGEN_BEGIN {
                (token->get_value() == "#error" || token->get_type() == cxir_tokens::CXX_PP_ERROR) ||
                (token->get_value() == "#warning" ||
                 token->get_type() == cxir_tokens::CXX_PP_WARNING) ||
-               (token->get_value() == "#line" || token->get_type() == cxir_tokens::CXX_PP_LINE) ||
-               (token->get_value() == "#if" || token->get_type() == cxir_tokens::CXX_PP_IF) ||
-               (token->get_value() == "#elif" || token->get_type() == cxir_tokens::CXX_PP_ELIF);
+               (token->get_value() == "#line" || token->get_type() == cxir_tokens::CXX_PP_LINE);
     }
 
     bool is_1_token_pp_directive(const std::unique_ptr<CX_Token> &token) {
@@ -173,6 +171,43 @@ __CXIR_CODEGEN_BEGIN {
 
                 ++i;  // skip the next token
                 continue;
+            }
+
+            if ((token->get_value() == "#if" || token->get_type() == cxir_tokens::CXX_PP_IF) ||
+                (token->get_value() == "#elif" || token->get_type() == cxir_tokens::CXX_PP_ELIF)) {
+                // in this case we get the line from the next to next token since '#if (' - dont have a line number
+                ++line_num;
+                ++i; // skip #if or #elif
+
+                // add all the tokens from the ( to the other ) keeping track of nesting
+                size_t nesting = 0;
+                size_t j       = i;
+
+                cxir += "\n#line " + std::to_string(line_num) + "\n";
+                cxir += "\n" + token->get_value() + " "; // add the #if or #elif
+
+                for (; j < tokens.size(); ++j) {
+                    if (tokens[j]->get_type() == cxir_tokens::CXX_LPAREN) {
+                        ++nesting;
+                    } else if (tokens[j]->get_type() == cxir_tokens::CXX_RPAREN) {
+                        --nesting;
+                    }
+
+                    if (nesting == 0) {
+                        i = j;
+
+                        cxir += tokens[j]->get_value() + " "; // add the last )
+                        break;
+                    }
+
+                    cxir += tokens[j]->get_value() + " "; // add the tokens in between
+                }
+
+                cxir += "\n";
+                cxir += "\n#line " + std::to_string(line_num) + "\n";
+
+                continue;
+
             }
             
             if (!_file_name.empty() && _file_name != file_name) { // file change
