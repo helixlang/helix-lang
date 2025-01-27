@@ -864,13 +864,13 @@ inline void check_for_yield_and_panic(const __AST_N::NodeT<__AST_NODE::SuiteStat
     if (has_panic && !return_type->nullable) {
         error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3008});
         error::Panic(error::CodeError{
-            .pof = &panic_marker, .err_code = 0.3018, false, {}, {}, {}, error::Level::NONE, 1});
+            .pof = &panic_marker, .err_code = 0.3018, .mark_pof = false, .fix_fmt_args = {}, .err_fmt_args = {}, .opt_fixes = {}, .level = error::Level::NONE, .indent = 1});
     }
 
     if (has_yield && !return_type->specifiers.contains(token::tokens::KEYWORD_YIELD)) {
         error::Panic(error::CodeError{.pof = &return_type->marker, .err_code = 0.3009});
         error::Panic(error::CodeError{
-            .pof = &yield_marker, .err_code = 0.3019, false, {}, {}, {}, error::Level::NONE, 1});
+            .pof = &yield_marker, .err_code = 0.3019, .mark_pof = false, .fix_fmt_args = {}, .err_fmt_args = {}, .opt_fixes = {}, .level = error::Level::NONE, .indent = 1});
     }
 }
 

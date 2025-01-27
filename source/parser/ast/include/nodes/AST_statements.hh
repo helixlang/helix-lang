@@ -128,6 +128,8 @@ __AST_NODE_BEGIN {
         NodeT<SuiteState> body;
         NodeV<ElseState>  else_body;
         IfType            type = IfType::If;
+        bool has_const = false;
+        bool has_eval  = false;
     };
 
     class ElseState final : public Node {

@@ -17,7 +17,7 @@
 
 CX_VISIT_IMPL(StructDecl) {
     auto add_udt_body = [node](CXIR                                         *self,
-                               const __AST_N::NodeT<__AST_NODE::IdentExpr> __attribute__((unused)) name,
+                              [[maybe_unused]]  const __AST_N::NodeT<__AST_NODE::IdentExpr> name,
                                const __AST_N::NodeT<__AST_NODE::SuiteState> &body) {
         if (body != nullptr) {
             self->append(cxir_tokens::CXX_LBRACE);

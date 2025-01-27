@@ -664,7 +664,7 @@ __PREPROCESSOR_BEGIN {
 
                 path = import_path.pop_front().value();
 
-                for (auto & __attribute__((unused)) _ /* unused */ : import_path) {
+                for ([[maybe_unused]] auto & _: import_path) {
                     path /= import_path.pop_front().value();
                 }
             }

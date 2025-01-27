@@ -52,7 +52,7 @@ __AST_NODE_BEGIN {
         Statement(Statement &&)                 = default;
         Statement &operator=(Statement &&)      = delete;
         ~Statement()                            = default;
-        p_r<> parse();
+        p_r<> parse(std::shared_ptr<__TOKEN_N::TokenList> = nullptr);
         explicit Statement(token ::TokenList ::TokenListIter &iter, std::shared_ptr<parser::preprocessor::ImportProcessor> import_processor = nullptr)
             : iter(iter)
             , import_processor(import_processor)
@@ -127,7 +127,7 @@ __AST_NODE_BEGIN {
         ParseResult<ForCStatementCore>     parse_ForCStatementCore(bool skip_start = false);
         ParseResult<ForState>              parse_ForState();
         ParseResult<WhileState>            parse_WhileState();
-        ParseResult<IfState>               parse_IfState();
+        ParseResult<IfState>               parse_IfState(bool has_const = false, bool has_eval = false);
         ParseResult<ElseState>             parse_ElseState();
         ParseResult<SwitchState>           parse_SwitchState();
         ParseResult<SwitchCaseState>       parse_SwitchCaseState();
