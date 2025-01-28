@@ -12,13 +12,13 @@ ffi "c++" import "controller/include/shared/file_system.hh"
 ffi "c++" import "llvm/Support/MemoryBuffer.h"
 
 /* The Vial file format is as described:
-- The file is a binary file
-- the file starts with a magic number and a version number
-- the file is divided into 3 main sections: the manifest, the data, and the symbol table
-- the manifest is a list of key-value pairs that describe the data
-- the data contains all the files that are part of the compilation unit
-- the symbol table contains all the symbols that are part of the compilation unit
-- having the data and the symbol table separate allows for caching and incremental compilation
+-  The file is a binary file
+-  the file starts with a magic number and a version number
+-  the file is divided into 3 main sections: the manifest, the data, and the symbol table
+-  the manifest is a list of key-value pairs that describe the data
+-  the data contains all the files that are part of the compilation unit
+-  the symbol table contains all the symbols that are part of the compilation unit
+-  having the data and the symbol table separate allows for caching and incremental compilation
     @brief having a separate symbol table allows for the following:
            each compile with an import to a vile would be parsed and instead of recompiling the vile
            only the symbol table would be updated and after the first compile of the vile each

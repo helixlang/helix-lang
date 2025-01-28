@@ -1,0 +1,185 @@
+//===----------------------------------------- Helix -----------------------------------------====//
+//                                                                                                //
+//  Part of the Helix Project, under the Attribution 4.0 International license (CC BY 4.0).       //
+//  You are allowed to use, modify, redistribute, and create derivative works, even for           //
+//  commercial purposes, provided that you give appropriate credit, and indicate if changes       //
+//   were made. For more information, please visit: https://creativecommons.org/licenses/by/4.0/  //
+//                                                                                                //
+//  SPDX-License-Identifier: CC-BY-4.0                                                            //
+//  Copyright (c) 2024 (CC BY 4.0)                                                                //
+//                                                                                                //
+//====----------------------------------------------------------------------------------------====//
+//                                                                                                //
+//  This is an outline on how the toolchain of the compiler should be like.                       //
+//                                                                                                //
+//====----------------------------------------------------------------------------------------====//
+
+
+/* --- All related to Diagnostics --- */
+
+module Helix {
+enum TestResult {
+    Pass,
+    Fail
+}
+
+enum ReturnStatus {
+    Success,        // PASS
+    DiagnosticPass, // this means warnings were encountered (or something that still allows for a result to be produces)
+    DiagnosticFail, // this means hard error and no return is excepted
+    Failure,        // no error no result (most likely an internal compiler panic)
+}
+
+module Foundation {
+    class Token;
+    class TokenStream;
+}
+
+module Diagnostics {
+    class Location;
+
+    class LocationRange {
+        fn LocationRange(single: Location);
+        fn LocationRange(start: Location, end: Location);
+    }
+
+    class SourceLocation   derives Location;
+    class CompilerLocation derives Location;
+}
+
+module LexicalProcessor {
+    class Lexer;
+
+    enum TokenKind;
+    static let TokenKindRepresentation: map<TokenKind, string>;
+}
+
+module PreProcessor { // may not have this in the future
+    class ImportProcessor;
+    class MacroProcessor;
+}
+
+// missing from the pipline:
+// diver
+// post-processor
+
+
+/// everything the DiagnosticsEngine needs to cover:
+/// concatenation of diagnostics:
+///    lets say we have 2 reports for the same location, like `let u8 = 5;` 2 errors for `u8` - excepted an identifier but got a type, primitive type's can not be used in this context.
+/// this should concat into 1 error:
+/// error: [S...E] excepted an identifier but got 'u8' (type)
+///   related error: [S...E] primitive type's can not be used in this context.
+///      --> some_file.hlx:10:5
+///     9 | ...
+///    10 | let _: u8 = "5";
+///       |     ++ ^^
+///    11 | ...
+///    fix: Replace 'u8' with a valid identifier or alias.
+///
+///   note: [I...N] see definition of function
+///      --> some_file.hlx:19
+///    19 | fn something(x: *u8) {
+///
+/// a single error could contain:
+///    base diagnostic
+///    multiple notes
+///    replated diagnostics
+///    fixes
+///
+/// in this case the following has to be reported
+/// base_uuid = handler.report(Report{
+///    level:    Level::Error,
+///    code:     Errors::Syntax::UnexpectedToken(current_token, Foundation::TokenKind::Identifier),
+///    location: current_token.location(),
+///    fixes:    Fixes::Syntax::ExpectToken(
+/// })
+
+module DiagnosticsEngine {
+    /// used like:
+    /// let diag_handler = DiagnosticsEngine::Handlers::Pretty(DiagnosticsEngine::Options::ShowColors, DiagnosticsEngine::Options::ShowLocation, DiagnosticsEngine::Options::ShowFixes)
+    /// let ci = LexicalProcessor::Lexer
+    interface Handler {
+        fn Handler(self, ...options: DiagnosticsEngine::Options);
+        fn report(self, report: DiagnosticsEngine::Report) ->  DiagnosticsEngine::UUID;
+        fn all_reports(self) -> [*DiagnosticsEngine::Report];
+        
+        fn finalize();
+
+        op ? fn (self) -> bool; // allows to question the handler and see if an error is preset
+        op [] fn (self, uuid: DiagnosticsEngine::UUID) -> *DiagnosticsEngine::Report?;
+    }
+    
+    enum Options {
+        ShowColors,
+        ShowLocation,
+        ShowFixes,
+        StaticTests // this checks for things likes 'let x: int = "y"; // test {  }'
+    }
+
+    class UUID;
+    
+    
+    struct Context {
+        let uuid: DiagnosticsEngine::UUID;
+    }
+
+    enum Level { Ignored, Note, Remark, Warning, Error, Fatal }
+    
+    module Errors {
+        interface Error {
+            fn Error(self);            // all errors should have a default constructor
+            op as fn (self) -> string; // conversion to string
+        }
+
+        module Syntax {
+            struct UnexpectedToken with Error {
+                priv let data: string;
+
+                fn UnexpectedToken(self) default; // default construct
+                fn UnexpectedToken(self, token: Foundation::Token, except: Foundation::TokenKind) {
+                    self.data = f"excepted an {TokenKindRepresentation[except]} but got a '{token as string}' ({TokenKindRepresentation[token as TokenKind]})"
+                }
+            }
+        }
+    }
+    
+    struct Report {
+        let level: DiagnosticsEngine::Level;
+        let context: 
+        let location: Diagnostics::LocationRange;
+        let fixes: 
+
+    }
+}
+}
+
+// ALL TOOLCHAIN ELEMENTS:
+// Diagnostic's
+// PrettyDiagnostic              - format with out color
+// PrettyColorDiagnostic         - format with color
+// BasicDiagnostic               - no color or formatting
+// JsonDiagnostic                - output all as json to the right streams
+// YmlDiagnostic                 - output all as yml to the right streams
+// IoErrDiagnostic               - only emit the stuff that should be put in std::io::out::streams::err
+// IoOutDiagnostic               - only emit the stuff that should be put in std::io::out::streams::out
+// IoErrRedirectedDiagnostic     - redirect all from out to err incl err
+// StreamOutRedirectedDiagnostic - redirect all from err to out incl out
+//
+// Diagnostic Handlers's
+// TargetInfo
+// LocationInfo
+// Archiver's
+//
+
+
+template <std::size_t N>
+int helix_compiler(std::array<std::string, N> args) {
+    let invocation  = InvocationManager(args, true);
+    let compile     = CompilationUnit(invocation);
+    let diag_handle = PrettyDiagnosticHandler();
+    // possible options: PrettyDiagnosticHandler(), JsonDiagnosticHandler(), YmlDiagnosticHandler(), 
+    // base: DiagnosticHandler
+
+    return 0;
+}

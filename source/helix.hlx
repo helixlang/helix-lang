@@ -22,34 +22,7 @@
 /*
 using the new toolchain the entire process can happen like this:
 */
-module ojas {
-macro ban! () {
-    $"};"
-};
-}
-
-fn foo(a: i32 = 0) -> i32 {
-    return a;
-}
-
-foo(1);
-foo(a: 1);
-
-interface foo requires <U> {
-    fn foo(self) -> U;
-    static fn bar();
-
-    const x: i32;
-}
-
-
-fn something() requires <T> if foo::<int> in T {
-    T::bar();
-}
-
-
-
-fn foo() -> i32? | $question::<i32> {
+fn foo() -> i32? {
     panic "this is a panic";
     // breaks down to the following c++:
     return PanicFrame(
