@@ -72,6 +72,10 @@ CX_VISIT_IMPL(LiteralExpr) {
         bool heap_int  = false;
         switch (tok.token_kind()) {
             case token::LITERAL_STRING:
+                if (tok.value().starts_with("r")) {
+                    break;
+                }
+
                 inference = true;
                 ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, "string", tok);
                 ADD_TOKEN(CXX_LPAREN);
@@ -152,7 +156,11 @@ CX_VISIT_IMPL(LiteralExpr) {
                 break;
         }
 
-        ADD_TOKEN_AS_TOKEN(CXX_CORE_LITERAL, tok);
+        if (tok.value().starts_with("r")) {
+            ADD_TOKEN_AS_VALUE_AT_LOC(CXX_CORE_IDENTIFIER, tok.value().substr(1), tok);
+        } else {
+            ADD_TOKEN_AS_TOKEN(CXX_CORE_LITERAL, tok);
+        }
 
         if (inference) {
             ADD_TOKEN(CXX_RPAREN);

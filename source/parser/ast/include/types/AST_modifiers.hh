@@ -416,6 +416,8 @@ __AST_BEGIN {
               __TOKEN_N::KEYWORD_CONST}},
             {ExpectedModifier::ClassSpec, {__TOKEN_N::KEYWORD_CONST, __TOKEN_N::KEYWORD_STATIC}}};
 
+
+      public:
         std::vector<std::variant<StorageSpecifier,
                                  FFIQualifier,
                                  TypeSpecifier,
@@ -424,8 +426,7 @@ __AST_BEGIN {
                                  FunctionQualifier,
                                  ClassSpecifier>>
             modifiers;
-
-      public:
+            
         template <typename... Args>
         explicit Modifiers(Args &&...args)
             : expected_modifiers{std::forward<Args>(args)...} {

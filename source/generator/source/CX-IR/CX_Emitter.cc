@@ -116,7 +116,7 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
 
         main_func->body->body->body.clear();
 
-        {  // this is a function call to the helix::_HX_FN23helix_runtime_initialize()
+        {  // this is a function call to the helix::_HX_FN_Vi_Q5_7_helixrt_init_Rv()
             auto scope = __AST_N::make_node<__AST_NODE::ScopePathExpr>(true);
 
             scope->path.push_back(__AST_N::make_node<__AST_NODE::IdentExpr>(
@@ -126,7 +126,7 @@ void generator::CXIR::CXIR::visit(__AST_NODE::Program &node) {
 
             scope->access = __AST_N::make_node<__AST_NODE::IdentExpr>(
                 __TOKEN_N::Token(main_func->name->get_back_name().token_kind(),
-                                 "_HX_FN23helix_runtime_initialize",
+                                 "_HX_FN_Vi_Q5_7_helixrt_init_Rv",
                                  main_func->name->get_back_name()));
 
             auto path  = __AST_N::make_node<__AST_NODE::PathExpr>(scope);

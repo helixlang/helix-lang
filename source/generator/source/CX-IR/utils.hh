@@ -726,8 +726,26 @@ inline void add_func_modifiers(__CXIR_CODEGEN_N::CXIR *self, __AST_N::Modifiers 
 
     if (modifiers.contains(__TOKEN_N::KEYWORD_CONST) &&
         modifiers.contains(__TOKEN_N::KEYWORD_EVAL)) {
-        self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
-            __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEVAL, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
+        bool right_order = false;
+
+        for (auto& mod : modifiers.get<__AST_N::FunctionSpecifier>()) {
+            if (mod.type == __AST_N::FunctionSpecifier::Specifier::Eval) {
+                break;
+            }
+
+            if (mod.type == __AST_N::FunctionSpecifier::Specifier::Const) {
+                right_order = true;
+                break;
+            }
+        }
+        
+        if (right_order) {
+            self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
+                __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEVAL, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
+        } else {
+            self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
+                __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEXPR, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));
+        }
     } else if (modifiers.contains(__TOKEN_N::KEYWORD_EVAL)) {
         self->append(std::make_unique<__CXIR_CODEGEN_N::CX_Token>(
             __CXIR_CODEGEN_N::cxir_tokens::CXX_CONSTEXPR, modifiers.get(__TOKEN_N::KEYWORD_EVAL)));

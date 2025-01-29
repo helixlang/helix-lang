@@ -232,7 +232,7 @@ CX_VISIT_IMPL(IfState) {
                 }
 
                 if (else_body->body != nullptr) {
-                    else_body->body->body->accept(*this);
+                    else_body->body->accept(*this);
                 }
             }
         }
