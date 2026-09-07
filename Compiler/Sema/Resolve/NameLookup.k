@@ -92,13 +92,48 @@ class NameLookup {
     // --- Primitive 1: single scope --------------------------------------------
 
     fn in_context(self, dc: *DeclContext, name: DeclName) -> SemaLookupResult {
+        return self.in_context(dc, name, "");
+    }
+
+    /// Look one name up in ONE scope, whichever TU that scope lives in.
+    ///
+    /// A DeclContext's table is keyed by ITS OWN TU's imms (hard invariant
+    /// #2). Probing a foreign scope with THIS TU's imm index is not a miss --
+    /// it is a silent WRONG answer whenever the two interners happen to agree
+    /// on an index, which for two files of a few names each they routinely
+    /// do. `spelling` is the escape hatch, exactly as in
+    /// MemberLookup::in_scope: for a foreign scope the name is re-interned
+    /// into that TU's imm space and probed there.
+    ///
+    /// The no-spelling overload above stays for same-TU callers. A caller
+    /// that can reach a foreign scope -- anything walking `::` -- must pass
+    /// the spelling.
+    fn in_context(self, dc: *DeclContext, name: DeclName, spelling: string) -> SemaLookupResult {
         if dc == &null { return SemaLookupResult::not_found(); }
-        var cell = dc->lookup_symbol(name);
+        var cell = self._probe(dc, name, spelling);
         if cell == &null { return SemaLookupResult::not_found(); }
         var r = SemaLookupResult{};
         r.cell     = cell;
         r.found_in = dc;
         return r;
+    }
+
+    /// The imm-translation half of in_context. Only IDENTIFIER payloads are
+    /// per-TU: operator and ctor keys are built from TokenKinds, which are
+    /// stable across the build.
+    priv fn _probe(self, dc: *DeclContext, name: DeclName, spelling: string) -> *OverloadCell {
+        if name.kind != DeclNameKind::Identifier { return dc->lookup_symbol(name); }
+        if spelling.size() == 0                  { return dc->lookup_symbol(name); }
+        var other = NameLookup::tu_of(dc);
+        if other == &null       { return dc->lookup_symbol(name); }
+        if other == self.tu     { return dc->lookup_symbol(name); }
+        if self.tu == &null     { return dc->lookup_symbol(name); }
+        var ctx = self.tu->ctx;
+        if ctx == &null         { return &null; }
+        if ctx->tcm == &null    { return &null; }
+        var imms = ctx->tcm->get_imm_table_for_fid(other->fid);
+        if imms == &null        { return &null; }
+        return SymbolTable::lookup_foreign(dc->dc_symbols, imms, spelling);
     }
 
     // --- Primitive 2: unqualified ---------------------------------------------

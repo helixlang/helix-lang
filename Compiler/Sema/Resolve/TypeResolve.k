@@ -638,7 +638,13 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
             var simm = self._name_imm(seg->name->name);
             if simm == u32(-1) { ct->poison(); return; }
-            var sr = self.sc->lookup.in_context(scope, DeclName::ident(simm));
+            // `scope` may live in another TU (`import lib` then `lib::Foo`),
+            // and its table is keyed by ITS imms. Hand the spelling along so
+            // the probe re-interns rather than trusting index agreement:
+            // without it `lib::Aaa` silently resolved to whichever of lib's
+            // decls happened to share this TU's index for `Aaa`.
+            var sspell = self.sc->ctx->get_spelling(seg->name->name);
+            var sr = self.sc->lookup.in_context(scope, DeclName::ident(simm), sspell);
             if !sr.found() {
                 var snm = self.sc->ctx->get_spelling(seg->name->name);
                 var pnm = self.sc->ctx->get_spelling(prev->name->name);
