@@ -31,18 +31,18 @@ fn main() -> i32 {
 }
 
 // This suite's own host is x86_64, so nothing is diagnosed here.
-// HOST-NOT: SC003E
+// HOST-NOT: P003E
 
-// ARM64: SC003E{{.*}}'f80' is not available for target 'aarch64-unknown-linux-gnu'
+// ARM64: P003E{{.*}}'f80' is not available for target 'aarch64-unknown-linux-gnu'
 // The message has to carry WHY, not just a refusal.
 // ARM64-SAME: x87 80-bit extended format
 // ARM64-SAME: only on x86 and x86_64
 // ARM64: the effective target is 'aarch64-unknown-linux-gnu'
 
-// RISCV: SC003E{{.*}}'f80' is not available for target 'riscv64-unknown-linux-gnu'
+// RISCV: P003E{{.*}}'f80' is not available for target 'riscv64-unknown-linux-gnu'
 
 // 32-bit x86 still has an x87 stack.
-// X86-NOT: SC003E
+// X86-NOT: P003E
 
 // -m32 rewrites x86_64 to i386; it does not stop being x86.
-// M32-NOT: SC003E
+// M32-NOT: P003E

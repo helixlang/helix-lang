@@ -557,27 +557,20 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         var tri  = t->describe();
         var arch = t->arch_name;
 
-        // Built up in pieces: an f-string cannot take part in adjacent-literal
-        // concatenation, and this message has to name both the target and the
-        // reason to be worth emitting at all.
-        var msg = f"'f80' is not available for target '{tri}\x27";
-        msg += ": f80 is the x87 80-bit extended format (1 sign / 15 exponent";
-        msg += " / 64 significand bits, with an EXPLICIT integer bit, which no";
-        msg += " IEEE interchange format has), and it is a property of the x87";
-        msg += f" register stack -- it exists only on x86 and x86_64. {arch}";
-        msg += " has no such register and no such instruction, and its C 'long";
-        msg += " double' is plain 'double'. Kairo will not substitute one for";
-        msg += " you: f128 is a different format (IEEE binary128, every";
-        msg += " operation a compiler-rt libcall) and f64 drops 11 bits of";
-        msg += " significand, so either choice would change your arithmetic";
-        msg += " silently. Write the one you mean";
+        var msg  = f"'f80' requires x87, which {arch} does not have";
+        var why  = f"the effective target is '{tri}\x27";
+            why += " (--target if given, else the host triple, after -m32/-m64)";
 
-        var why = f"the effective target is '{tri}\x27";
-        why += " (--target if given, else the host triple, after -m32/-m64)";
+        // Actionable, no reasoning. `f64` first: on every non-x86 target C's
+        // `long double` IS `double`, so it is the correct mapping for the FFI
+        // case, which is most of them.
+        var fix  = "use 'f64' (what C's 'long double' already is on this target)";
+            fix += ", or 'f128' for the wider range; see --explain P003E";
 
-        self.sc->diag->report(DiagID::SC003E, ct->range.start, msg)
+        self.sc->diag->report(DiagID::P003E, ct->range.start, msg)
             .first(ct->range)
             .note(ct->range.start, why)
+            .note(ct->range.start, fix)
             .emit();
         return false;
     }
