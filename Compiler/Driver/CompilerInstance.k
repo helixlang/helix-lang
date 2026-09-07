@@ -1262,6 +1262,41 @@ class CompilerInstance {
         }
         
         (self.invocation().target.pointer_width) = width;
+
+        // The rest of the derived target facts, off the SAME Triple, so
+        // pointer width and ISA can never disagree about which target this
+        // is. Sema reads these; Config/ still never sees LLVM.
+        var full: libcxx::string  = tt.getTriple();
+        var arch: llvm::StringRef = tt.getArchName();
+        var vend: llvm::StringRef = tt.getVendorName();
+        var osn:  llvm::StringRef = tt.getOSName();
+        var env:  llvm::StringRef = tt.getEnvironmentName();
+
+        var objfmt: string;
+        inline "c++" {
+            switch (tt.getObjectFormat()) {
+                case llvm::Triple::COFF:        objfmt = string("COFF");        break;
+                case llvm::Triple::ELF:         objfmt = string("ELF");         break;
+                case llvm::Triple::MachO:       objfmt = string("Mach-O");      break;
+                case llvm::Triple::Wasm:        objfmt = string("Wasm");        break;
+                case llvm::Triple::XCOFF:       objfmt = string("XCOFF");       break;
+                case llvm::Triple::GOFF:        objfmt = string("GOFF");        break;
+                case llvm::Triple::DXContainer: objfmt = string("DXContainer"); break;
+                case llvm::Triple::SPIRV:       objfmt = string("SPIR-V");      break;
+                default:                        objfmt = string("unknown");     break;
+            }
+        }
+
+        var t = &(self.invocation().target);
+        (t->effective_triple) = string(full.c_str(), full.size());
+        (t->arch_name)        = string(arch.data(), arch.size());
+        (t->vendor_name)      = string(vend.data(), vend.size());
+        (t->os_name)          = string(osn.data(),  osn.size());
+        (t->env_name)         = string(env.data(),  env.size());
+        (t->object_format)    = objfmt;
+        (t->is_little_endian) = tt.isLittleEndian();
+        (t->is_x86)           = tt.isX86();
+        (t->resolved)         = true;
     }
 }
 
