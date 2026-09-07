@@ -636,7 +636,7 @@ fn reparse(ci: *CompilerInstance, fid: u32, opts: ParseOptions) -> ParsedUnit {
         // behind them; with one file there is nothing to order or overlap.
         u.stage = TUStage::Parsing;
         ci->parse_one(fid);
-        u.ctx->diag_sink.drain_into(ci->diag());
+        u.ctx->diag_sink.drain_into(ci->diag(), u.ctx->sm);
     }
 
     u.tu = reinterpret_cast::<*TranslationUnit>(u.ctx->tu);

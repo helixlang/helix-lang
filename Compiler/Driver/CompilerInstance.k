@@ -1473,7 +1473,7 @@ fn FrontendAction::_parse() -> bool {
                     if (done[cursor].load(libcxx::memory_order_acquire)) {
                         u32 fid = (*fids_p)[cursor];
                         auto* ctx = gs->get_context(fid);
-                        if (ctx) ctx->diag_sink.drain_into(engine);
+                        if (ctx) ctx->diag_sink.drain_into(engine, ctx->sm);
                         ++cursor;
                     } else {
                         libcxx::this_thread::yield();
@@ -1608,7 +1608,7 @@ fn FrontendAction::_sema() -> bool {
         if tu == &null { continue; }
         var sem = Sema(ctx, self._global_scope);
         sem.run_to(SemaPhase::Checked);
-        ctx->diag_sink.drain_into(self._ci->diag());
+        ctx->diag_sink.drain_into(self._ci->diag(), ctx->sm);
 
         // Dump INSIDE the loop: SemaDump reads sc.phase / sc.well_known, which
         // live on this fid's SemaContext and die with `sem` at loop exit.
@@ -1687,7 +1687,7 @@ fn FrontendAction::_codegen() -> bool {
     // end_tu FIRST: it flushes any builder still open in the adapter, so
     // draining before it would silently drop the last diagnostic.
     be->end_tu(adapter);
-    sink.drain_into(self._ci->diag());
+    sink.drain_into(self._ci->diag(), self._ci->sm());
 
     if !ok {
         self._stage = TUStage::Failed;

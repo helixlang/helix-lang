@@ -12,9 +12,24 @@
 /// ------------------------------------------------------------------------ ///
 
 import Location::SourceRange::*;
+import Location::SourceManager::*;
 import Diagnostic::Registry::*;
 import Diagnostic::Diagnostic::*;
 import Diagnostic::Engine::*;
+
+/// Sort key for draining in source order: (file, offset, insertion order).
+/// A diagnostic with no resolvable location (has_loc == false, or a location
+/// SourceManager can't map, e.g. a synthesized/recovery token) gets
+/// `fid == usize(-1)` back from \c SourceManager::resolve, which this key's
+/// ordering puts after every diagnostic with a real location. `seq` is the
+/// diagnostic's original push_back position; it breaks ties for diagnostics
+/// that share a location (two checks anchoring the same token) so the sort
+/// is stable even if the sort routine itself ever stops being one.
+struct DiagSortKey {
+    pub var fid:    usize = 0;
+    pub var offset: usize = 0;
+    pub var seq:    usize = 0;
+}
 
 class BufferedDiagSink derives DiagEngineVBase {
     priv var _diags:         vec::<own::<Diagnostic>>;
@@ -77,10 +92,55 @@ class BufferedDiagSink derives DiagEngineVBase {
     fn warn_count(self) -> u32 { return self._warn_count; }
 
     // --- drain: single-threaded, at the join. transfers ownership. ----------
-    fn drain_into(self, engine: *DiagEngine) {
+    //
+    // Drains in SOURCE order, not the order diagnostics happened to be
+    // reported in (parse recovery, multi-pass sema, etc. don't emit
+    // strictly left-to-right). Only the top-level diagnostics are reordered;
+    // each one's note children (e.g. "previous declaration is here", which
+    // legitimately points *backwards*) travel with their parent untouched.
+    fn drain_into(self, engine: *DiagEngine, sm: *SourceManager) {
+        self._sort_by_source_order(sm);
         for var i: usize = 0; i < self._diags.size(); ++i {
             engine->emit(self._diags[i]);   // engine now owns + frees
         }
         self._diags.clear();   // drops pointer values only; pointees owned by engine
+    }
+
+    // Stable insertion sort (buffers here are one file/one pass, not a TU's
+    // worth of diagnostics) over `_diags` and a parallel `keys` array kept
+    // in lockstep, so `keys[i]` always describes `_diags[i]`.
+    priv fn _sort_by_source_order(self, sm: *SourceManager) {
+        var n = self._diags.size();
+        var keys: vec::<DiagSortKey>;
+        keys.reserve(n);
+        for var i: usize = 0; i < n; ++i {
+            var key = DiagSortKey();
+            key.seq = i;
+            var res = sm->resolve(self._diags[i]->loc);
+            key.fid    = res.fid;
+            key.offset = res.offset;
+            keys.push_back(key);
+        }
+
+        for var i: usize = 1; i < n; ++i {
+            var j = i;
+            while (j > 0) && self._key_less(keys[j], keys[j - 1]) {
+                var td = self._diags[j - 1];
+                self._diags[j - 1] = self._diags[j];
+                self._diags[j] = td;
+
+                var tk = keys[j - 1];
+                keys[j - 1] = keys[j];
+                keys[j] = tk;
+
+                j -= 1;
+            }
+        }
+    }
+
+    priv fn _key_less(self, a: DiagSortKey, b: DiagSortKey) -> bool {
+        if a.fid != b.fid { return a.fid < b.fid; }
+        if a.offset != b.offset { return a.offset < b.offset; }
+        return a.seq < b.seq;
     }
 }
