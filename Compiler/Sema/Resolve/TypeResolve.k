@@ -523,6 +523,65 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         return &null;
     }
 
+    // === Target portability ==================================================
+
+    /// Reject a primitive whose REPRESENTATION does not exist on the target.
+    ///
+    /// This is the only ISA question the frontend asks, and `f80` is the only
+    /// type that raises it. f80 is the x87 80-bit extended format -- 1/15/64
+    /// with an explicit integer bit, which no IEEE interchange format has --
+    /// and it is a property of the x87 register stack. x86 and x86_64 have it;
+    /// nothing else does, and on those targets C's `long double` is plain
+    /// `double`.
+    ///
+    /// The alternative to erroring is picking a replacement, and both
+    /// available replacements are wrong in a way the user cannot see: f128 is
+    /// IEEE binary128, a different format whose every operation is a
+    /// compiler-rt libcall, and f64 silently drops 11 bits of significand.
+    /// A quiet precision change is worse than a failed build, so this is a
+    /// hard error at the SPELLING, before anything downstream can depend on
+    /// the type. CanonicalNodes.k's BuiltinKind::F80 comment promises exactly
+    /// this behaviour; here it is.
+    ///
+    /// Gated on `target.resolved`: a hand-built invocation that never reached
+    /// CompilerInstance::_apply_invocation has no target facts, and guessing
+    /// "not x86" there would reject f80 on the very host it works on.
+    priv fn _target_supports(self, bk: BuiltinKind, ct: *ChainType) -> bool {
+        if bk != BuiltinKind::F80 { return true; }
+        if self.sc->ctx == &null      { return true; }
+        if self.sc->ctx->ci == &null  { return true; }
+        var t = &(self.sc->ctx->ci->target);
+        if !t->resolved { return true; }
+        if t->is_x86    { return true; }
+
+        var tri  = t->describe();
+        var arch = t->arch_name;
+
+        // Built up in pieces: an f-string cannot take part in adjacent-literal
+        // concatenation, and this message has to name both the target and the
+        // reason to be worth emitting at all.
+        var msg = f"'f80' is not available for target '{tri}\x27";
+        msg += ": f80 is the x87 80-bit extended format (1 sign / 15 exponent";
+        msg += " / 64 significand bits, with an EXPLICIT integer bit, which no";
+        msg += " IEEE interchange format has), and it is a property of the x87";
+        msg += f" register stack -- it exists only on x86 and x86_64. {arch}";
+        msg += " has no such register and no such instruction, and its C 'long";
+        msg += " double' is plain 'double'. Kairo will not substitute one for";
+        msg += " you: f128 is a different format (IEEE binary128, every";
+        msg += " operation a compiler-rt libcall) and f64 drops 11 bits of";
+        msg += " significand, so either choice would change your arithmetic";
+        msg += " silently. Write the one you mean";
+
+        var why = f"the effective target is '{tri}\x27";
+        why += " (--target if given, else the host triple, after -m32/-m64)";
+
+        self.sc->diag->report(DiagID::SC003E, ct->range.start, msg)
+            .first(ct->range)
+            .note(ct->range.start, why)
+            .emit();
+        return false;
+    }
+
     // === ChainType: the real work ============================================
 
     priv fn _resolve_chain(self, ct: *ChainType) {
@@ -549,6 +608,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                 ct->poison();
                 return;
             }
+            if !self._target_supports(bk, ct) { ct->poison(); return; }
             var b = self.sc->builtin(bk);
             seg0->resolved_type = b;
             seg0->seg_kind      = ChainType::SegmentKind::Named;
