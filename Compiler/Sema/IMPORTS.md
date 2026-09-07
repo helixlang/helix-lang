@@ -69,7 +69,8 @@ identical: an overlay entry keyed by this TU's imm, holding targets.
     T      TypeResolution: canonicalize types                 [DONE]
     CB     ChainBinding: bind `::` and `.` steps              [DONE]
     ...
-    EP     EmitPlan: regenerate the per-TU C++ interface      [MISSING]
+    EP     EmitPlan: plan the per-TU C++ interface            [DONE]
+           EmitPlan: EMIT it                                 [MISSING]
     CG     TokenSink: emit                                    [needs one rule]
 
 ### 2.1 PP path resolution
@@ -228,7 +229,7 @@ never resolved. `MemberLookup::in_scope` re-interns per scope. Rendering
 a foreign decl is the same problem: `NameLookup::ctx_of` answers where a
 decl's names live, and the dump and diagnostics ask it first.
 
-### 2.7 EP EmitPlan [MISSING]
+### 2.7 EP EmitPlan [DONE for the plan; the emitter is MISSING]
 
 The codegen half. Specified fully in §6.
 
@@ -374,12 +375,12 @@ top of the emitted C++. Order: declaration order.
 
 ---
 
-## 6. Codegen: EmitPlan [MISSING full spec]
+## 6. Codegen: EmitPlan
 
 Per emitted TU, produce the declarations a header would have provided.
 Reads sema's links. Reads no `ImportDecl` except for §5.
 
-### 6.1 Root set
+### 6.1 Root set [DONE]
 
 RAV over this TU. Collect the canonical redecl link of every decl reached
 through `NamedIdentExpr::resolved_decl`, `ChainExpr::Step::resolved_decl`,
@@ -387,7 +388,7 @@ every entry of a `candidate_cell`, and every `Type::canonical` that is a
 `RecordType` (its `decl`). Keep those whose DC chain bottoms out in a
 different fid. Skip `FfiAnchor` ImportDecls and Foreign steps.
 
-### 6.2 Closure
+### 6.2 Closure [DONE]
 
 Repeat until no growth. Two edge kinds:
 
@@ -410,7 +411,7 @@ Whole class or nothing (invariant 11). `main` never imported `bar`, but
 "bar depends on something foo brought in" means and it is handled here, not
 by import order.
 
-### 6.3 Ordering
+### 6.3 Ordering [DONE]
 
     Tier 0  every type in the set as a forward declaration, grouped by
             namespace. Breaks all pointer cycles up front.
@@ -422,13 +423,13 @@ by import order.
 Tie-break inside a tier: (source fid, source order). Output is
 deterministic.
 
-### 6.4 Namespace wrapping
+### 6.4 Namespace wrapping [MISSING]
 
 Each decl in `namespace a { namespace b { ... } }` from `module_path`.
 Reopening is free in C++; one wrapper per decl is correct, merging
 consecutive same-path decls is cosmetic. Root TU decls: global namespace.
 
-### 6.5 Alias tail
+### 6.5 Alias tail [DECIDED: none]
 
 After the interface block, TU-local only, never exported:
 
@@ -437,12 +438,14 @@ After the interface block, TU-local only, never exported:
                                     inline auto& my_add = foo::add; (values, or just qualify at use)
     import foo::*                -> using namespace foo;  (or qualify at use)
 
-Simplest correct choice: emit NO alias tail and have `TokenSink` print every
-use fully qualified from `resolved_decl`. The alias tail exists only if you
-want the generated C++ to read like the Kairo. Decide once; qualified-at-use
-is fewer moving parts.
+[DECIDED] No alias tail. `TokenSink` prints every use fully qualified from
+`resolved_decl`. The alias tail exists only to make the generated C++ read
+like the Kairo, which is worth nothing against invariant 10 (an alias is
+TU-local and never appears in an exported interface) and costs a second
+naming mechanism codegen would have to keep consistent with the first.
+Qualified-at-use is fewer moving parts; do not relitigate.
 
-### 6.6 Emitter reuse
+### 6.6 Emitter reuse [MISSING]
 
 `InterfaceEmitter(roots) -> token stream`. Two callers:
 
@@ -491,7 +494,7 @@ Each item is independently testable. Do them in this order.
     8. Re-export fold                                     I          DONE
     9. Named roots: add_include(name), SearchRoot.name, module_base prefix   PP/Resolution DONE
    10. TypeCycleCheck                                     Sema/Check DONE
-   11. EmitPlan collector + closure + tiers               Codegen    the real work
+   11. EmitPlan collector + closure + tiers               Codegen    DONE
    12. Out-of-line body rule                              TokenSink
    13. Instantiation registry + extern template           M1/M2
    13a. Cross-reopening redefinition check (same signature, two definitions) at M2 sync
@@ -516,7 +519,15 @@ the count. Both halves matter: the edge set is the whole content of the
 pass, and the second half is what a naive "does it mention itself" check
 gets wrong.
 
-Test for 11–12: foo.cpp + main.cpp compiled together with
+Test for 11: `Tests/Sema/emit_plan`. `main.k` imports `foo`, never `bar`;
+`foo::F` holds a `bar::B` by value and a `bar::Deep` behind a pointer.
+`--print-emit-plan` then has to show B in tier 1 (transitivity through a
+file main never named), Deep in tier 0 only (edge strength), `foo::Unused`
+nowhere (reachability), and B before F in tier 1 whatever order the two
+files were written in. Those four are the four independent ways the plan
+can be wrong.
+
+Test for 12: foo.cpp + main.cpp compiled together with
 `-fsanitize=undefined -Wodr`; main.cpp's preamble diffed against a
 hand-written one.
 

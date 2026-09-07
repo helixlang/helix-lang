@@ -112,6 +112,8 @@ import Token::TokenKind::*;
 import Command::Command::*;
 import Command::FlagRegistry::*;
 import Codegen::Backend::*;
+import Codegen::EmitPlan::*;
+import Codegen::CodegenContext::*;
 import Config::Invocation::*;
 import Driver::BatchResult::*;
 import Driver::TUResult::*;
@@ -1579,6 +1581,24 @@ fn FrontendAction::_sema() -> bool {
     }
 
     if fe.print_imports { self._dump_overlays(); }
+
+    // The EmitPlan is codegen's, but it reads only sema's resolved links, so
+    // it can be built and dumped here without a backend. That is what makes
+    // it testable at all today: EmitIR cannot yet emit a record, so a full
+    // codegen run over a file with a class never reaches the plan.
+    if fe.print_emit_plan {
+        for var i: usize = 0; i < n; ++i {
+            var fid = self._fids[n - 1 - i];
+            var ctx = self._global_scope->get_context(fid);
+            if ctx == &null { continue; }
+            var tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
+            if tu == &null { continue; }
+            var cg = CodegenContext(ctx, &null);
+            var plan = EmitPlan(&cg);
+            plan.run();
+            plan.dump(self._ci->sm()->get_filename(fid));
+        }
+    }
 
     // TODO(sema): full pipeline once N/T/checks land: Sema(ctx, gs).run().
     return true;
