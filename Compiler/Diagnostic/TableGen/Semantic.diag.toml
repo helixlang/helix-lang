@@ -28,3 +28,37 @@ group = "Uncategorized"
     explain = "This is placeholder diagnostics. (Error)"
     [SC001.F]
     explain = "This is placeholder diagnostics. (Fatal)"
+
+[SC002]
+brief = "type contains itself by value"
+group = "layout"
+
+    [SC002.E]
+    explain = """
+    # recursive type layout
+
+    a type's definition requires its own size. the by-value edges of a type - value fields, base
+    classes, fixed-array elements, tuple elements, and generic arguments that land by value - form a
+    cycle, so no layout assignment exists. only these edges are considered: a pointer, a nullable, a
+    vector, a map or a set is satisfied by a forward declaration and never closes a cycle.
+
+    ```kairo
+    class Node {
+        var next: Node;    // Node's size includes Node's size
+    }
+    ```
+
+    ## how to fix
+
+    break the cycle with an indirection: hold the recursive member behind a pointer (`*Node`), a
+    nullable (`Node?`), or a vector (`[Node]`). one indirection anywhere on the cycle is enough.
+    """
+
+    [SC002.N]
+    explain = """
+    # note: a step on the layout cycle
+
+    attached to a recursive-layout error. each note names one by-value edge on the cycle, in the
+    order the layout walk took them, so the whole path from the reported type back to itself is
+    visible.
+    """

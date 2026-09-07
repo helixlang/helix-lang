@@ -415,8 +415,8 @@ by import order.
     Tier 0  every type in the set as a forward declaration, grouped by
             namespace. Breaks all pointer cycles up front.
     Tier 1  type definitions, topologically sorted on `complete` edges
-            only. A cycle is a Kairo error owned by TypeCycleCheck; the
-            plan asserts.
+            only. A cycle is a Kairo error owned by TypeCycleCheck [DONE];
+            the plan asserts.
     Tier 2  function declarations. Any order.
 
 Tie-break inside a tier: (source fid, source order). Output is
@@ -490,7 +490,7 @@ Each item is independently testable. Do them in this order.
     7. Bare-ffi miss gate in N                            N          DONE
     8. Re-export fold                                     I          DONE
     9. Named roots: add_include(name), SearchRoot.name, module_base prefix   PP/Resolution DONE
-   10. TypeCycleCheck                                     Sema/Check ~80 lines
+   10. TypeCycleCheck                                     Sema/Check DONE
    11. EmitPlan collector + closure + tiers               Codegen    the real work
    12. Out-of-line body rule                              TokenSink
    13. Instantiation registry + extern template           M1/M2
@@ -507,6 +507,14 @@ import edge and one deliberate typo. `main.sema.golden` is the whole dump,
 for diffing what a change did beyond the asserted lines. Named roots (9)
 are covered separately: two roots each holding `a.k`, imported as `a` and
 `foo::a`, binding to two different decls.
+
+Test for 10: `Tests/Sema/type_cycle.k`. Five cycles (self, mutual, fixed
+array + tuple, bases, a generic argument the template stores by value) and
+five non-cycles (pointer, nullable, vector, map, set, plus a generic
+argument the template only points at), in one file, with `DIAG-NOT` closing
+the count. Both halves matter: the edge set is the whole content of the
+pass, and the second half is what a naive "does it mention itself" check
+gets wrong.
 
 Test for 11–12: foo.cpp + main.cpp compiled together with
 `-fsanitize=undefined -Wodr`; main.cpp's preamble diffed against a

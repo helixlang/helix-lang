@@ -1555,12 +1555,13 @@ fn FrontendAction::_sema() -> bool {
         std::print(f"-- sema: {self.path.full_path()} --");
     }
 
-    // Phases I -> E -> V -> N (ImportResolution, Expand, Verify,
-    // NameResolution) across every fid of this TU's graph. Run in REVERSE
-    // tree order so leaf modules build their overlays before importers fold
-    // re-exports (DAG order guarantees source-overlay completeness,
-    // RESOLUTION.md #2). run_to stops at NamesResolved; the T/... stubs are
-    // not reached.
+    // Phases I -> E -> V -> N -> T -> checks (ImportResolution, Expand,
+    // Verify, NameResolution, TypeResolution/ChainBinding, then the
+    // signature/layout checks) across every fid of this TU's graph. Run in
+    // REVERSE tree order so leaf modules build their overlays before
+    // importers fold re-exports (DAG order guarantees source-overlay
+    // completeness, RESOLUTION.md #2). run_to stops at Checked; the
+    // lowering / M1 / M2 stubs are not reached.
     var n = self._fids.size();
     for var i: usize = 0; i < n; ++i {
         var fid = self._fids[n - 1 - i];
@@ -1569,7 +1570,7 @@ fn FrontendAction::_sema() -> bool {
         var tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
         if tu == &null { continue; }
         var sem = Sema(ctx, self._global_scope);
-        sem.run_to(SemaPhase::TypesResolved);
+        sem.run_to(SemaPhase::Checked);
         ctx->diag_sink.drain_into(self._ci->diag());
 
         // Dump INSIDE the loop: SemaDump reads sc.phase / sc.well_known, which
