@@ -148,7 +148,8 @@ class <T> PatternParse {
     priv fn _starts_path_head(self, k: TokenKind) -> bool {
         return k == TokenKind::LitIdentifier
             || k == TokenKind::OpColonColon
-            || k == TokenKind::KwSelf;
+            || k == TokenKind::KwSelf
+            || k == TokenKind::BiSelf;
     }
 
     priv fn _is_literal_expr(self, e: *Expr) -> bool {
@@ -452,6 +453,9 @@ class <T> PatternParse {
         }
 
         if lead == &null { return false; }
+        // `Self` is not a table name; it is always a resolvable head (the
+        // enclosing type), and sema owns the "outside a type body" error.
+        if lead->name.kind == TokenKind::BiSelf { return true; }
 
         // is_type(), NOT found(): the table also stores value entries (vars,
         // functions) as negative evidence for `<` disambiguation, and a

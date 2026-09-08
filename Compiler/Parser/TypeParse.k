@@ -414,7 +414,12 @@ class <T> TypeParse {
             return self._parse_variadic_type();
         }
 
+        // `Self` alone is a SelfType. `Self::Inner` is a chain whose head is
+        // the enclosing type; only T can step into it, so hand it the chain.
         if dyn()->check(TokenKind::BiSelf) {
+            if dyn()->check_peek(TokenKind::OpColonColon) {
+                return self._parse_qual_type();
+            }
             return self._parse_self_type();
         }
 

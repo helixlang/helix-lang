@@ -47,6 +47,7 @@ class <T> ExprParse {
     const var EXPR_IDENT_TBL: set::<TokenKind> = {
         TokenKind::LitIdentifier,
         TokenKind::KwSelf,
+        TokenKind::BiSelf,
         TokenKind::BiFile,
         TokenKind::BiLine,
         TokenKind::BiColumn,
@@ -1244,7 +1245,7 @@ class <T> ExprParse {
         // -- generic args after :: separator only --------------------
         // foo::<T> is generic, foo.<T> is not valid syntax
         // also check hoisted scope for disambiguation of foo::Bar<T>
-        if dyn()->check(TokenKind::OpLess) {
+        if dyn()->check(TokenKind::OpLess) && self._can_take_generic_args(*id_ptr) {
             if result.access_kind == ChainExpr::AccessKind::ColonColon {
                 if self._is_generic_name(*id_ptr) {
                     var generic_args: std::StackBuf::<ChainType::GenericArg, 4>;
@@ -2004,7 +2005,7 @@ class <T> ExprParse {
         // three-state verdict (rule 3/4): known generic commits generic args,
         // known non-generic commits comparison (rule 4 no tentative), and
         // only genuinely unknown names run the tentative parse.
-        if dyn()->check(TokenKind::OpLess) {
+        if dyn()->check(TokenKind::OpLess) && self._can_take_generic_args(id_tok) {
             var verdict = self._generic_verdict(*id_ptr);
             if verdict == GenericVerdict::Generic {
                 var generic_args: std::StackBuf::<ChainType::GenericArg, 4>;
@@ -2086,7 +2087,7 @@ class <T> ExprParse {
         first_step.is_ufcs       = false;
 
         // check for generic args on first segment
-        if dyn()->check(TokenKind::OpLess) {
+        if dyn()->check(TokenKind::OpLess) && self._can_take_generic_args(*id_ptr) {
             if self._is_generic_name(*id_ptr) {
                 var generic_args: std::StackBuf::<ChainType::GenericArg, 4>;
                 dyn()->_parse_generic_args(&generic_args);
@@ -3259,6 +3260,14 @@ class <T> ExprParse {
         }
         // hoisted miss: fall back to imported generics (unqualified surface).
         return self._import_generic_fallback(tok);
+    }
+
+    /// `Self` is the enclosing type WITH its arguments; `Self<T>` is never
+    /// legal, and a `<` after it is always the comparison operator. Also keeps
+    /// a non-identifier token out of the hoisted-table probes, which key on
+    /// identifier imms.
+    priv fn _can_take_generic_args(self, tok: Token) -> bool {
+        return tok.kind != TokenKind::BiSelf;
     }
 
     /// \brief three-state `<`-disambiguation verdict for a head-position name
