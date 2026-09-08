@@ -354,19 +354,19 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         // 1. phase: already checked by require_phase(Verified) above.
 
         // 2. the overlay exists and is frozen (phase I ran to completion).
-        assert((tu->import_overlay != &null)
-               && r"NameResolution: tu->import_overlay is null (phase I did not run)");
-        assert(tu->import_overlay->is_frozen()
-               && r"NameResolution: tu->import_overlay is not frozen (phase I did not finish)");
+        ICE_IF((tu->import_overlay == &null),
+                "NameResolution: tu->import_overlay is null (phase I did not run)");
+        ICE_IF(!tu->import_overlay->is_frozen(),
+                "NameResolution: tu->import_overlay is not frozen (phase I did not finish)");
 
         // 4. the shared lookup core is wired to THIS TU. A stale NameLookup
         //    would silently answer with another TU's overlay.
-        assert((self.sc->lookup.tu == tu)
-               && r"NameResolution: sc->lookup is not initialized with this TU");
+        ICE_IF((self.sc->lookup.tu != tu),
+                "NameResolution: sc->lookup is not initialized with this TU");
 
         // 5. there is a program to walk.
-        assert((tu->program != &null)
-               && r"NameResolution: tu->program is null");
+        ICE_IF((tu->program == &null),
+                "NameResolution: tu->program is null");
 
         // 3. every reachable dc_symbols table is frozen. N writes decl-to-decl
         //    links only; a live table here means the parser never froze.
@@ -376,21 +376,21 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         //    FunctionDecls carrying a `Class::` qualifier.
         for var i: usize = 0; i < tu->out_of_line.size(); ++i {
             var d = *(tu->out_of_line.get(i));
-            assert((d != &null)
-                   && r"NameResolution: null entry in tu->out_of_line");
+            ICE_IF((d == &null),
+                   "NameResolution: null entry in tu->out_of_line");
             var f = dyn_cast::<FunctionDecl>(d);
-            assert((f != &null)
-                   && r"NameResolution: non-FunctionDecl in tu->out_of_line");
-            assert(f->is_out_of_line()
-                   && r"NameResolution: out_of_line entry has no Class:: qualifier");
+            ICE_IF((f == &null),
+                   "NameResolution: non-FunctionDecl in tu->out_of_line");
+            ICE_IF(!f->is_out_of_line(),
+                   "NameResolution: out_of_line entry has no Class:: qualifier");
         }
     }
 
     priv fn _assert_frozen(self, dc: *DeclContext) {
         if dc == &null { return; }
         if dc->dc_symbols != &null {
-            assert(dc->dc_symbols->is_frozen()
-                   && r"NameResolution: a dc_symbols table is not frozen (parse did not finish)");
+            ICE_IF((dc->dc_symbols != &null) && (!dc->dc_symbols->is_frozen()),
+                   "NameResolution: a dc_symbols table is not frozen (parse did not finish)");
         }
         for var i: usize = 0; i < dc->dc_decls.size(); ++i {
             self._assert_frozen(NameLookup::context_of(*(dc->dc_decls.get(i))));
@@ -1182,16 +1182,30 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var prev_i = frame->index_of(imm);
         if prev_i != usize(-1) {
             var prev = frame->decls[prev_i];
-            var nm = self.sc->imm_table()->get_ident(imm);
-            self.sc->diag->report(DiagID::R001E, at.start,
-                f"redefinition of '{nm}\x27"
-            ).first(at).emit();
-            if prev != &null {
-                self.sc->diag->report(DiagID::R001N, prev->range.start,
-                    f"previous declaration of '{nm}' is here"
-                ).first(prev->range).emit();
+
+            // Immutable bindings may be redeclared freely: rebinding a const
+            // introduces a NEW value under the same name, and the old one
+            // cannot have been mutated, so nothing observable is lost.
+            // Anything involving a `var` is rejected, because `var x = 12`
+            // after an existing `x` is ambiguous about intent -- assignment
+            // is spelled `x = 12` and is almost certainly what was meant.
+            //
+            // BOTH must be const. Mixed pairs are errors in both directions:
+            // a rule that read only the new declaration would accept
+            // `var x; const x` while rejecting `const x; var x`, which is an
+            // asymmetry no reader would predict.
+            if !(self._is_immutable(prev) && self._is_immutable(d)) {
+                var nm = self.sc->imm_table()->get_ident(imm);
+                self.sc->diag->report(DiagID::R001E, at.start,
+                    f"redefinition of '{nm}\x27"
+                ).first(at).emit();
+                if prev != &null {
+                    self.sc->diag->report(DiagID::R001N, prev->range.start,
+                        f"previous declaration of '{nm}' is here"
+                    ).first(prev->range).emit();
+                }
+                if d != &null { d->poison(); }
             }
-            if d != &null { d->poison(); }
         }
 
         // Recorded BEFORE the push, so the search sees the world this name is
@@ -1200,6 +1214,16 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         self.sc->trace.declare(imm, d, at, sh.decl, sh.via, sh.found_in);
 
         frame->declare(imm, d);
+    }
+
+    /// True for a binding that can be redeclared in the same frame. Only
+    /// `const` locals qualify; a param, binder, or local type decl is not a
+    /// value rebinding and is never redeclarable.
+    priv fn _is_immutable(self, d: *Decl) -> bool {
+        if d == &null { return false; }
+        var v = dyn_cast::<VariableDecl>(d);
+        if v == &null { return false; }
+        return v->is_const();
     }
 
     // --- shadowing (trace-only) --------------------------------------------
@@ -1647,6 +1671,13 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
     /// Name imm for the decl kinds traverse_decl_stmt declares; u32(-1) for
     /// everything else (VariableDecl declares itself after its initializer).
     priv fn _stmt_decl_imm(self, d: *Decl) -> u32 {
+        // A specialization is not a name binding. It is reached through its
+        // primary's instance registry, never by lookup, so declaring it here
+        // shadows the primary for the rest of the enclosing body -- which is
+        // exactly what a local `class <> Box<bool>` was doing. Same rule
+        // _pick_type_candidate and _sole_entity already apply.
+        if NameLookup::is_specialization(d) { return u32(-1); }
+
         if isa::<FunctionDecl>(d) {
             var f = cast::<FunctionDecl>(d);
             if f->is_operator || f->is_out_of_line() { return u32(-1); }
