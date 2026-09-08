@@ -221,10 +221,15 @@ class NameLookup {
         return &null;
     }
 
-    /// The canonical link of `d`'s redecl chain, or null when `d` is not a
-    /// redeclarable kind. FunctionDecl is absent on purpose: its chains need
-    /// signatures and are deferred, so its canonical is still itself and
-    /// collapsing on it would be a lie.
+        /// The canonical link of `d`'s redecl chain, or null when `d` is not a
+    /// redeclarable kind.
+    ///
+    /// FunctionDecl is INCLUDED as of RedeclMerge: its chains are linked
+    /// after T, on canonical signatures, so its canonical is no longer
+    /// necessarily itself. Before R existed this arm was deliberately
+    /// absent and collapsing on it would have been a lie; a caller running
+    /// BEFORE R (N(b), which runs before T) still sees each function as its
+    /// own canonical, because that is what the chain says at that point.
     static fn chain_canonical(d: *Decl) -> *Decl {
         if d == &null { return &null; }
         if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
@@ -233,7 +238,41 @@ class NameLookup {
         if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
         if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
         if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
+        if isa::<FunctionDecl>(d)  { return static_cast::<*Decl>(cast::<FunctionDecl>(d)->canonical_decl());  }
         return &null;
+    }
+
+    /// Every link of `d`'s redeclaration ring, in insertion order, into
+    /// \p out. One element (just `d`) for a non-redeclarable kind or an
+    /// unlinked decl.
+    ///
+    /// The ring is not the cell. A cell holds what a SCOPE declares; a ring
+    /// holds what one ENTITY was declared as, and they diverge wherever an
+    /// out-of-line definition is involved -- `fn C::bump` is in no symbol
+    /// table, so a member with one in-class declaration and two out-of-line
+    /// definitions is a cell of size 1 and a ring of size 3.
+    static fn collect_chain(d: *Decl, out: ref!(vec::<*Decl>)) {
+        if d == &null { return; }
+        if      isa::<ClassDecl>(d)     { NameLookup::_ring::<ClassDecl>(cast::<ClassDecl>(d), out);         }
+        else if isa::<StructDecl>(d)    { NameLookup::_ring::<StructDecl>(cast::<StructDecl>(d), out);       }
+        else if isa::<UnionDecl>(d)     { NameLookup::_ring::<UnionDecl>(cast::<UnionDecl>(d), out);         }
+        else if isa::<InterfaceDecl>(d) { NameLookup::_ring::<InterfaceDecl>(cast::<InterfaceDecl>(d), out); }
+        else if isa::<EnumDecl>(d)      { NameLookup::_ring::<EnumDecl>(cast::<EnumDecl>(d), out);           }
+        else if isa::<ModuleDecl>(d)    { NameLookup::_ring::<ModuleDecl>(cast::<ModuleDecl>(d), out);       }
+        else if isa::<FunctionDecl>(d)  { NameLookup::_ring::<FunctionDecl>(cast::<FunctionDecl>(d), out);   }
+        else                            { out.push_back(d); }
+    }
+
+    /// Walk one typed ring from first_decl() back to the head. Bounded by
+    /// the ring, which Redeclarable guarantees is circular and finite.
+    priv static fn <T> _ring(d: *T, out: ref!(vec::<*Decl>)) {
+        var head = d->first_decl();
+        var cur  = head;
+        while true {
+            out.push_back(static_cast::<*Decl>(cur));
+            cur = cur->next_in_chain();
+            if cur == head { break; }
+        }
     }
 
     /// The decl that REPRESENTS the entity `d` belongs to: the chain's
