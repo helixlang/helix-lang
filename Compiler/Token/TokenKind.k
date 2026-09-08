@@ -241,16 +241,24 @@ enum TokenKind derives u32 {
     ///===----------------------------------------------------------------===///
     AtVoid  = compute_hash::<r"void">(),  // "void"
     AtBool  = compute_hash::<r"bool">(),  // "bool"
+    AtByte  = compute_hash::<r"byte">(),  // "byte"
+    AtChar  = compute_hash::<r"char">(),  // "char"
 
     AtUsize = compute_hash::<r"usize">(), // "usize"
     AtIsize = compute_hash::<r"isize">(), // "isize"
 
+    AtF8     = compute_hash::<r"f8">(),     // "f8"
+    AtF8E4M3 = compute_hash::<r"f8e4m3">(), // "f8e4m3"
+    AtF8E5M2 = compute_hash::<r"f8e5m2">(), // "f8e5m2"
+
+    AtBf16  = compute_hash::<r"bf16">(),  // "bf16"
     AtF16   = compute_hash::<r"f16">(),   // "f16"
     AtF32   = compute_hash::<r"f32">(),   // "f32"
     AtF64   = compute_hash::<r"f64">(),   // "f64"
     AtF80   = compute_hash::<r"f80">(),   // "f80"
     AtF128  = compute_hash::<r"f128">(),  // "f128"
     AtF256  = compute_hash::<r"f256">(),  // "f256"
+    AtF512  = compute_hash::<r"f512">(),  // "f512"
 
     AtU8    = compute_hash::<r"u8">(),    // "u8"
     AtU16   = compute_hash::<r"u16">(),   // "u16"
@@ -382,14 +390,14 @@ fn is_valid_token_kind(kind: u32) -> bool {
         case TokenKind::BiFunction:         case TokenKind::AtVoid:
         case TokenKind::BiModule:           case TokenKind::AtBool:
         case TokenKind::KwVolatile:         case TokenKind::AtUsize:
-        case TokenKind::AtIsize:
-        case TokenKind::AtF32:
-        case TokenKind::AtF64:
-        case TokenKind::AtF80:
-        case TokenKind::AtF128:
-        case TokenKind::AtU8:
-        case TokenKind::AtU16:
-        case TokenKind::AtU32:
+        case TokenKind::AtIsize:            case TokenKind::AtByte:
+        case TokenKind::AtF32:              case TokenKind::AtChar:
+        case TokenKind::AtF64:              case TokenKind::AtF8:
+        case TokenKind::AtF80:              case TokenKind::AtF8E4M3:
+        case TokenKind::AtF128:             case TokenKind::AtF8E5M2:
+        case TokenKind::AtU8:               case TokenKind::AtF512:
+        case TokenKind::AtU16:              case TokenKind::AtF16:
+        case TokenKind::AtU32:              case TokenKind::AtBf16:
         case TokenKind::AtU512:
         case TokenKind::AtI512:             case TokenKind::AtF256:
         case TokenKind::BiSelf:             case TokenKind::KwRequires:
@@ -548,6 +556,14 @@ fn token_kind_to_string(kind: TokenKind) -> string {
         case TokenKind::KwXorEq {               return "kw-xor-eq"; }
         case TokenKind::AtVoid {                return "at-void"; }
         case TokenKind::AtBool {                return "at-bool"; }
+        case TokenKind::AtByte {                return "at-byte"; }
+        case TokenKind::AtChar {                return "at-char"; }
+        case TokenKind::AtF8 {                  return "at-f8"; }
+        case TokenKind::AtF8E4M3 {              return "at-f8e4m3"; }
+        case TokenKind::AtF8E5M2 {              return "at-f8e5m2"; }
+        case TokenKind::AtF512 {                return "at-f512"; }
+        case TokenKind::AtF16 {                 return "at-f16"; }
+        case TokenKind::AtBf16 {                return "at-bf16"; }
         case TokenKind::AtUsize {               return "at-usize"; }
         case TokenKind::AtIsize {               return "at-isize"; }
         case TokenKind::AtF32 {                 return "at-f32"; }
@@ -732,6 +748,14 @@ fn token_kind_to_readable_string(kind: TokenKind) -> string {
         case TokenKind::KwXorEq               { return "xor_eq"; }
         case TokenKind::AtVoid                { return "void"; }
         case TokenKind::AtBool                { return "bool"; }
+        case TokenKind::AtByte                { return "byte"; }
+        case TokenKind::AtChar                { return "char"; }
+        case TokenKind::AtF8                  { return "f8"; }
+        case TokenKind::AtF8E4M3              { return "f8e4m3"; }
+        case TokenKind::AtF8E5M2              { return "f8e5m2"; }
+        case TokenKind::AtF512                { return "f512"; }
+        case TokenKind::AtF16                 { return "f16"; }
+        case TokenKind::AtBf16                { return "bf16"; }
         case TokenKind::AtUsize               { return "usize"; }
         case TokenKind::AtIsize               { return "isize"; }
         case TokenKind::AtF32                 { return "f32"; }
@@ -788,7 +812,12 @@ fn is_annotation(kind: TokenKind) -> bool {
         case TokenKind::AtF80:     case TokenKind::AtI32:
         case TokenKind::AtF128:    case TokenKind::AtI64:
         case TokenKind::AtU8:      case TokenKind::AtI128:
-        case TokenKind::AtComment:
+        case TokenKind::AtByte:    case TokenKind::AtChar:
+        case TokenKind::AtF8:      case TokenKind::AtF8E4M3:
+        case TokenKind::AtF8E5M2:  case TokenKind::AtComment:
+        case TokenKind::AtF512:    case TokenKind::AtF16:
+        case TokenKind::AtBf16:    case TokenKind::AtF256:
+        case TokenKind::AtI512:    case TokenKind::AtU512:
             return true;
         default:
             return false;
@@ -910,16 +939,6 @@ fn is_punctuator(kind: TokenKind) -> bool {
         case TokenKind::OpRBrace:     case TokenKind::OpColon:
         case TokenKind::OpLParen:     case TokenKind::OpSemicolon:
         case TokenKind::OpRParen:
-            return true;
-        default:
-            return false;
-    }
-}
-
-fn is_range_operator(kind: TokenKind) -> bool {
-    switch kind {
-        case TokenKind::OpRange:       case TokenKind::OpRangeEqual:
-        case TokenKind::OpLessEqualGreater:
             return true;
         default:
             return false;
