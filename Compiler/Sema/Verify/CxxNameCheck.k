@@ -82,7 +82,7 @@ class CxxNameCheck derives RecursiveASTVisitor::<CxxNameCheck> {
         if imm == u32(-1) { return; }
 
         if self.kw.contains(imm) {
-            self.sc->diag->report(DiagID::SC001E, name.range.start,
+            self.sc->diag->report(DiagID::SC004E, name.range.start,
                 f"{what} name is a C++ keyword; this name cannot be would be undefined behavior with C/C++ interop and cannot be used"
             ).first(name.range).emit();
             return;
@@ -90,7 +90,7 @@ class CxxNameCheck derives RecursiveASTVisitor::<CxxNameCheck> {
 
         var why = cxx_reserved_reason(self.sc->ctx->get_spelling(name));
         if !why.empty() {
-            self.sc->diag->report(DiagID::SC001W, name.range.start,
+            self.sc->diag->report(DiagID::SC005W, name.range.start,
                 f"{what} name is reserved for the implementation in C++: {why}"
             ).first(name.range).emit();
         }

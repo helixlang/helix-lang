@@ -206,7 +206,7 @@ class FrontendAction {
     fn ok(self)      -> bool    { return self._stage == TUStage::Done; }
     fn failed(self)  -> bool    { return self._stage == TUStage::Failed; }
 
-    priv fn _fatal(self, msg: string) -> bool;
+    priv fn _fatal(self, id: DiagID, msg: string) -> bool;
     priv fn _load(self)        -> bool;
     priv fn _preprocess(self)  -> bool;
     priv fn _parse(self)       -> bool;
@@ -558,7 +558,7 @@ class CompilerInstance {
         );
 
         if T == &null {
-            self._diag->report(DiagID::U001F, f"unknown target triple '{triple}': {string(err.c_str(), err.size())}").emit();
+            self._diag->report(DiagID::P004F, f"unknown target triple '{triple}': {string(err.c_str(), err.size())}").emit();
             return 1;
         }
 
@@ -578,13 +578,13 @@ class CompilerInstance {
         }
 
         if TM == &null {
-            self._diag->report(DiagID::U001F, f"failed to create TargetMachine for '{string(triple.raw())}\x27").emit();
+            self._diag->report(DiagID::P005F, f"failed to create TargetMachine for '{string(triple.raw())}\x27").emit();
             return 1;
         }
 
         var STI: *llvm::MCSubtargetInfo = const_cast::<*llvm::MCSubtargetInfo>(TM->getMCSubtargetInfo());
         if STI == &null {
-            self._diag->report(DiagID::U001F, f"no subtarget info for '{string(triple.raw())}\x27").emit();
+            self._diag->report(DiagID::P005F, f"no subtarget info for '{string(triple.raw())}\x27").emit();
             return 1;
         }
 
@@ -655,7 +655,7 @@ class CompilerInstance {
         );
 
         if T == &null {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::P004F,
                 f"unknown target triple '{string(triple.raw())}': {string(err.c_str(), err.size())}"
             ).emit();
             return 1;
@@ -723,7 +723,7 @@ class CompilerInstance {
         );
 
         if TM == &null {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::P005F,
                 f"failed to create TargetMachine for '{string(triple.raw())}\x27"
             ).emit();
             return 1;
@@ -877,7 +877,7 @@ class CompilerInstance {
         }
 
         if self.invocation().input_files.empty() {
-            self._diag->report(DiagID::U001F, "no input files").emit();
+            self._diag->report(DiagID::I004F, "no input files").emit();
             result.aborted = true;
             return result;
         }
@@ -1368,8 +1368,8 @@ fn FrontendAction::run() {
 //  Pipeline stages each returns true to continue, false to halt.
 
 /// Emits a fatal diagnostic, marks the TU as failed, and returns false.
-fn FrontendAction::_fatal(msg: string) -> bool {
-    self._ci->diag()->report(DiagID::U001F, msg).emit();
+fn FrontendAction::_fatal(id: DiagID, msg: string) -> bool {
+    self._ci->diag()->report(id, msg).emit();
     self.result.had_fatal = true;
     self._stage = TUStage::Failed;
     return false;
@@ -1382,7 +1382,7 @@ fn FrontendAction::_load() -> bool {
     self._stage   = TUStage::Loading;
     self._file_id = self._ci->sm()->load_file(self.path);
     if self._file_id == u32(-1) {
-        return self._fatal(f"cannot open '{self.path.full_path()}\x27");
+        return self._fatal(DiagID::I005F, f"cannot open '{self.path.full_path()}\x27");
     }
     return true;
 }
@@ -1535,7 +1535,7 @@ fn FrontendAction::_parse() -> bool {
         } else if ast_mode == "canonical" {
             opts = PrintOptions::canonical();
         } else {
-            return self._fatal(
+            return self._fatal(DiagID::I010F,
                 f"invalid --print-ast value '{ast_mode}'; expected one of: tree, flat, canonical"
             );
         }
@@ -1544,12 +1544,12 @@ fn FrontendAction::_parse() -> bool {
             std::print(f"============== AST ({ast_mode}) for fid {fid} ==============");
             var ctx = self._global_scope->get_context(fid);
             if ctx == &null {
-                return self._fatal(f"failed to get context for fid {fid}");
+                return self._fatal(DiagID::I006F, f"failed to get context for fid {fid}");
             }
             
             var tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
             if tu == &null {
-                return self._fatal(f"parse failed for fid {fid}");
+                return self._fatal(DiagID::I006F, f"parse failed for fid {fid}");
             }
             
             ASTPrinter::print(tu, opts);
@@ -1667,7 +1667,7 @@ fn FrontendAction::_codegen() -> bool {
 
     var be = self._ci->backend();
     if (be == &null) || (!be->ready()) {
-        return self._fatal("clang backend not ready");
+        return self._fatal(DiagID::I006F, "clang backend not ready");
     }
 
     var kfid    = self._file_id;
@@ -1677,13 +1677,13 @@ fn FrontendAction::_codegen() -> bool {
     var ctx = self._global_scope->get_context(self._file_id);
     if ctx == &null {
         be->end_tu(adapter);
-        return self._fatal("codegen: no ASTContext for main fid");
+        return self._fatal(DiagID::I006F, "codegen: no ASTContext for main fid");
     }
 
     var ksize = static_cast::<u32>(self._ci->sm()->get_file_size(self._file_id));
     if ksize == 0 {
         be->end_tu(adapter);
-        return self._fatal("codegen: zero-size main file");
+        return self._fatal(DiagID::I006F, "codegen: zero-size main file");
     }
 
     var fe  = self._ci->invocation().frontend;

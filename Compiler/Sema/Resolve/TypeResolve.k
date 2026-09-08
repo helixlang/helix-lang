@@ -406,8 +406,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
     priv fn _resolve_self(self, n: *SelfType) {
         var owner = self._current_self_decl();
         if owner == &null {
-            // FIXME(diag-table): wants its own code.
-            self.sc->diag->report(DiagID::R001E, n->range.start,
+            self.sc->diag->report(DiagID::R030E, n->range.start,
                 "'Self' used outside of a type body"
             ).first(n->range).emit();
             n->poison();
@@ -459,7 +458,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             var hit = self._lookup_generic(imm);
             if hit.decl == &null {
                 var nm = self.sc->ctx->get_spelling(n->param_name->name);
-                self.sc->diag->report(DiagID::R001E, n->range.start,
+                self.sc->diag->report(DiagID::R022E, n->range.start,
                     f"use of undeclared generic parameter '{nm}\x27"
                 ).first(n->range).emit();
                 n->poison();
@@ -599,8 +598,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if bk != BuiltinKind::COUNT {
             if (n > 1) || (!seg0->generic_args.is_empty()) {
                 var sp = builtin_spelling(bk);
-                // FIXME(diag-table): wants its own code.
-                self.sc->diag->report(DiagID::R001E, ct->range.start,
+                self.sc->diag->report(DiagID::R024E, ct->range.start,
                     f"'{sp}' is a primitive type; it has no members and takes no generic arguments"
                 ).first(ct->range).emit();
                 ct->poison();
@@ -624,7 +622,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if (tok.kind == TokenKind::KwSelf) || (tok.kind == TokenKind::BiSelf) {
             var sp = self.sc->ctx->get_spelling(tok);
             if !seg0->generic_args.is_empty() {
-                self.sc->diag->report(DiagID::R001E, seg0->range.start,
+                self.sc->diag->report(DiagID::R032E, seg0->range.start,
                     f"'{sp}' takes no generic arguments; it already denotes the enclosing type with its own"
                 ).first(seg0->range).emit();
                 ct->poison();
@@ -632,7 +630,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             }
             var owner = self._current_self_decl();
             if owner == &null {
-                self.sc->diag->report(DiagID::R001E, ct->range.start,
+                self.sc->diag->report(DiagID::R030E, ct->range.start,
                     f"'{sp}' used as a type outside of a type body"
                 ).first(ct->range).emit();
                 ct->poison();
@@ -666,7 +664,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                     var r = self.sc->lookup.unqualified(self.cur_dc, DeclName::ident(imm));
                     if !r.found() {
                         var nm = self.sc->ctx->get_spelling(tok);
-                        self.sc->diag->report(DiagID::R001E, seg0->name->range.start,
+                        self.sc->diag->report(DiagID::R021E, seg0->name->range.start,
                             f"unknown type name '{nm}\x27"
                         ).first(seg0->name->range).emit();
                         ct->poison();
@@ -702,7 +700,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             if scope == &null {
                 if !cur->is_poisoned() {
                     var pnm = self.sc->ctx->get_spelling(prev->name->name);
-                    self.sc->diag->report(DiagID::R001E, prev->name->range.start,
+                    self.sc->diag->report(DiagID::R026E, prev->name->range.start,
                         f"'{pnm}' does not name a scope; '::' can only follow a type, module, or enum"
                     ).first(prev->name->range).emit();
                 }
@@ -722,7 +720,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             if !sr.found() {
                 var snm = self.sc->ctx->get_spelling(seg->name->name);
                 var pnm = self.sc->ctx->get_spelling(prev->name->name);
-                self.sc->diag->report(DiagID::R001E, seg->name->range.start,
+                self.sc->diag->report(DiagID::R025E, seg->name->range.start,
                     f"no type named '{snm}' in '{pnm}\x27"
                 ).first(seg->name->range).emit();
                 ct->poison();
@@ -776,19 +774,19 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         }
         if (best == &null) && (spec != &null) {
             var nm = self.sc->ctx->get_spelling(at->name);
-            self.sc->diag->report(DiagID::R001E, at->range.start,
+            self.sc->diag->report(DiagID::R042E, at->range.start,
                 f"'{nm}' has a specialization but no primary template in scope"
             ).first(at->range)
-             .note(DiagID::R001N, spec->range.start, "specialization declared here").first(spec->range)
+             .note(DiagID::R042N, spec->range.start, "specialization declared here").first(spec->range)
              .emit();
             return &null;
         }
         if best == &null {
             var nm = self.sc->ctx->get_spelling(at->name);
-            self.sc->diag->report(DiagID::R001E, at->range.start,
+            self.sc->diag->report(DiagID::R023E, at->range.start,
                 f"'{nm}' does not name a type"
             ).first(at->range)
-             .note(DiagID::R001N, r.cell->get(0)->range.start,
+             .note(DiagID::R023N, r.cell->get(0)->range.start,
                 f"'{nm}' is declared here, but as a value, not a type"
             ).first(r.cell->get(0)->range).emit();
             return &null;
@@ -834,7 +832,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             var gp = cast::<GenericParamDecl>(d);
             if !seg->generic_args.is_empty() {
                 var nm = self.sc->ctx->get_spelling(gp->name);
-                self.sc->diag->report(DiagID::R001E, seg->range.start,
+                self.sc->diag->report(DiagID::R032E, seg->range.start,
                     f"generic parameter '{nm}' cannot itself take generic arguments"
                 ).first(seg->range).emit();
                 ct->poison();
@@ -842,10 +840,10 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             }
             if gp->is_const_param {
                 var nm = self.sc->ctx->get_spelling(gp->name);
-                self.sc->diag->report(DiagID::R001E, seg->range.start,
+                self.sc->diag->report(DiagID::R023E, seg->range.start,
                     f"'{nm}' is a value parameter and cannot be used as a type"
                 ).first(seg->range)
-                 .note(DiagID::R001N, gp->range.start, "declared as a const generic parameter here")
+                 .note(DiagID::R023N, gp->range.start, "declared as a const generic parameter here")
                  .first(gp->range).emit();
                 ct->poison();
                 return &null;
@@ -862,7 +860,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         // -- module: a scope, never a type ------------------------------------
         if isa::<ModuleDecl>(d) {
             var nm = self.sc->ctx->get_spelling(cast::<ModuleDecl>(d)->name);
-            self.sc->diag->report(DiagID::R001E, seg->range.start,
+            self.sc->diag->report(DiagID::R023E, seg->range.start,
                 f"'{nm}' is a module, not a type"
             ).first(seg->range).emit();
             ct->poison();
@@ -884,10 +882,10 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             }
             if !seg->generic_args.is_empty() {
                 var nm = self.sc->ctx->get_spelling(td->name);
-                self.sc->diag->report(DiagID::R001E, seg->range.start,
+                self.sc->diag->report(DiagID::R032E, seg->range.start,
                     f"type alias '{nm}' is not generic and takes no arguments"
                 ).first(seg->range)
-                 .note(DiagID::R001N, td->range.start, "declared here").first(td->range).emit();
+                 .note(DiagID::R032N, td->range.start, "declared here").first(td->range).emit();
                 ct->poison();
                 return &null;
             }
@@ -957,26 +955,26 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
         var nm = self._decl_name_str(d);
         if (given > 0) && (total == 0) {
-            self.sc->diag->report(DiagID::R001E, seg->range.start,
+            self.sc->diag->report(DiagID::R032E, seg->range.start,
                 f"'{nm}' is not generic and takes no generic arguments"
             ).first(seg->range)
-             .note(DiagID::R001N, d->range.start, "declared here").first(d->range).emit();
+             .note(DiagID::R032N, d->range.start, "declared here").first(d->range).emit();
             ct->poison();
             return false;
         }
         if given < required {
-            self.sc->diag->report(DiagID::R001E, seg->range.start,
+            self.sc->diag->report(DiagID::R032E, seg->range.start,
                 f"'{nm}' requires at least {required} generic argument(s), but {given} were given"
             ).first(seg->range)
-             .note(DiagID::R001N, d->range.start, "declared here").first(d->range).emit();
+             .note(DiagID::R032N, d->range.start, "declared here").first(d->range).emit();
             ct->poison();
             return false;
         }
         if (!has_pack) && (given > total) {
-            self.sc->diag->report(DiagID::R001E, seg->range.start,
+            self.sc->diag->report(DiagID::R032E, seg->range.start,
                 f"'{nm}' takes at most {total} generic argument(s), but {given} were given"
             ).first(seg->range)
-             .note(DiagID::R001N, d->range.start, "declared here").first(d->range).emit();
+             .note(DiagID::R032N, d->range.start, "declared here").first(d->range).emit();
             ct->poison();
             return false;
         }
@@ -1030,7 +1028,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                 }
                 if found == usize(-1) {
                     var nm = self.sc->ctx->get_spelling(a->name->name);
-                    self.sc->diag->report(DiagID::R001E, a->name_range.start,
+                    self.sc->diag->report(DiagID::R033E, a->name_range.start,
                         f"no generic parameter named '{nm}\x27"
                     ).first(a->name_range).emit();
                     ct->poison();
@@ -1038,7 +1036,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                 }
                 if filled[found] {
                     var nm = self.sc->ctx->get_spelling(a->name->name);
-                    self.sc->diag->report(DiagID::R001E, a->name_range.start,
+                    self.sc->diag->report(DiagID::R034E, a->name_range.start,
                         f"generic argument '{nm}' specified more than once"
                     ).first(a->name_range).emit();
                     ct->poison();
@@ -1165,7 +1163,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         }
         if self.sc->rstate.at_depth_limit() {
             var nm = self.sc->ctx->get_spelling(td->name);
-            self.sc->diag->report(DiagID::R001E, at.start,
+            self.sc->diag->report(DiagID::R036E, at.start,
                 f"type alias '{nm}' nests deeper than the limit ({self.sc->rstate.max_depth()}); "
                 "raise it with --cmax-scope-depth or flatten the alias chain"
             ).first(at).emit();
@@ -1221,7 +1219,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         var idx = self.sc->rstate.cycle_index(static_cast::<*Decl>(td));
         var nm  = self.sc->ctx->get_spelling(td->name);
 
-        var b = self.sc->diag->report(DiagID::R001E, at.start,
+        var b = self.sc->diag->report(DiagID::R035E, at.start,
             f"type alias '{nm}' is defined in terms of itself"
         );
         b.first(at);
@@ -1232,7 +1230,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                 var fr = (*stack)[i];
                 if fr.decl == &null { continue; }
                 var lnm = self._decl_name_str(fr.decl);
-                b.note(DiagID::R001N, fr.decl->range.start,
+                b.note(DiagID::R035N, fr.decl->range.start,
                     f"'{lnm}' is declared here and refers to the next alias in the cycle"
                 ).first(fr.decl->range);
                 fr.decl->poison();
@@ -1568,7 +1566,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         var c = n->underlying->canonical;
         if c == &null { return; }   // poisoned or dependent; already handled.
         if isa::<BuiltinType>(c) && builtin_is_integer(cast::<BuiltinType>(c)->builtin) { return; }
-        self.sc->diag->report(DiagID::R001E, n->underlying->range.start,
+        self.sc->diag->report(DiagID::R046E, n->underlying->range.start,
             "an enum's underlying type must be a primitive integer type"
         ).first(n->underlying->range).emit();
         n->underlying->poison();
@@ -1746,21 +1744,20 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
         var nm = self._decl_name_str(d);
         if !e->is_explicit {
-            // FIXME(diag-table)
-            self.sc->diag->report(DiagID::R001E, d->range.start,
+            self.sc->diag->report(DiagID::R043E, d->range.start,
                 f"explicit specialization of '{nm}' after it was already instantiated with these arguments"
             ).first(d->range)
-             .note(DiagID::R001N, e->decl->range.start,
+             .note(DiagID::R043N, e->decl->range.start,
                 "first instantiated here; a specialization must precede every use of it")
              .first(e->decl->range).emit();
             d->poison();
             return;
         }
         if e->home_fid != self.sc->ctx->fid {
-            self.sc->diag->report(DiagID::R001E, d->range.start,
+            self.sc->diag->report(DiagID::R044E, d->range.start,
                 f"explicit specialization of '{nm}' redeclared in a different file"
             ).first(d->range)
-             .note(DiagID::R001N, e->decl->range.start, "previously declared here").first(e->decl->range)
+             .note(DiagID::R044N, e->decl->range.start, "previously declared here").first(e->decl->range)
              .emit();
             d->poison();
             return;
@@ -1794,15 +1791,13 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if dc->dc_kind == DeclContextKind::Module { return; }
 
         var nm = self._decl_name_str(d);
-        // FIXME(diag-table): wants its own code so -Wno- can name it, and so
-        // it can be promoted to an error independently of the R001 sweep.
-        self.sc->diag->report(DiagID::R001W, d->range.start,
+        self.sc->diag->report(DiagID::R045W, d->range.start,
             f"explicit specialization of '{nm}' is written inside a function body"
         ).first(d->range)
-         .note(DiagID::R001N, d->range.start,
+         .note(DiagID::R045N, d->range.start,
             f"specializations are global regardless of where they are written; this one applies to every use of '{nm}' in the program, including uses that cannot see this declaration"
         )
-         .note(DiagID::R001N, d->range.start,
+         .note(DiagID::R045N, d->range.start,
             "write it at module scope to make that visible")
          .emit();
     }
@@ -1823,7 +1818,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             }
         }
         var nm = self._decl_name_str(d);
-        self.sc->diag->report(DiagID::R001E, d->range.start,
+        self.sc->diag->report(DiagID::R042E, d->range.start,
             f"'{nm}' is declared as a specialization, but no primary template named '{nm}' is visible here"
         ).first(d->range).emit();
         return &null;
@@ -1855,10 +1850,10 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         }
         if both {
             var nm = self._decl_name_str(cur);
-            self.sc->diag->report(DiagID::R001E, cur->range.start,
+            self.sc->diag->report(DiagID::R029E, cur->range.start,
                 f"redefinition of specialization '{nm}\x27"
             ).first(cur->range)
-             .note(DiagID::R001N, prev->range.start, "previous definition is here").first(prev->range)
+             .note(DiagID::R029N, prev->range.start, "previous definition is here").first(prev->range)
              .emit();
             cur->poison();
             return;

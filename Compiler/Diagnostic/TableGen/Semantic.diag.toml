@@ -62,3 +62,309 @@ group = "layout"
     order the layout walk took them, so the whole path from the reported type back to itself is
     visible.
     """
+[SC003]
+brief = "unreachable code after a control transfer"
+group = "unreachable-code"
+
+    [SC003.W]
+    explain = """
+    # unreachable code
+
+    the statement before this one always transfers control out of the block - a `return`, `break`,
+    `continue`, `jump!`, or a call that never returns - so nothing after it in the same block can
+    ever run. the statements are still checked, but they are dropped during lowering.
+
+    ## example
+
+    ```kairo
+    fn f() -> i32 {
+        return 1;
+        var x = 2;    // never runs
+    }
+    ```
+
+    ## how to fix
+
+    delete the dead statements, or move them before the control transfer. a `label!` immediately
+    after the transfer makes the following code reachable again and silences this warning.
+    """
+
+[SC004]
+brief = "name is a C++ keyword"
+group = "cxx-interop"
+
+    [SC004.E]
+    explain = """
+    # name collides with a C++ keyword
+
+    kairo declarations are emitted as C++ and keep their spelling, so a name that is a keyword in
+    C++ cannot be written out. the generated translation unit would not parse, so this is rejected
+    at the declaration rather than at codegen.
+
+    ## example
+
+    ```kairo
+    class template { }    // `template` is a C++ keyword
+    ```
+
+    ## how to fix
+
+    rename the declaration. if the name must survive into the generated C++ for an external ABI,
+    give it an explicit external name instead of spelling it as the identifier.
+    """
+
+[SC005]
+brief = "name is reserved to the C++ implementation"
+group = "cxx-interop"
+
+    [SC005.W]
+    explain = """
+    # reserved name
+
+    C++ reserves whole classes of identifiers to the implementation: names containing a double
+    underscore, names beginning with an underscore followed by a capital letter, and names beginning
+    with an underscore at global scope. using one is undefined behavior, and it may silently collide
+    with a standard-library or compiler-internal name in the emitted C++.
+
+    ## how to fix
+
+    rename the declaration so it does not start with an underscore and contains no `__`.
+    """
+
+[SC006]
+brief = "`jump!` target has no matching `label!`"
+group = "control-flow"
+
+    [SC006.E]
+    explain = """
+    # unknown jump target
+
+    `jump!` names a `label!` declared in the same function. no `label!` with this name is visible
+    from the jump, so there is nowhere to transfer control to. labels do not cross function
+    boundaries, and a label inside a nested lambda is not visible to the enclosing function.
+
+    ## example
+
+    ```kairo
+    fn f() {
+        jump!(done);    // no `label!(done)` in this function
+    }
+    ```
+
+    ## how to fix
+
+    declare `label!(done)` in the same function, or correct the spelling of the target.
+    """
+
+[SC007]
+brief = "duplicate `label!` name"
+group = "control-flow"
+
+    [SC007.E]
+    explain = """
+    # duplicate label
+
+    two `label!` declarations in one function share a name, so a `jump!` to it has two possible
+    destinations. label names are unique per function.
+
+    ## how to fix
+
+    rename one of the labels.
+    """
+
+[SC008]
+brief = "duplicate catch-all arm"
+group = "unreachable-code"
+
+    [SC008.E]
+    explain = """
+    # duplicate catch-all
+
+    an earlier arm in this construct already matches everything - a `default` or `_` arm in a
+    `match`, or a bare `catch` in a `try` - and this arm is another one. two catch-alls in one
+    construct is a mistake rather than dead code, because the second can never be intended.
+
+    ## example
+
+    ```kairo
+    match x {
+        case _ { f(); }
+        case _ { g(); }    // a catch-all already matches everything
+    }
+    ```
+
+    ## how to fix
+
+    delete the duplicate, or give one of the two arms a real pattern or filter.
+    """
+
+[SC009]
+brief = "unreachable arm after a catch-all"
+group = "unreachable-code"
+
+    [SC009.W]
+    explain = """
+    # unreachable arm
+
+    arms are tried in source order, and an earlier one matches everything: a `default`/`_` arm, a
+    bare `catch`, or an irrefutable pattern alternative. this arm is never selected.
+
+    ## example
+
+    ```kairo
+    match x {
+        case _ { f(); }
+        case 1 { g(); }    // never selected
+    }
+    ```
+
+    ## how to fix
+
+    move the catch-all to the end, where it belongs, or delete this arm.
+    """
+
+[SC010]
+brief = "duplicate binding name in a pattern"
+group = "pattern-matching"
+
+    [SC010.E]
+    explain = """
+    # duplicate binding
+
+    a name may bind at most once per pattern alternative. binding it twice would leave the arm body
+    with two distinct values under one name and no rule for which one wins.
+
+    ## example
+
+    ```kairo
+    case Point{ x: a, y: a } { }    // `a` binds twice
+    ```
+
+    ## how to fix
+
+    give the second binding a different name. to require the two positions to be equal, bind them
+    separately and test with a guard.
+    """
+
+[SC011]
+brief = "pattern alternatives bind different names"
+group = "pattern-matching"
+
+    [SC011.E]
+    explain = """
+    # inconsistent alternative bindings
+
+    the alternatives of one pattern share a single arm body, so every alternative must make exactly
+    the same names available to it. this alternative's bindings differ from the first one's, which
+    would leave a name unbound on some paths into the body.
+
+    ## example
+
+    ```kairo
+    case A{ v: n } | B{ } { use(n); }    // `n` is unbound on the `B` path
+    ```
+
+    ## how to fix
+
+    bind the same set of names in every alternative, or split the alternatives into separate arms.
+    """
+
+[SC012]
+brief = "loop label does not name an enclosing loop"
+group = "control-flow"
+
+    [SC012.E]
+    explain = """
+    # unknown loop label
+
+    a labelled `break` or `continue` names the loop it acts on, and that loop must enclose the
+    statement. no enclosing loop carries this label.
+
+    ## example
+
+    ```kairo
+    outer: for var i = 0; i < n; i++ {
+        break inner;    // no enclosing loop is labelled `inner`
+    }
+    ```
+
+    ## how to fix
+
+    correct the label, or add it to the loop you meant to target.
+    """
+
+[SC013]
+brief = "`break` or `continue` outside of a loop"
+group = "control-flow"
+
+    [SC013.E]
+    explain = """
+    # loop control outside a loop
+
+    `break` and `continue` act on an enclosing loop, and there is none here. a lambda body is a new
+    function: a loop outside the lambda does not enclose statements inside it.
+
+    ## how to fix
+
+    move the statement into the loop, or use `return` if you meant to leave the function.
+    """
+
+[SC014]
+brief = "control transfer out of a `finally` block"
+group = "control-flow"
+
+    [SC014.E]
+    explain = """
+    # control cannot leave a `finally` block
+
+    a `finally` body is cleanup code. it is lowered to a deferred lambda that runs at scope exit,
+    after the enclosing control flow has already been decided, so it cannot alter it: no loop is
+    live to `break` or `continue`, and a `return` has no function frame left to return from.
+
+    ## example
+
+    ```kairo
+    for var i = 0; i < n; i++ {
+        try { f(); }
+        finally { break; }    // no loop is live when this runs
+    }
+    ```
+
+    ## how to fix
+
+    record what happened in a variable inside the `finally` body and act on it after the `try`
+    statement, where the enclosing control flow is still live.
+    """
+
+[SC015]
+brief = "loop label shadows an enclosing label"
+group = "shadowing"
+
+    [SC015.W]
+    explain = """
+    # shadowed loop label
+
+    an enclosing loop already carries this label. inside this loop a labelled `break` or `continue`
+    binds to the innermost match, so the outer loop can no longer be targeted from here.
+
+    ## how to fix
+
+    rename one of the two labels.
+    """
+
+[SC016]
+brief = "conformance constraint on a type alias"
+group = "constraints"
+
+    [SC016.W]
+    explain = """
+    # constraint on an alias has no effect
+
+    a conformance constraint is checked by resolving members against a type's body. an alias has no
+    body of its own - it is a name for another type - so there is nothing to check the constraint
+    against and it is dropped.
+
+    ## how to fix
+
+    move the constraint to the aliased type itself, or to the function that uses the alias.
+    """

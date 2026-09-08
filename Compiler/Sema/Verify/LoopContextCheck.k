@@ -99,7 +99,7 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
     fn visit_break_stmt(self, n: *BreakStmt) -> bool {
         if n->has_label {
             if !self._label_visible(n->label) {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC012E, n->range.start,
                     "`break` label does not name an enclosing loop"
                 ).first(n->range).emit();
             }
@@ -108,13 +108,13 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
 
         if self.loop_depth == 0 {
             if self.finally_depth > 0 {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC014E, n->range.start,
                     "`break` cannot escape a `finally` block; the body runs "
                     "as a deferred lambda at scope exit, when no enclosing "
                     "loop is live"
                 ).first(n->range).emit();
             } else {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC013E, n->range.start,
                     "`break` outside of a loop"
                 ).first(n->range).emit();
             }
@@ -126,7 +126,7 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
     fn visit_continue_stmt(self, n: *ContinueStmt) -> bool {
         if n->has_label {
             if !self._label_visible(n->label) {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC012E, n->range.start,
                     "`continue` label does not name an enclosing loop"
                 ).first(n->range).emit();
             }
@@ -135,13 +135,13 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
 
         if self.loop_depth == 0 {
             if self.finally_depth > 0 {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC014E, n->range.start,
                     "`continue` cannot escape a `finally` block; the body "
                     "runs as a deferred lambda at scope exit, when no "
                     "enclosing loop is live"
                 ).first(n->range).emit();
             } else {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC013E, n->range.start,
                     "`continue` outside of a loop"
                 ).first(n->range).emit();
             }
@@ -155,7 +155,7 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
     /// INSIDE the finally resets finally_depth, so its returns stay legal.
     fn visit_return_stmt(self, n: *ReturnStmt) -> bool {
         if self.finally_depth > 0 {
-            self.sc->diag->report(DiagID::SC001E, n->range.start,
+            self.sc->diag->report(DiagID::SC014E, n->range.start,
                 "`return` is not allowed inside a `finally` block; the body "
                 "is cleanup code that runs at scope exit and cannot alter "
                 "the function's control flow"
@@ -229,7 +229,7 @@ class LoopContextCheck derives RecursiveASTVisitor::<LoopContextCheck> {
     fn traverse_labeled_stmt(self, n: *LabeledStmt) -> *LabeledStmt {
         if self.dyn()->walkup_labeled_stmt(n) == false { return n; }
         if self._label_visible(n->label) {
-            self.sc->diag->report(DiagID::SC001W, n->range.start,
+            self.sc->diag->report(DiagID::SC015W, n->range.start,
                 "label shadows an identical enclosing label; the outer "
                 "label is unreachable from inside this loop"
             ).first(n->range).emit();

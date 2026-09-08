@@ -97,12 +97,12 @@ class ArmOrderCheck derives RecursiveASTVisitor::<ArmOrderCheck> {
             var mc = cases->get(i);
             if catch_all_seen {
                 if self._is_catch_all_case(mc) {
-                    self.sc->diag->report(DiagID::SC001E, mc->range.start,
+                    self.sc->diag->report(DiagID::SC008E, mc->range.start,
                         "duplicate catch-all arm; a previous `default`/`_` arm "
                         "already matches everything"
                     ).first(mc->range).emit();
                 } else {
-                    self.sc->diag->report(DiagID::SC001W, mc->range.start,
+                    self.sc->diag->report(DiagID::SC009W, mc->range.start,
                         "unreachable match arm; a previous `default`/`_` arm "
                         "matches everything first"
                     ).first(mc->range).emit();
@@ -133,12 +133,12 @@ class ArmOrderCheck derives RecursiveASTVisitor::<ArmOrderCheck> {
             var arm = n->arms.get(i);
             if catch_all_seen {
                 if arm->filter == &null {
-                    self.sc->diag->report(DiagID::SC001E, arm->range.start,
+                    self.sc->diag->report(DiagID::SC008E, arm->range.start,
                         "duplicate bare `catch`; a previous bare `catch` "
                         "already handles everything"
                     ).first(arm->range).emit();
                 } else {
-                    self.sc->diag->report(DiagID::SC001W, arm->range.start,
+                    self.sc->diag->report(DiagID::SC009W, arm->range.start,
                         "unreachable catch arm; a previous bare `catch` "
                         "handles everything first"
                     ).first(arm->range).emit();
@@ -161,12 +161,12 @@ class ArmOrderCheck derives RecursiveASTVisitor::<ArmOrderCheck> {
             var arm = n->catch_arms.get(i);
             if catch_all_seen {
                 if arm->filter == &null {
-                    self.sc->diag->report(DiagID::SC001E, arm->range.start,
+                    self.sc->diag->report(DiagID::SC008E, arm->range.start,
                         "duplicate bare `catch`; a previous bare `catch` "
                         "already handles everything"
                     ).first(arm->range).emit();
                 } else {
-                    self.sc->diag->report(DiagID::SC001W, arm->range.start,
+                    self.sc->diag->report(DiagID::SC009W, arm->range.start,
                         "unreachable catch arm; a previous bare `catch` "
                         "handles everything first"
                     ).first(arm->range).emit();

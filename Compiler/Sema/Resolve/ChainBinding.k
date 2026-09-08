@@ -448,7 +448,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         // --- `::` -----------------------------------------------------------------
         if is_scope_sep {
             if a.kind == AnchorKind::Value {
-                self._err(at, f"'::' cannot follow a value; use '.' to access a member of '{self._decl_name_str(a.decl)}\x27");
+                self._err(DiagID::R027E, at, f"'::' cannot follow a value; use '.' to access a member of '{self._decl_name_str(a.decl)}\x27");
                 st->name->poison();
                 self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
                 var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -494,7 +494,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 }
                 if cands.empty() {
                     var mn = ("the global scope") if (a.decl == &null) else (f"module '{self._decl_name_str(a.decl)}\x27");
-                    self._err(at, f"no member named '{spelled}' in {mn}");
+                    self._err(DiagID::R025E, at, f"no member named '{spelled}' in {mn}");
                     st->name->poison();
                     self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
                     var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -508,7 +508,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
             var cands = vec::<*Decl>();
             self.ml.lookup(a.ty, name, &cands);
             if cands.empty() {
-                self._err(at, f"no member named '{spelled}' in '{self._decl_name_str(a.decl)}\x27");
+                self._err(DiagID::R025E, at, f"no member named '{spelled}' in '{self._decl_name_str(a.decl)}\x27");
                 st->name->poison();
                 self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
                 var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -518,13 +518,13 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
 
         // --- `.` `->` `?.` `?->` -----------------------------------------------------
         if a.kind == AnchorKind::Module {
-            self._err(at, f"'.' cannot follow a module; use '::' to name a member of '{self._decl_name_str(a.decl)}\x27");
+            self._err(DiagID::R027E, at, f"'.' cannot follow a module; use '::' to name a member of '{self._decl_name_str(a.decl)}\x27");
             st->name->poison();
             self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
             var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
         }
         if a.kind == AnchorKind::Type {
-            self._err(at, f"'.' cannot follow a type; use '::' to name a member of '{self._decl_name_str(a.decl)}\x27");
+            self._err(DiagID::R027E, at, f"'.' cannot follow a type; use '::' to name a member of '{self._decl_name_str(a.decl)}\x27");
             st->name->poison();
             self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
             var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -553,7 +553,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         }
         if arrow {
             if !isa::<PointerType>(ty) {
-                self._err(at, "'->' requires a pointer on its left; use '.' for a value");
+                self._err(DiagID::R027E, at, "'->' requires a pointer on its left; use '.' for a value");
                 st->name->poison();
                 self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
                 var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -561,7 +561,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
             ty = cast::<PointerType>(ty)->pointee;
         } else {
             if isa::<PointerType>(ty) {
-                self._err(at, "'.' cannot be applied to a pointer; use '->\x27");
+                self._err(DiagID::R027E, at, "'.' cannot be applied to a pointer; use '->\x27");
                 st->name->poison();
                 self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
                 var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -584,7 +584,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         self.ml.lookup(ty, name, &cands);
         if cands.empty() {
             var tn = self._type_name_str(ty);
-            self._err(at, f"no member named '{spelled}' in '{tn}\x27");
+            self._err(DiagID::R025E, at, f"no member named '{spelled}' in '{tn}\x27");
             st->name->poison();
             self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
             var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
@@ -640,13 +640,13 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 return self._anchor_after(sole, st);
             }
             var nm = self.sc->ctx->get_spelling(st->name->name);
-            var b = self.sc->diag->report(DiagID::R001E, st->name->range.start,
+            var b = self.sc->diag->report(DiagID::R028E, st->name->range.start,
                 f"'{nm}' is ambiguous: it names more than one member reachable from here"
             );
             b.first(st->name->range);
             for var i: usize = 0; i < n; ++i {
                 var d = (*cands)[i];
-                b.note(DiagID::R001N, d->range.start, "candidate declared here").first(d->range);
+                b.note(DiagID::R028N, d->range.start, "candidate declared here").first(d->range);
             }
             b.emit();
             st->name->poison();
@@ -694,10 +694,8 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         self.sc->trace.member_result(loc, o, d, ncand, owner);
     }
 
-    priv fn _err(self, at: SourceRange, msg: string) {
-        // FIXME(diag-table): every diagnostic in this pass shares R001E until
-        // the resolution codes are split.
-        self.sc->diag->report(DiagID::R001E, at.start, msg).first(at).emit();
+    priv fn _err(self, id: DiagID, at: SourceRange, msg: string) {
+        self.sc->diag->report(id, at.start, msg).first(at).emit();
         self.n_errored += 1;
     }
 

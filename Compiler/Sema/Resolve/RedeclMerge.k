@@ -314,7 +314,7 @@ class RedeclMerge {
             if hit == &null {
                 var nm = self.sc->ctx->get_spelling(f->name);
                 var hm = self._dc_name(home);
-                self.sc->diag->report(DiagID::R001E, f->range.start,
+                self.sc->diag->report(DiagID::R031E, f->range.start,
                     f"out-of-line definition of '{nm}' does not match any declaration in '{hm}\x27"
                 ).first(f->range).emit();
                 f->poison();
@@ -334,10 +334,10 @@ class RedeclMerge {
             var prior = hit->definition();
             if (prior != &null) && (prior != f) {
                 var nm = self.sc->ctx->get_spelling(f->name);
-                self.sc->diag->report(DiagID::R001E, f->range.start,
+                self.sc->diag->report(DiagID::R029E, f->range.start,
                     f"redefinition of '{nm}\x27"
                 ).first(f->range)
-                 .note(DiagID::R001N, prior->range.start,
+                 .note(DiagID::R029N, prior->range.start,
                     f"previous definition of '{nm}' is here"
                 ).first(prior->range).emit();
                 f->poison();
@@ -455,11 +455,11 @@ class RedeclMerge {
         var at      = (cur->return_type->range)  if (cur->return_type  != &null) else (cur->range);
         var prev_at = (prev->return_type->range) if (prev->return_type != &null) else (prev->range);
 
-        self.sc->diag->report(DiagID::R001E, at.start,
+        self.sc->diag->report(DiagID::R037E, at.start,
             f"'{name}' declared with a different return type; the parameter types "
             "are identical, so this is a redeclaration, not an overload"
         ).first(at)
-         .note(DiagID::R001N, prev_at.start,
+         .note(DiagID::R037N, prev_at.start,
             "previously declared with this return type"
         ).first(prev_at).emit();
         cur->poison();
@@ -495,10 +495,10 @@ class RedeclMerge {
             if (pp->default_val == &null) || (pc->default_val == &null) { continue; }
 
             var pn = self.sc->ctx->get_spelling(pc->name);
-            self.sc->diag->report(DiagID::R001E, pc->default_val->range.start,
+            self.sc->diag->report(DiagID::R040E, pc->default_val->range.start,
                 f"redefinition of default argument for '{pn}\x27"
             ).first(pc->default_val->range)
-             .note(DiagID::R001N, pp->default_val->range.start,
+             .note(DiagID::R040N, pp->default_val->range.start,
                 "previous default argument is here"
             ).first(pp->default_val->range).emit();
             cur->poison();
@@ -511,10 +511,10 @@ class RedeclMerge {
     priv fn _check_linkage_agrees(self, name: string, prev: *FunctionDecl,
                                   cur: *FunctionDecl) {
         if prev->abi == cur->abi { return; }
-        self.sc->diag->report(DiagID::R001E, cur->range.start,
+        self.sc->diag->report(DiagID::R038E, cur->range.start,
             f"'{name}' redeclared with a different ABI"
         ).first(cur->range)
-         .note(DiagID::R001N, prev->range.start, "previously declared here")
+         .note(DiagID::R038N, prev->range.start, "previously declared here")
          .first(prev->range).emit();
         cur->poison();
     }
@@ -542,11 +542,11 @@ class RedeclMerge {
         else if prev->is_noreturn  != cur->is_noreturn  { what = "noreturn"; }
         if what.size() == 0 { return; }
 
-        self.sc->diag->report(DiagID::R001E, cur->range.start,
+        self.sc->diag->report(DiagID::R039E, cur->range.start,
             f"'{name}' redeclared with a different '{what}' qualifier; the "
             "parameter types are identical, so this is one function"
         ).first(cur->range)
-         .note(DiagID::R001N, prev->range.start, "previously declared here")
+         .note(DiagID::R039N, prev->range.start, "previously declared here")
          .first(prev->range).emit();
         cur->poison();
     }
@@ -594,10 +594,10 @@ class RedeclMerge {
         // that the two disagree about const or return type is a second
         // diagnostic for one mistake, with the same fix.
         if in_type_body {
-            self.sc->diag->report(DiagID::R001E, cur->range.start,
+            self.sc->diag->report(DiagID::R041E, cur->range.start,
                 f"class member '{name}' cannot be redeclared"
             ).first(cur->range)
-             .note(DiagID::R001N, prev->range.start, "previous declaration is here")
+             .note(DiagID::R041N, prev->range.start, "previous declaration is here")
              .first(prev->range).emit();
             cur->poison();
             return;
@@ -609,10 +609,10 @@ class RedeclMerge {
         self._check_modifiers_agree(name, prev, cur);
 
         if prev->has_body() && cur->has_body() {
-            self.sc->diag->report(DiagID::R001E, cur->range.start,
+            self.sc->diag->report(DiagID::R029E, cur->range.start,
                 f"redefinition of '{name}\x27"
             ).first(cur->range)
-             .note(DiagID::R001N, prev->range.start,
+             .note(DiagID::R029N, prev->range.start,
                 f"previous definition of '{name}' is here"
             ).first(prev->range).emit();
             cur->poison();

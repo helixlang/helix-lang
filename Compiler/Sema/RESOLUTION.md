@@ -139,8 +139,17 @@ What T decides:
   inside such a body is "outside a type body" until `selfs` can hold a
   non-decl.
 
-Error homes (all `R001E` until the diag table is split; grep
-`FIXME(diag-table)`).
+Error homes carry real diag-table codes. The name/type domain owns
+`R020`-`R048` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
+(`Semantic.diag.toml`); an invariant violation reports `I003E`. That sweep is
+complete for `Sema/` as of this writing, with one exception: `ImportResolution`
+still shares `R015E` across three distinct errors.
+
+`R001`/`SC001`/`U001` remain the per-category placeholder codes. Keep using them
+for a new diagnostic rather than inventing a number inline -- a placeholder is
+greppable and a wrong number is not. A later manual sweep triages the batch into
+real codes, the same way this one did. Anything still on a placeholder must not
+ship in a stable release.
 
     [PARTIAL] `Foo<i32>::Inner` (concrete args) is marked IsDependent, not
     merely instantiation-dependent; ChainBinding then refuses
@@ -271,7 +280,7 @@ control** is a late filter [MISSING].
 
 Name/type domain -- residue:
 
-    a. Split R001E; grep FIXME(diag-table)                           diag table
+    a. Split `ImportResolution`'s shared R015E into per-error codes    diag table
     b. `Foo<i32>::Inner` dependence flag (§2.6 PARTIAL)              small
     c. `NameLookup::qualified_step` spelled overload or delete       small
     d. decide the `[T]`/`string` member model (§2b OPEN)             design

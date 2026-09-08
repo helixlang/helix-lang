@@ -153,25 +153,25 @@ class SourceManager {
         }
 
         if !path.exists() {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::I005F,
                 f"no such file: '{path.full_path()}\x27").emit();
             return static_cast::<FileID>(u32(-1));
         }
 
         if path.is_directory() {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::I005F,
                 f"'{path.full_path()}' is a directory, not a source file").emit();
             return static_cast::<FileID>(u32(-1));
         }
 
         if path.is_symlink() && (!path.is_regular_file()) {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::I005F,
                 f"'{path.full_path()}' is a symlink to a non-file target").emit();
             return static_cast::<FileID>(u32(-1));
         }
 
         if (!path.is_regular_file()) {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::I005F,
                 f"'{path.full_path()}' is not a regular file").emit();
             return static_cast::<FileID>(u32(-1));
         }
@@ -181,7 +181,7 @@ class SourceManager {
         // register_file below opens/maps the file;
         var base_fid = _vfile_mgr->register_file(path);
         if base_fid == static_cast::<FileID>(u32(-1)) {
-            self._diag->report(DiagID::U001F,
+            self._diag->report(DiagID::I005F,
                 f"cannot read '{path.full_path()}': permission denied or I/O error").emit();
             return static_cast::<FileID>(u32(-1));
         }

@@ -49,6 +49,165 @@ group = "ast"
     review the error message for specific details about the issue. if the message is unclear, consider enabling verbose diagnostics for more context. if you believe this is a compiler bug, please report it to the Kairo development team with a minimal reproducible example.
     """
 
+[I003]
+brief = "internal invariant violation in a compiler pass"
+group = "internal"
+
+    [I003.E]
+    explain = """
+    # internal invariant violation
+
+    a compiler pass reached a state its own contract rules out - for example a name that survived
+    name resolution neither bound nor diagnosed, which leaves later passes with a node they have no
+    rule for. this is a bug in the compiler, not in the program being compiled, and the accompanying
+    message names the pass and the invariant that broke.
+
+    the error is reported rather than asserted so the rest of the translation unit is still checked
+    and the diagnostic carries a source location to reduce from.
+
+    ## how to fix
+
+    nothing in the source can be at fault, though a construct near the reported location is what
+    triggered it. please file a bug report with that source, reduced as far as it still reproduces.
+    """
+
+[I004]
+brief = "no input files"
+group = "driver"
+
+    [I004.F]
+    explain = """
+    # nothing to compile
+
+    the command line named no source file to act on. every flag was consumed as an option, leaving
+    no input for the driver to run the pipeline over.
+
+    ## example
+
+    ```
+    kairo -O2 -o out       # no `.k` file was given
+    ```
+
+    ## how to fix
+
+    pass at least one source file. if a filename was meant to follow a flag, check that the flag
+    does not swallow it as its own argument.
+    """
+
+[I005]
+brief = "input file cannot be read"
+group = "driver"
+
+    [I005.F]
+    explain = """
+    # cannot read the input file
+
+    the driver could not take the bytes of a file it was asked to compile. the path may not exist,
+    may name a directory, may be a symlink whose target is not a file, may be a device or socket
+    rather than a regular file, or may be unreadable to this process. the accompanying message says
+    which of those it was.
+
+    ## how to fix
+
+    check the path and its permissions. a path is resolved relative to the working directory the
+    compiler was invoked from, not relative to the file that imports it.
+    """
+
+[I006]
+brief = "pipeline stage aborted"
+group = "driver"
+
+    [I006.F]
+    explain = """
+    # a pipeline stage could not continue
+
+    a stage of the frontend reached a state it has no way to proceed from - a translation unit with
+    no context, a parse that produced nothing, a backend that never became ready, an empty main
+    file. the run stops here rather than handing the next stage something it cannot use.
+
+    an earlier error usually explains it: a stage that already reported a failure can leave the
+    pipeline in this state. when nothing precedes it, this is a compiler bug.
+
+    ## how to fix
+
+    fix any error reported before this one and re-run. if this is the first diagnostic, please file
+    a bug report with the source that triggered it.
+    """
+
+[I007]
+brief = "parse API used before initialization"
+group = "tooling"
+
+    [I007.F]
+    explain = """
+    # compiler instance is not initialized
+
+    the parse API was entered on a `CompilerInstance` whose `initialize(cwd)` has not run, so the
+    import resolver it needs does not exist yet. this is a misuse of the embedding API rather than a
+    problem with the source being parsed.
+
+    ## how to fix
+
+    call `CompilerInstance::initialize(cwd)` once, before the first `parse_file` or `reparse`.
+    """
+
+[I008]
+brief = "feature not implemented"
+group = "tooling"
+
+    [I008.F]
+    explain = """
+    # not implemented
+
+    the requested mode depends on something the compiler does not yet provide - for example verbatim
+    parse fidelity, which needs an AST node for an unexpanded macro invocation that does not exist.
+    the request is well-formed; the support is missing.
+
+    ## how to fix
+
+    use a mode that is implemented. the accompanying message names what is missing.
+    """
+
+[I009]
+brief = "cannot re-read a released file"
+group = "tooling"
+
+    [I009.F]
+    explain = """
+    # file is no longer available to reparse
+
+    a reparse re-reads a file by its id, and this id no longer resolves to readable bytes. the file
+    was released from the source manager, or it changed on disk between the original parse and the
+    reparse.
+
+    ## how to fix
+
+    parse the file afresh rather than reparsing it, and hold the file id only for as long as the
+    source manager keeps the buffer alive.
+    """
+
+[I010]
+brief = "invalid command-line option value"
+group = "driver"
+
+    [I010.F]
+    explain = """
+    # bad option value
+
+    an option was given a value outside the set it accepts. the option itself is real and spelled
+    correctly; the value is not one it recognises.
+
+    ## example
+
+    ```
+    kairo --print-ast=graph main.k    # expected: tree, flat, canonical
+    ```
+
+    ## how to fix
+
+    use one of the accepted values, which the accompanying message lists.
+    """
+
 [I102]
 brief = "internal compiler error, the message should be self-explanatory"
 group = "internal"

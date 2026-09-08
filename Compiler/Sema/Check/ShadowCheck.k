@@ -207,11 +207,10 @@ class ShadowCheck derives RecursiveASTVisitor::<ShadowCheck> {
         if a != b { return; }               // a type CHANGE is the point.
 
         var nm = self.sc->imm_table()->get_ident(imm);
-        // FIXME(diag-table): wants its own code so -Wno- can name it.
-        self.sc->diag->report(DiagID::R001W, at.start,
+        self.sc->diag->report(DiagID::R048W, at.start,
             f"declaration of '{nm}' hides an outer binding of the same type"
         ).first(at)
-         .note(DiagID::R001N, hidden->range.start,
+         .note(DiagID::R048N, hidden->range.start,
             f"outer '{nm}' declared here; assign to it with '{nm} = ...' if that "
             "is what you meant, or rename this one"
         ).first(hidden->range).emit();

@@ -309,14 +309,14 @@ fn parse_file(ci: *CompilerInstance, path: Path, opts: ParseOptions) -> ParsedUn
     if ci == &null { return ParsedUnit::failure(u32(-1), TUStage::Failed); }
 
     if opts.fidelity == ParseFidelity::Verbatim {
-        ci->diag()->report(DiagID::U001F,
+        ci->diag()->report(DiagID::I008F,
             "Verbatim parse fidelity is not implemented: the AST has no node for "
             "an unexpanded macro invocation").emit();
         return ParsedUnit::failure(u32(-1), TUStage::Failed);
     }
 
     if ci->imp() == &null {
-        ci->diag()->report(DiagID::U001F,
+        ci->diag()->report(DiagID::I007F,
             "parse_file: CompilerInstance::initialize(cwd) has not run").emit();
         return ParsedUnit::failure(u32(-1), TUStage::Failed);
     }
@@ -570,7 +570,7 @@ fn reparse(ci: *CompilerInstance, fid: u32, opts: ParseOptions) -> ParsedUnit {
     if ci == &null         { return ParsedUnit::failure(fid, TUStage::Failed); }
     if fid == u32(-1)      { return ParsedUnit::failure(fid, TUStage::Failed); }
     if ci->imp() == &null  {
-        ci->diag()->report(DiagID::U001F,
+        ci->diag()->report(DiagID::I007F,
             "reparse: CompilerInstance::initialize(cwd) has not run").emit();
         return ParsedUnit::failure(fid, TUStage::Failed);
     }
@@ -606,7 +606,7 @@ fn reparse(ci: *CompilerInstance, fid: u32, opts: ParseOptions) -> ParsedUnit {
 
     // 1 + 2: drop artifacts, re-read the bytes, rebuild the line index.
     if !ci->invalidate(fid) {
-        ci->diag()->report(DiagID::U001F,
+        ci->diag()->report(DiagID::I009F,
             f"reparse: cannot re-read fid={fid}").emit();
         u.stage = TUStage::Failed;
         if opts.capture_diags { u.diags = collector->diags; }

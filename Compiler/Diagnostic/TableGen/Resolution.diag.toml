@@ -392,3 +392,690 @@ group = "import"
     check the reported file's own imports for an unintended long chain, or raise the limit with
     `--cmax-import-depth=N` if the project genuinely needs deeper nesting.
     """
+
+[R020]
+brief = "use of undeclared identifier"
+group = "name-lookup"
+
+    [R020.E]
+    explain = """
+    # undeclared identifier
+
+    the name was looked up in every scope enclosing the use - block, function, type body, file, and
+    the names brought in by `import` - and nothing declared it. the use is poisoned so later passes
+    do not cascade further errors from it.
+
+    ## example
+
+    ```kairo
+    fn f() {
+        return couunt;    // no declaration named `couunt` is in scope
+    }
+    ```
+
+    ## how to fix
+
+    check the spelling, declare the name before the use, or add the `import` that brings it in. an
+    out-of-line definition sees only the names visible at its own file scope, not the ones visible
+    inside the type it defines a member of.
+    """
+
+[R021]
+brief = "unknown type name"
+group = "name-lookup"
+
+    [R021.E]
+    explain = """
+    # unknown type name
+
+    a type position named something no declaration in scope provides. type lookup searches the same
+    scopes as value lookup but accepts only classes, enums, aliases, and generic parameters.
+
+    ## example
+
+    ```kairo
+    fn f(p: Pointt) { }    // no type named `Pointt` is in scope
+    ```
+
+    ## how to fix
+
+    check the spelling, or add the `import` that makes the type visible.
+    """
+
+[R022]
+brief = "use of undeclared generic parameter"
+group = "generics"
+
+    [R022.E]
+    explain = """
+    # undeclared generic parameter
+
+    the name is used as a generic parameter, but no enclosing generic declaration introduces it. a
+    generic parameter is visible only inside the declaration whose parameter list declares it; it
+    does not leak into sibling declarations or into an out-of-line definition that omits it.
+
+    ## example
+
+    ```kairo
+    class Box::<T> { var v: T; }
+
+    fn get(b: Box::<T>) -> T { }    // `T` is Box's parameter, not this function's
+    ```
+
+    ## how to fix
+
+    add the parameter to this declaration's own generic parameter list, or name a concrete type.
+    """
+
+[R023]
+brief = "name does not denote a type"
+group = "name-lookup"
+
+    [R023.E]
+    explain = """
+    # name is not a type
+
+    the name resolved, but to something that cannot appear in a type position - a variable, a
+    function, a module, or a const generic parameter. lookup does not fall through to a different
+    entity of the same name.
+
+    ## example
+
+    ```kairo
+    var Handle = 0;
+
+    fn f(h: Handle) { }    // `Handle` is a value, not a type
+    ```
+
+    ## how to fix
+
+    name the type you meant. a module is not a type: use `Mod::Type` to name a type inside it. a
+    const generic parameter is a value: use it in a value position, or declare a type parameter.
+    """
+
+    [R023.N]
+    explain = "Points at the declaration that was found, and says what kind of entity it declares."
+
+[R024]
+brief = "primitive type used as a scope or with generic arguments"
+group = "name-lookup"
+
+    [R024.E]
+    explain = """
+    # primitive types have no members
+
+    a primitive type - `i32`, `f64`, `bool`, and the rest - is a leaf. it declares no members, so
+    `::` cannot follow it, and it is not generic, so it takes no generic argument list.
+
+    ## example
+
+    ```kairo
+    var x: i32::<8> = 0;    // `i32` is not generic
+    ```
+
+    ## how to fix
+
+    drop the qualification or the generic argument list, and name the primitive on its own.
+    """
+
+[R025]
+brief = "no member of that name in the named scope"
+group = "member-lookup"
+
+    [R025.E]
+    explain = """
+    # no such member
+
+    the left side of the access resolved to a type, a module, or a value with a known type, and its
+    scope was searched - including base classes and extensions in scope - without finding the name.
+
+    ## example
+
+    ```kairo
+    class Point { pub var x: i32; }
+
+    fn f(p: Point) -> i32 { return p.z; }    // `Point` has no member `z`
+    ```
+
+    ## how to fix
+
+    check the spelling, or import the extension that declares the member. a private member is not
+    reachable from outside its own type, and an out-of-line definition can only name members that
+    the qualifying scope actually declares.
+    """
+
+[R026]
+brief = "name does not denote a scope"
+group = "member-lookup"
+
+    [R026.E]
+    explain = """
+    # not a scope
+
+    `::` names a member of a scope, and only a type, a module, or an enum is one. the name on the
+    left of this `::` is something else, so there is no table to look the next segment up in.
+
+    ## how to fix
+
+    use `.` or `->` to reach a member of a value. if you meant a nested type, name the type rather
+    than a value of it.
+    """
+
+[R027]
+brief = "wrong member-access operator"
+group = "member-lookup"
+
+    [R027.E]
+    explain = """
+    # wrong access operator
+
+    the three access operators are not interchangeable. `::` names a member of a type, a module, or
+    an enum. `.` reaches a member through a value. `->` reaches a member through a pointer. the
+    operator written here does not match what its left side denotes, and the compiler does not
+    insert or elide an indirection to make it fit.
+
+    ## example
+
+    ```kairo
+    class Point { pub var x: i32; }
+
+    fn f(p: *Point) -> i32 { return p.x; }    // `p` is a pointer: use `p->x`
+    ```
+
+    ## how to fix
+
+    use the operator that matches the left side: `::` after a type or module, `.` after a value,
+    `->` after a pointer.
+    """
+
+[R028]
+brief = "ambiguous member reference"
+group = "member-lookup"
+
+    [R028.E]
+    explain = """
+    # ambiguous member
+
+    more than one member of this name is reachable from here, and no rule prefers one over another.
+    this usually means two base classes or two extensions in scope each declare it. an ambiguous
+    non-function name is an error at the use, not at the declarations.
+
+    ## how to fix
+
+    qualify the access with the scope you meant (`Base::name`), or remove one of the declarations
+    from scope.
+    """
+
+    [R028.N]
+    explain = "Points at one of the candidates that made the reference ambiguous. One note per candidate."
+
+[R029]
+brief = "redefinition"
+group = "redeclaration"
+
+    [R029.E]
+    explain = """
+    # redefinition
+
+    an entity may be declared any number of times but defined once. two definitions of this name
+    reached the same scope, so there is no single entity for uses to bind to. this covers ordinary
+    declarations, out-of-line function definitions, and explicit specializations alike.
+
+    ## example
+
+    ```kairo
+    fn f() -> i32 { return 1; }
+    fn f() -> i32 { return 2; }    // `f` already has a definition
+    ```
+
+    ## how to fix
+
+    delete or rename one of the definitions. to declare the entity in more than one place, leave
+    only one of them with a body.
+    """
+
+    [R029.N]
+    explain = "Points at the previous declaration or definition that this one conflicts with."
+
+[R030]
+brief = "`Self` used outside of a type body"
+group = "name-lookup"
+
+    [R030.E]
+    explain = """
+    # `Self` has no meaning here
+
+    `Self` names the type whose body encloses it. this use has no enclosing type body, so there is
+    nothing for it to name. an out-of-line definition qualified with a type name does have one; a
+    free function does not.
+
+    ## how to fix
+
+    write the type's name explicitly, or move the declaration into the type body.
+    """
+
+[R031]
+brief = "out-of-line definition matches no declaration"
+group = "redeclaration"
+
+    [R031.E]
+    explain = """
+    # no matching declaration
+
+    an out-of-line definition attaches to a declaration already present in the scope it names. that
+    scope declares nothing this definition matches: either no member of the name exists, or none of
+    them has this signature. parameter types, qualifiers, and the generic parameter list all take
+    part in the match; the return type alone does not distinguish two declarations.
+
+    ## example
+
+    ```kairo
+    class Point { pub fn norm(self) -> f64; }
+
+    fn Point::norm(self, k: f64) -> f64 { }    // no `norm(f64)` is declared in `Point`
+    ```
+
+    ## how to fix
+
+    make the signature match the declaration exactly, or add the declaration to the type body.
+    """
+
+[R032]
+brief = "wrong number of generic arguments"
+group = "generics"
+
+    [R032.E]
+    explain = """
+    # generic argument count mismatch
+
+    the argument list does not fit the declaration's parameter list. either the entity is not
+    generic and takes no arguments at all, or too few were supplied to fill the parameters that have
+    no default, or more were supplied than the parameter list can absorb. a pack parameter absorbs
+    any number of trailing arguments; without one, the maximum is fixed.
+
+    ## example
+
+    ```kairo
+    class Pair::<A, B> { }
+
+    var p: Pair::<i32> = ...;    // `Pair` requires 2 arguments
+    ```
+
+    ## how to fix
+
+    supply exactly the arguments the parameter list needs, or drop the argument list on a
+    non-generic name. `Self` already carries the enclosing type's own arguments and takes none.
+    """
+
+    [R032.N]
+    explain = "Points at the declaration whose generic parameter list the argument list has to fit."
+
+[R033]
+brief = "no generic parameter of that name"
+group = "generics"
+
+    [R033.E]
+    explain = """
+    # unknown named generic argument
+
+    a named generic argument binds to a parameter by name, and the declaration's parameter list has
+    no parameter spelled this way.
+
+    ## example
+
+    ```kairo
+    class Buf::<T, N> { }
+
+    var b: Buf::<T = i32, Size = 8> = ...;    // the parameter is named `N`
+    ```
+
+    ## how to fix
+
+    use the parameter's declared name, or pass the argument positionally.
+    """
+
+[R034]
+brief = "generic argument specified more than once"
+group = "generics"
+
+    [R034.E]
+    explain = """
+    # duplicate generic argument
+
+    one generic parameter received two arguments. this happens when a named argument names a
+    parameter an earlier positional argument already filled, or when the same name is given twice.
+
+    ## how to fix
+
+    supply each parameter once. mixing positional and named arguments is allowed, but the named ones
+    must name parameters the positional ones did not reach.
+    """
+
+[R035]
+brief = "recursive type alias"
+group = "alias"
+
+    [R035.E]
+    explain = """
+    # alias defined in terms of itself
+
+    an alias is a name for a type that must already be expressible, so expanding it has to
+    terminate. the aliases on this cycle each expand to the next, so expansion never reaches a real
+    type.
+
+    ## example
+
+    ```kairo
+    using A = B;
+    using B = A;    // expanding either one never terminates
+    ```
+
+    ## how to fix
+
+    break the cycle: one alias on it has to name a real type. an indirection does not help here -
+    unlike a recursive class, an alias has no storage to hold behind a pointer.
+    """
+
+    [R035.N]
+    explain = "Points at one alias on the cycle and names the alias it expands to next. One note per step."
+
+[R036]
+brief = "type alias nesting limit exceeded"
+group = "alias"
+
+    [R036.E]
+    explain = """
+    # alias chain too deep
+
+    expanding this alias required more nested expansions than the configured limit allows. the chain
+    is not necessarily circular - a cycle is reported separately - it is simply longer than the
+    resolver is willing to follow.
+
+    ## how to fix
+
+    flatten the chain so fewer aliases stand between the name and the real type, or raise the limit
+    with `--cmax-scope-depth`.
+    """
+
+[R037]
+brief = "redeclared with a different return type"
+group = "redeclaration"
+
+    [R037.E]
+    explain = """
+    # return type disagrees
+
+    two declarations of one function have identical parameter types. the return type does not take
+    part in overload resolution, so these are not two overloads - they are one function declared
+    twice, and the two return types disagree.
+
+    ## example
+
+    ```kairo
+    fn f(x: i32) -> i32;
+    fn f(x: i32) -> f64;    // same parameters: one function, two return types
+    ```
+
+    ## how to fix
+
+    make the return types agree, or change the parameter list so the two really are overloads. an
+    omitted return type means `void` and compares equal to an explicit `-> void`.
+    """
+
+    [R037.N]
+    explain = "Points at the previous declaration and the return type it declared."
+
+[R038]
+brief = "redeclared with a different ABI"
+group = "redeclaration"
+
+    [R038.E]
+    explain = """
+    # linkage disagrees
+
+    one entity has one linkage. two declarations of this function ask for different ABIs, which
+    would emit two symbols for one function and let the linker pick between them at random.
+
+    ## how to fix
+
+    give every declaration in the chain the same ABI specification, or drop it from all of them.
+    """
+
+    [R038.N]
+    explain = "Points at the previous declaration, whose ABI this one contradicts."
+
+[R039]
+brief = "redeclared with a different qualifier"
+group = "redeclaration"
+
+    [R039.E]
+    explain = """
+    # qualifier disagrees
+
+    the parameter types are identical, so these declarations are one function, and a qualifier that
+    changes what the function means differs between them. `inline` and `final` are exempt: neither
+    changes the contract, and a later declaration may add them.
+
+    ## how to fix
+
+    apply the qualifier to every declaration in the chain, or to none.
+    """
+
+    [R039.N]
+    explain = "Points at the previous declaration, whose qualifiers this one contradicts."
+
+[R040]
+brief = "default argument redefined"
+group = "redeclaration"
+
+    [R040.E]
+    explain = """
+    # default argument given twice
+
+    a parameter's default argument is written once across the whole redeclaration chain. a later
+    declaration may add a default to a parameter that had none, but it may not replace one.
+
+    ## example
+
+    ```kairo
+    fn f(x: i32 = 0);
+    fn f(x: i32 = 1) { }    // `x` already has a default
+    ```
+
+    ## how to fix
+
+    keep the default on one declaration - conventionally the first - and omit it from the others.
+    """
+
+    [R040.N]
+    explain = "Points at the default argument that was already supplied for this parameter."
+
+[R041]
+brief = "class member redeclared"
+group = "redeclaration"
+
+    [R041.E]
+    explain = """
+    # member declared twice
+
+    a member-specification declares each member once. unlike file scope, a class body has no
+    forward-declaration rule to make a repeat meaningful: a second declaration of the same member is
+    always a mistake.
+
+    ## how to fix
+
+    delete the duplicate. to define the member elsewhere, declare it once in the body and write the
+    definition out of line.
+    """
+
+    [R041.N]
+    explain = "Points at the earlier declaration of this member in the same class body."
+
+[R042]
+brief = "specialization without a primary template"
+group = "specialization"
+
+    [R042.E]
+    explain = """
+    # no primary template
+
+    an explicit specialization specializes something. no primary template of this name and kind is
+    visible from the specialization's scope, so there is nothing for it to specialize and no
+    parameter list to check its arguments against.
+
+    ## example
+
+    ```kairo
+    class Box::<i32> { }    // no generic `Box` was declared
+    ```
+
+    ## how to fix
+
+    declare the primary template before the specialization, or import it. a specialization must be
+    able to see the primary; being in the same program is not enough.
+    """
+
+    [R042.N]
+    explain = "Points at the specialization that has no primary template to attach to."
+
+[R043]
+brief = "explicit specialization after instantiation"
+group = "specialization"
+
+    [R043.E]
+    explain = """
+    # specialization comes too late
+
+    the template was already instantiated with these arguments before this specialization was
+    declared. that instantiation used the primary template's body, so the program would contain two
+    different meanings for one instantiation depending on where each use appears.
+
+    ## example
+
+    ```kairo
+    class Box::<T> { var v: T; }
+
+    fn f(b: Box::<i32>) { }     // instantiates Box<i32> from the primary
+
+    class Box::<i32> { }        // too late: Box<i32> already exists
+    ```
+
+    ## how to fix
+
+    move the specialization above every use of that instantiation - a specialization must precede
+    the first use of the arguments it specializes.
+    """
+
+    [R043.N]
+    explain = "Points at the use that first instantiated the template with these arguments."
+
+[R044]
+brief = "explicit specialization redeclared in a different file"
+group = "specialization"
+
+    [R044.E]
+    explain = """
+    # specialization declared in two files
+
+    an explicit specialization is one definition for the whole program. declaring it again in
+    another translation unit gives the same instantiation two bodies, which is not a redeclaration
+    that can be merged.
+
+    ## how to fix
+
+    keep the specialization in one file and import it where it is needed.
+    """
+
+    [R044.N]
+    explain = "Points at the declaration of this specialization in the other file."
+
+[R045]
+brief = "explicit specialization inside a function body"
+group = "specialization"
+
+    [R045.W]
+    explain = """
+    # specialization written in a local scope
+
+    a specialization is global no matter where it is written. this one is inside a function body,
+    which reads as if it were local to that function, but it applies to every use of the template in
+    the program - including uses in other files that cannot see this declaration.
+
+    ## how to fix
+
+    write the specialization at module scope, where its reach is visible to the reader.
+    """
+
+    [R045.N]
+    explain = "Explains that the specialization's effect is program-wide, and where it belongs instead."
+
+[R046]
+brief = "enum underlying type is not a primitive integer"
+group = "enum"
+
+    [R046.E]
+    explain = """
+    # bad enum underlying type
+
+    an enum's underlying type gives its enumerators their representation, so it has to be a
+    primitive integer type. a floating-point type, a pointer, a class, or an alias to any of those
+    cannot carry enumerator values.
+
+    ## example
+
+    ```kairo
+    enum Color derives f32 { Red, Green }    // not an integer type
+    ```
+
+    ## how to fix
+
+    name a primitive integer type - `u8`, `i32`, and so on - or omit the underlying type and let it
+    be chosen.
+    """
+
+[R047]
+brief = "imported name is private to its module"
+group = "import"
+
+    [R047.E]
+    explain = """
+    # name is private in its module
+
+    the name was found in the module it was imported from, but it is declared private there. private
+    declarations are part of a module's implementation and do not cross its boundary, so importing
+    the module does not make this one visible.
+
+    ## how to fix
+
+    mark the declaration `pub` in its own module, or use a name the module does export.
+    """
+
+[R048]
+brief = "declaration hides an outer binding"
+group = "shadowing"
+
+    [R048.W]
+    explain = """
+    # shadowed binding
+
+    this declaration introduces a name an enclosing scope already binds to the same type. uses after
+    it reach the inner binding, so an assignment meant for the outer one silently writes to a new
+    variable instead. only same-type shadowing is reported: shadowing with a different type is
+    usually deliberate and reads as such.
+
+    ## example
+
+    ```kairo
+    var total = 0;
+    if cond {
+        var total = compute();    // a new variable; the outer `total` stays 0
+    }
+    ```
+
+    ## how to fix
+
+    assign to the outer binding (`total = ...`) if that is what you meant, or rename the inner one.
+    """
+
+    [R048.N]
+    explain = "Points at the outer binding that this declaration hides."

@@ -248,7 +248,7 @@ class NameBindingVerifier derives RecursiveASTVisitor::<NameBindingVerifier> {
 
         self.violations += 1;
         var nm = self.sc->ctx->get_spelling(n->name);
-        self.sc->diag->report(DiagID::R001E, n->range.start,
+        self.sc->diag->report(DiagID::I003E, n->range.start,
             f"internal: '{nm}' survived name resolution unbound and undiagnosed "
             "(NameResolution invariant violation, please report)"
         ).first(n->range).emit();
@@ -579,9 +579,9 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
 
         if defs.size() > 1 {
             var name = e.name.describe(self.sc->ctx);
-            self.sc->diag->report(DiagID::R001E, defs[1]->range.start,
+            self.sc->diag->report(DiagID::R029E, defs[1]->range.start,
                 f"redefinition of '{name}\x27"
-            ).first(defs[1]->range).note(DiagID::R001N, defs[0]->range.start,
+            ).first(defs[1]->range).note(DiagID::R029N, defs[0]->range.start,
                 f"previous definition of '{name}' is here"
             ).first(defs[0]->range).emit();
             for var i: usize = 1; i < defs.size(); ++i { defs[i]->poison(); }
@@ -609,7 +609,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             dc = dc->dc_parent;
         }
         if dc == &null {
-            self.sc->diag->report(DiagID::R001E, n->range.start,
+            self.sc->diag->report(DiagID::R030E, n->range.start,
                 "'Self' used outside of a type body"
             ).first(n->range).emit();
             n->poison();
@@ -633,10 +633,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var prev = (*group)[0];
         for var i: usize = 1; i < group->size(); ++i {
             var d = (*group)[i];
-            self.sc->diag->report(DiagID::R001E, d->range.start,
+            self.sc->diag->report(DiagID::R029E, d->range.start,
                 f"'{name}' {what}"
             ).first(d->range).emit();
-            self.sc->diag->report(DiagID::R001N, prev->range.start,
+            self.sc->diag->report(DiagID::R029N, prev->range.start,
                 f"previous declaration of '{name}' is here"
             ).first(prev->range).emit();
             d->poison();
@@ -672,7 +672,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             var key = self._member_key(f, home);
             if home->lookup_symbol(key) == &null {
                 var nm = self.sc->ctx->get_spelling(f->name);
-                self.sc->diag->report(DiagID::R001E, f->range.start,
+                self.sc->diag->report(DiagID::R031E, f->range.start,
                     f"out-of-line definition of '{nm}' does not match any declaration in its scope"
                 ).first(f->range).emit();
                 f->poison();
@@ -730,7 +730,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
                     static_cast::<*DeclContext>(self.sc->tu), DeclName::ident(im));
         if !r.found() {
             var nm = self.sc->ctx->get_spelling(head->name);
-            self.sc->diag->report(DiagID::R001E, head->range.start,
+            self.sc->diag->report(DiagID::R020E, head->range.start,
                 f"use of undeclared identifier '{nm}' in out-of-line definition"
             ).first(head->range).emit();
             head->poison();     // marks it diagnosed; N(b) will not re-report it.
@@ -753,7 +753,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
                 var sr = self.sc->lookup.qualified_step(cur, DeclName::ident(sim));
                 if !sr.found() {
                     var snm = self.sc->ctx->get_spelling(st->name->name);
-                    self.sc->diag->report(DiagID::R001E, st->name->range.start,
+                    self.sc->diag->report(DiagID::R025E, st->name->range.start,
                         f"no member named '{snm}' in the qualified scope of this out-of-line definition"
                     ).first(st->name->range).emit();
                     st->name->poison();
@@ -1173,11 +1173,11 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             // asymmetry no reader would predict.
             if !(self._is_immutable(prev) && self._is_immutable(d)) {
                 var nm = self.sc->imm_table()->get_ident(imm);
-                self.sc->diag->report(DiagID::R001E, at.start,
+                self.sc->diag->report(DiagID::R029E, at.start,
                     f"redefinition of '{nm}\x27"
                 ).first(at).emit();
                 if prev != &null {
-                    self.sc->diag->report(DiagID::R001N, prev->range.start,
+                    self.sc->diag->report(DiagID::R029N, prev->range.start,
                         f"previous declaration of '{nm}' is here"
                     ).first(prev->range).emit();
                 }
@@ -1523,7 +1523,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
                 return true;
             }
             var nm = self.sc->ctx->get_spelling(n->name);
-            self.sc->diag->report(DiagID::R001E, n->range.start,
+            self.sc->diag->report(DiagID::R020E, n->range.start,
                 f"use of undeclared identifier '{nm}\x27"
             ).first(n->range).emit();
             n->poison();
@@ -1535,7 +1535,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
 
         if h.via_overlay && !self._overlay_access_ok(imm) {
             var nm = self.sc->ctx->get_spelling(n->name);
-            self.sc->diag->report(DiagID::R001E, n->range.start,
+            self.sc->diag->report(DiagID::R047E, n->range.start,
                 f"'{nm}' is imported but is declared private in its module"
             ).first(n->range).emit();
             n->poison();

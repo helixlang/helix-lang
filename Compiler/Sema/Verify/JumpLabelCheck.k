@@ -69,7 +69,7 @@ class JumpLabelCheck derives RecursiveASTVisitor::<JumpLabelCheck> {
                 if self.labels[l].imm == jn->target.imm { found = true; break; }
             }
             if !found {
-                self.sc->diag->report(DiagID::SC001E, jn->range.start,
+                self.sc->diag->report(DiagID::SC006E, jn->range.start,
                     "`jump!` target is not declared by any `label!` in this "
                     "function"
                 ).first(jn->range).emit();
@@ -82,7 +82,7 @@ class JumpLabelCheck derives RecursiveASTVisitor::<JumpLabelCheck> {
     fn visit_label_intrinsic_stmt(self, n: *LabelIntrinsicStmt) -> bool {
         for var l: usize = self.label_floor; l < self.labels.size(); l++ {
             if self.labels[l].imm == n->name.imm {
-                self.sc->diag->report(DiagID::SC001E, n->range.start,
+                self.sc->diag->report(DiagID::SC007E, n->range.start,
                     "duplicate `label!` name in this function"
                 ).first(n->range).emit();
                 return true; // don't push the duplicate.

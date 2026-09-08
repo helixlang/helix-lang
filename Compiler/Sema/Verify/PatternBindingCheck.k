@@ -123,7 +123,7 @@ class PatternBindingCheck derives RecursiveASTVisitor::<PatternBindingCheck> {
         for var i: usize = 1; i < v->size(); i++ {
             for var j: usize = 0; j < i; j++ {
                 if (*v)[j].imm == (*v)[i].imm {
-                    self.sc->diag->report(DiagID::SC001E, (*v)[i].range.start,
+                    self.sc->diag->report(DiagID::SC010E, (*v)[i].range.start,
                         "duplicate binding name in pattern; a name may bind "
                         "only once per alternative"
                     ).first((*v)[i].range).emit();
@@ -195,7 +195,7 @@ class PatternBindingCheck derives RecursiveASTVisitor::<PatternBindingCheck> {
             if i == 0 {
                 first_set = names;
             } else if !self._sets_equal(&first_set, &names) {
-                self.sc->diag->report(DiagID::SC001E, p->range.start,
+                self.sc->diag->report(DiagID::SC011E, p->range.start,
                     "alternative patterns must bind the same names; this "
                     "alternative's bindings differ from the first"
                 ).first(p->range).emit();
@@ -204,7 +204,7 @@ class PatternBindingCheck derives RecursiveASTVisitor::<PatternBindingCheck> {
             if (!dead_reported) && ((i + 1) < alts->size()) && self._is_irrefutable(p) {
                 var nx = *(alts->get(i + 1));
                 if nx != &null {
-                    self.sc->diag->report(DiagID::SC001W, nx->range.start,
+                    self.sc->diag->report(DiagID::SC009W, nx->range.start,
                         "unreachable alternative; a previous alternative "
                         "matches everything first"
                     ).first(nx->range).emit();

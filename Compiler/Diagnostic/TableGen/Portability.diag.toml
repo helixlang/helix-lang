@@ -86,3 +86,45 @@ group = "portability"
 
     if the code is genuinely x86-only, guard it and build it for an x86 target.
     """
+[P004]
+brief = "unknown target triple"
+group = "target"
+
+    [P004.F]
+    explain = """
+    # unknown target triple
+
+    the triple names the architecture, vendor, operating system, and environment to generate code
+    for. this one was not recognised, either because it is misspelled or because the compiler was
+    built without the backend for that architecture.
+
+    ## example
+
+    ```
+    kairo --target=x86_65-linux-gnu main.k    # `x86_65` is not an architecture
+    ```
+
+    ## how to fix
+
+    check the spelling of `--target`, and confirm the backend is present in this build. omit
+    `--target` to compile for the host.
+    """
+
+[P005]
+brief = "target machine cannot be constructed"
+group = "target"
+
+    [P005.F]
+    explain = """
+    # no usable target machine
+
+    the triple was recognised, but the backend could not produce a target machine for it, or could
+    not report the subtarget information that code generation needs. the triple names a target this
+    build knows of but cannot actually emit code for - usually a CPU or feature combination the
+    backend does not support, or a backend that was configured out.
+
+    ## how to fix
+
+    pick a target the build supports, or drop the `--mcpu`/feature flags that narrowed it. `kairo
+    --print-targets` lists what this build can emit.
+    """

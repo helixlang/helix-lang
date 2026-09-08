@@ -85,7 +85,7 @@ class TerminatorCheck derives RecursiveASTVisitor::<TerminatorCheck> {
                     continue;
                 }
 
-                self.sc->diag->report(DiagID::SC001W, s->range.start,
+                self.sc->diag->report(DiagID::SC003W, s->range.start,
                     "unreachable code; the statement above always transfers "
                     "control out of this block"
                 ).first(s->range).emit();
