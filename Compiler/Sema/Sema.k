@@ -35,6 +35,7 @@ import Sema::Resolve::ImportResolution::*;
 import Sema::Resolve::NameResolution::*;
 import Sema::Resolve::TypeResolve::*;
 import Sema::Resolve::ChainBinding::*;
+import Sema::Resolve::RedeclMerge::*;
 import Sema::Expand::RequiresDesugar::*;
 import Sema::Verify::LoopContextCheck::*;
 import Sema::Verify::ArmOrderCheck::*;
@@ -224,6 +225,7 @@ class Sema {
         var _t = TimeRegion("T-types");
         self.sc.require_phase(SemaPhase::NamesResolved);
         { var _p = TimeRegion("TypeResolve");  TypeResolution(&self.sc).run(); }
+        { var _p = TimeRegion("RedeclMerge");  RedeclMerge(&self.sc).run();    }
         { var _p = TimeRegion("ChainBinding"); ChainBinding(&self.sc).run();   }
         self.sc.advance_phase(SemaPhase::TypesResolved);
         return !self._hard_stop();
