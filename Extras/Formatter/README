@@ -1,4 +1,4 @@
-# Kairo Formatter — Style Rules (draft)
+# Kairo Formatter Style Rules (draft)
 
 
  > Line width: 100 columns.
@@ -6,7 +6,7 @@
 
 ### 1. Argument/parameter list wrapping
 
-If a parenthesized list `(item1, item2, ...)` would exceed the line width on one line, break it — one item per line, aligned to the column just after the opening paren:
+If a parenthesized list `(item1, item2, ...)` would exceed the line width on one line, break it one item per line, aligned to the column just after the opening paren:
 ```rs
 fn example(
     item1,
