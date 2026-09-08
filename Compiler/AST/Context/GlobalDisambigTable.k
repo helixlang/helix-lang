@@ -16,6 +16,7 @@ import AST::Context::ASTContext::*;
 import Driver::TUStage::*;   // standalone enum; no cycle
 import Resolution::ModulePath::*;
 import AST::Context::CanonicalTypes::*;
+import AST::Context::InstantiationRegistry::*;
 
 /// Aggregates all file-level DisambigTable instances for cross-file lookup.
 /// Owns all ASTContext instances created during the index phase.
@@ -35,9 +36,10 @@ class GlobalDisambigTable {
     /// type identity, and monomorphization keys on it. A per-fid store makes
     /// that false the moment two TUs both name `Foo`, which is the common case.
     /// Owns its own arena so canonicals outlive any one fid's ast_alloc reset.
-    priv var _types:  CanonicalTypeStore;
-    priv var _by_fid: libcxx::unordered_map::<u32, GlobalScopeEntry>;
-    priv var _mu:     std::SharedMutex;
+    priv var _types:     CanonicalTypeStore;
+    priv var _by_fid:    libcxx::unordered_map::<u32, GlobalScopeEntry>;
+    priv var _mu:        std::SharedMutex;
+    priv var _instances: InstantiationRegistry;
 
     fn GlobalDisambigTable(self) {
         self._by_fid.reserve(128);
@@ -204,6 +206,10 @@ class GlobalDisambigTable {
 
     fn has_fid(self, fid: u32) -> bool {
         return self._by_fid.count(fid) > 0;
+    }
+
+    fn instances(self) -> *InstantiationRegistry {
+        return &self._instances;
     }
 
     // --- Debug ---------------------------------------------------------------

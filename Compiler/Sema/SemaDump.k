@@ -504,7 +504,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
                 }
                 self._p.newline();
 
-                var canon = self._canonical_of(cell->get(0));
+                var canon = NameLookup::chain_canonical(cell->get(0));
                 for var j: usize = 0; j < cell->size(); ++j {
                     var d = cell->get(j);
                     if d == &null { continue; }
@@ -528,20 +528,6 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
             if nm.size() == 0 { nm = "<anon>"; }
             self._chains_in(child, f"{qual}::{nm}");
         }
-    }
-
-    /// Redeclarable is a CRTP mixin with typed links, so canonical/definition
-    /// have to be asked per concrete kind. Non-redeclarable kinds answer null
-    /// / false, which is exactly right for the dump.
-    priv fn _canonical_of(self, d: *Decl) -> *Decl {
-        if d == &null { return &null; }
-        if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
-        if isa::<StructDecl>(d)    { return static_cast::<*Decl>(cast::<StructDecl>(d)->canonical_decl());    }
-        if isa::<UnionDecl>(d)     { return static_cast::<*Decl>(cast::<UnionDecl>(d)->canonical_decl());     }
-        if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
-        if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
-        if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
-        return &null;
     }
 
     priv fn _is_definition(self, d: *Decl) -> bool {

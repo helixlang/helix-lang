@@ -76,6 +76,14 @@ class MemberLookup {
     /// in_scope: a foreign scope's table cannot be probed with our imm.
     priv var _cur_spelling: string = "";
 
+    /// Generic extensions on STRUCTURAL types (`extend <T> [T]`, `extend <T>
+    /// *T`): their target canonical mentions the extension's own param, so
+    /// no use-site canonical is pointer-equal to it. Keyed by TypeKind: at
+    /// name level such an extension contributes to every instance of that
+    /// shape (the record rule, `extend <T> Vec<T>`, applied to builtins);
+    /// which body runs is dispatch.
+    priv var _ext_by_shape: libcxx::unordered_map::<u8, vec::<*ExtensionDecl>>;
+
     fn MemberLookup(self) {
         self.sc = &null;
     }
@@ -115,12 +123,21 @@ class MemberLookup {
     priv fn _index_decl(self, d: *Decl) {
         if isa::<ExtensionDecl>(d) {
             var e = cast::<ExtensionDecl>(d);
-            if (e->target == &null) || (e->target->canonical == &null) { return; }   // dependent or errored target.
+            if (e->target == &null) || (e->target->canonical == &null) { return; }   // errored, or a TU whose T has not run.
             var c = e->target->canonical;
             if isa::<RecordType>(c) {
+                // Keyed by DECL: `extend <T> Vec<T>` contributes to every
+                // Vec<X> at name level. RecordType::decl for a dependent
+                // target is the primary (#12), which is the key we want.
                 var key = reinterpret_cast::<u64>(cast::<RecordType>(c)->decl);
                 self._ext_by_decl[key].push_back(e);
+            } else if c->is_dependent() {
+                // `extend <T> [T]`, `extend <T> *T`: the target canonical
+                // mentions the extension's own param, so no use-site
+                // canonical is pointer-equal to it. Key by SHAPE instead.
+                self._ext_by_shape[static_cast::<u8>(c->kind)].push_back(e);
             } else {
+                // `extend i32 { }`, `extend [u8] { }`: one exact canonical.
                 self._ext_by_type[reinterpret_cast::<u64>(c)].push_back(e);
             }
             return;
@@ -176,6 +193,8 @@ class MemberLookup {
         } else {
             var exts = self.extensions_of_type(c);
             if exts != &null { self._append_from_extensions(exts, name, out); }
+            var it = self._ext_by_shape.find(static_cast::<u8>(c->kind));
+            if it != self._ext_by_shape.end() { self._append_from_extensions(&(it->second), name, out); }
         }
         return out->size() > before;
     }
@@ -262,9 +281,20 @@ class MemberLookup {
             if cell != &null { self._append_cell(cell, out); }
         }
 
-        // 2. extensions on this exact decl.
+        // 2. extensions on this exact decl, and on the PRIMARY this decl is
+        //    an instance of: `extend <T> Vec<T>` contributes to `Vec<i32>`
+        //    whether that instance is implicit or a user-written spec (#12).
         var exts = self.extensions_of_decl(d);
         if exts != &null { self._append_from_extensions(exts, name, out); }
+        var pat = self._pattern_of(d);
+        if (pat != &null) && (pat != d) {
+            var pexts = self.extensions_of_decl(pat);
+            if pexts != &null { self._append_from_extensions(pexts, name, out); }
+            // 2b. An implicit instantiation M2 has not filled has an empty
+            //     table and an empty base list. The names it WILL have are
+            //     the pattern's: walk that instead (seen dedups).
+            if self._unfilled(d) { self._walk_record(pat, name, out, seen); return; }
+        }
 
         // 3. bases and implemented interfaces (default bodies join the set).
         if isa::<ClassDecl>(d) {
@@ -292,6 +322,25 @@ class MemberLookup {
             return;
         }
         // UnionDecl / EnumDecl: no bases.
+    }
+
+    /// `instantiated_from` for the kinds that carry it, else null.
+    priv fn _pattern_of(self, d: *Decl) -> *Decl {
+        if isa::<ClassDecl>(d)     { return cast::<ClassDecl>(d)->instantiated_from;     }
+        if isa::<StructDecl>(d)    { return cast::<StructDecl>(d)->instantiated_from;    }
+        if isa::<UnionDecl>(d)     { return cast::<UnionDecl>(d)->instantiated_from;     }
+        if isa::<EnumDecl>(d)      { return cast::<EnumDecl>(d)->instantiated_from;      }
+        if isa::<InterfaceDecl>(d) { return cast::<InterfaceDecl>(d)->instantiated_from; }
+        return &null;
+    }
+
+    priv fn _unfilled(self, d: *Decl) -> bool {
+        if isa::<ClassDecl>(d)     { var n = cast::<ClassDecl>(d);     return n->is_instance() && !n->instantiated; }
+        if isa::<StructDecl>(d)    { var n = cast::<StructDecl>(d);    return n->is_instance() && !n->instantiated; }
+        if isa::<UnionDecl>(d)     { var n = cast::<UnionDecl>(d);     return n->is_instance() && !n->instantiated; }
+        if isa::<EnumDecl>(d)      { var n = cast::<EnumDecl>(d);      return n->is_instance() && !n->instantiated; }
+        if isa::<InterfaceDecl>(d) { var n = cast::<InterfaceDecl>(d); return n->is_instance() && !n->instantiated; }
+        return false;
     }
 
     priv fn _walk_edge(self, e: *InheritEdge, name: DeclName, out: *vec::<*Decl>, seen: *set::<u64>) {

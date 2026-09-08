@@ -64,6 +64,7 @@ import AST::Visitor::RecursiveASTVisitor::*;
 import Token::Token::*;
 import Token::TokenKind::*;
 import Diagnostic::Registry::*;
+import AST::Context::InstantiationRegistry::*;
 
 __inline_cpp("
 #define RecursiveASTVisitor_ChainBinding RecursiveASTVisitor<ChainBinding>
@@ -186,13 +187,72 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 }
                 return a;
             }
-            if !id->is_bound()   { a.kind = AnchorKind::Errored;        return a; }   // N diagnosed.
+            
+            if !id->is_bound() { // N diagnosed.
+                a.kind = AnchorKind::Errored;
+                return a;
+            }
+            
+            if !id->generic_args.is_empty() {
+                return self._anchor_of_generic_head(id);
+            }
+
             return self._anchor_after(id->resolved_decl, &null);
         }
 
         // Any other base -- a call, a subscript, a paren, a literal -- has a
         // type only inference can name.
         a.kind = AnchorKind::NeedsInference;
+        return a;
+    }
+
+    /// `Box<i32>::make()` / `Stack<i32>()`: a type head with explicit args in
+    /// EXPRESSION position. T resolved the arg TYPES (the RAV dispatches them);
+    /// the application is decided here, and only in the plain case --
+    /// positional, every param supplied, no packs, no names. Defaults and
+    /// named args are inference's, exactly as they are for calls.
+    priv fn _anchor_of_generic_head(self, id: *NamedIdentExpr) -> Anchor {
+        var a = Anchor{};
+        var canon = NameLookup::representative(id->resolved_decl);
+        a.decl = canon;
+        var gps = self._generic_params_of(canon);
+        if (gps.size() == 0) || (gps.size() != id->generic_args.size()) {
+            a.kind = AnchorKind::NeedsInference;    // not a record with params, or arity needs defaults/packs.
+            return a;
+        }
+        var args = vec::<*Type>();
+        var dep  = false;
+        for var i: usize = 0; i < gps.size(); ++i {
+            var g = id->generic_args.get(i);
+            if (g->name != &null) || (gps[i] == &null) || (gps[i]->is_pack) {
+                a.kind = AnchorKind::NeedsInference;
+                return a;
+            }
+            if (g->ty == &null) || g->ty->is_poisoned() {
+                a.kind = AnchorKind::Errored;
+                return a;
+            }
+            if g->ty->canonical == &null {
+                if g->ty->is_dependent() || g->ty->is_instantiation_dependent() {
+                    dep = true;
+                    continue;
+                }
+                a.kind = AnchorKind::Errored;
+                return a;   // T left it unresolved and undiagnosed: ICE territory.
+            }
+            if g->ty->is_dependent() {
+                dep = true; }
+            args.push_back(g->ty->canonical);
+        }
+        if dep {
+            a.kind = AnchorKind::Dependent;
+            return a;
+        }
+
+        var e = self.sc->instances->instance_for(canon, &args, self.sc->ctx->fid, NameLookup::ctx_of(canon));
+        var inst = (e->decl) if (e != &null) else (canon);
+        a.kind = AnchorKind::Type;
+        a.ty   = self.sc->types->record(inst, &args);   // lookup walks inst's body: the spec's, if any.
         return a;
     }
 
@@ -270,7 +330,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 var args = vec::<*Type>();
                 a.kind = AnchorKind::Value;
                 a.decl = d;
-                a.ty   = self.sc->types->record(self._representative(ed), &args);
+                a.ty   = self.sc->types->record(NameLookup::representative(ed), &args);
                 if self._generic_count(ed) > 0 { a.kind = AnchorKind::Dependent; }
                 return a;
             }
@@ -278,6 +338,18 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 // A function value or a method: what follows is a call result.
                 a.kind = AnchorKind::NeedsInference;
                 a.decl = d;
+                return a;
+            }
+            case DeclKind::ExtensionDecl {
+                var e = cast::<ExtensionDecl>(d);
+                if (e->target == &null) || e->target->is_poisoned() { a.kind = AnchorKind::Errored; return a; }
+                var c = e->target->canonical;
+                if c == &null {
+                    a.kind = (AnchorKind::Dependent) if (e->target->is_dependent()) else (AnchorKind::Errored);
+                    return a;
+                }
+                if isa::<RecordType>(c) { return self._type_anchor(cast::<RecordType>(c)->decl); }
+                a.kind = AnchorKind::Type; a.decl = d; a.ty = c;
                 return a;
             }
             default {
@@ -290,7 +362,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
 
     priv fn _type_anchor(self, d: *Decl) -> Anchor {
         var a = Anchor{};
-        var canon = self._representative(d);
+        var canon = NameLookup::representative(d);
         a.kind = AnchorKind::Type;
         a.decl = canon;
         // The record with its own params as args (Self-shaped). For member
@@ -498,7 +570,11 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         if ty == &null {
             var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
         }
-        if ty->is_dependent() {
+        // A dependent RECORD still has a known decl, and MemberLookup keys on
+        // the decl: `self.x` in `class <T> Foo` binds to the field today, and
+        // only the NEXT anchor (the field's type) carries the dependence. A
+        // dependent non-record (`T`, `*T`, `[T]`) has no scope to look into.
+        if ty->is_dependent() && !isa::<RecordType>(ty) {
             self._record(loc, MemberOutcome::Dependent, &null, 0, a.decl);
             self.n_dependent += 1;
             var r = Anchor{}; r.kind = AnchorKind::Dependent; r.decl = a.decl; return r;
@@ -529,7 +605,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                     owner: *Decl, frozen: *OverloadCell) -> Anchor {
         var n = cands->size();
         if n == 1 {
-            var d = self._representative((*cands)[0]);
+            var d = NameLookup::representative((*cands)[0]);
             st->resolved_decl = d;
             self._record(loc, MemberOutcome::Bound, d, 1, self._home_of(d));
             self.n_bound += 1;
@@ -553,7 +629,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
             var sole: *Decl = &null;
             var distinct = false;
             for var i: usize = 0; i < n; ++i {
-                var r = self._representative((*cands)[i]);
+                var r = NameLookup::representative((*cands)[i]);
                 if sole == &null { sole = r; continue; }
                 if sole != r { distinct = true; break; }
             }
@@ -630,17 +706,6 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         if im != u32(-1) { return im; }
         if tok.kind == TokenKind::KwSelf { return self._self_imm; }
         return u32(-1);
-    }
-
-    priv fn _representative(self, d: *Decl) -> *Decl {
-        if d == &null { return &null; }
-        if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
-        if isa::<StructDecl>(d)    { return static_cast::<*Decl>(cast::<StructDecl>(d)->canonical_decl());    }
-        if isa::<UnionDecl>(d)     { return static_cast::<*Decl>(cast::<UnionDecl>(d)->canonical_decl());     }
-        if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
-        if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
-        if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
-        return d;
     }
 
     priv fn _generic_params_of(self, d: *Decl) -> FrozenList::<*GenericParamDecl> {

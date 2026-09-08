@@ -1036,15 +1036,20 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
     /// Renders the `<>` specialization introducer that precedes the name when a
     /// decl is a specialization (#68). Primary/Explicit/Partial all print the
     /// bare `<>` marker in source form; the distinction is on the arg pattern.
+    /// Instantiated nodes are compiler-synthesized (never written by the user,
+    /// see InstantiationRegistry) and have no source form, so they print
+    /// nothing here, same as None.
     fn _spec_intro(self, kind: SpecKind) {
-        if kind == SpecKind::None { return; }
+        if (kind == SpecKind::None) || (kind == SpecKind::Instantiated) { return; }
         self.p.paint(Color::Punct, "<>");
         self.p.put(" ");
     }
 
     /// Renders the post-name `<...>` specialization argument pattern (#68).
+    /// Instantiated nodes carry no source-form args (see _spec_intro), so
+    /// they print nothing here either.
     fn _spec_args(self, kind: SpecKind, args: FrozenList::<*Type>) {
-        if kind == SpecKind::None { return; }
+        if (kind == SpecKind::None) || (kind == SpecKind::Instantiated) { return; }
         self.p.paint(Color::Punct, "<");
         for var i: usize = 0; i < args.size(); ++i {
             if i > 0 { self.p.paint(Color::Punct, ", "); }
@@ -1055,25 +1060,33 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
 
     /// Debug-tree annotation for a decl's specialization classification (#68).
     /// Emitted on the DEBUG path so `--print-ast=tree` shows Primary/Explicit/
-    /// Partial per decl, making the classification verifiable.
+    /// Partial/Instantiated per decl, making the classification verifiable.
     fn _spec_kind_label(self, kind: SpecKind) -> string {
         switch kind {
-            case SpecKind::None     { return "";          }
-            case SpecKind::Primary  { return "primary";   }
-            case SpecKind::Explicit { return "explicit";  }
-            case SpecKind::Partial  { return "partial";   }
+            case SpecKind::None         { return "";            }
+            case SpecKind::Primary      { return "primary";     }
+            case SpecKind::Explicit     { return "explicit";    }
+            case SpecKind::Partial      { return "partial";     }
+            case SpecKind::Instantiated { return "instantiated"; }
         }
         return "";
     }
 
     /// Debug-tree inline tag for a specialization: ` [spec=explicit <i32>]`.
-    /// Renders nothing for non-specializations (#68).
+    /// Renders nothing for non-specializations (#68). `args` is empty for an
+    /// Instantiated node (the registry never fills spec_args -- the concrete
+    /// args live on the InstanceEntry, not the decl) and for ExtensionDecl
+    /// (whose pattern lives in `target`, not a post-name list); in both cases
+    /// the tag prints just `[spec=<kind>]`, skipping the always-empty `<>`
+    /// an args-bearing kind would otherwise show.
     fn _dd_spec(self, kind: SpecKind, args: FrozenList::<*Type>) {
         if kind == SpecKind::None { return; }
         self.p.paint(Color::Punct, " [spec=");
         self.p.paint(Color::Keyword, self._spec_kind_label(kind));
-        self.p.put(" ");
-        self._spec_args(kind, args);
+        if !args.is_empty() {
+            self.p.put(" ");
+            self._spec_args(kind, args);
+        }
         self.p.paint(Color::Punct, "]");
     }
 
@@ -1349,6 +1362,7 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
         self.p.paint(Color::Keyword, "extend");
         self._generic_params(ed->generic_params);
         self.p.put(" ");
+        self._spec_intro(ed->spec_kind); // `<>` marker (#68); pattern lives in `target`.
         self.src_type(ed->target);
         self._inherit_list("impl", ed->implements);
         self._member_body(empty_fields, ed->methods);
@@ -2995,6 +3009,7 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
         self._dump_ffi_linkage(static_cast::<*Decl>(ed));
         self.p.put(" ");
         self.src_type(ed->target);
+        self._dd_spec(ed->spec_kind, ed->spec_args); // specialization tag (#68); pattern lives in `target`.
         self._inherit_list("impl", ed->implements);
         self.p.newline();
         var empty_fields: FrozenList::<*FieldDecl>;

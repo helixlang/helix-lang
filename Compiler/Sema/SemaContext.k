@@ -37,6 +37,7 @@ import Sema::Resolve::ResolutionState::*;
 import Diagnostic::BufferedDiagSink::*;
 import Lexer::Immediate::*;
 import Config::Invocation::*;
+import AST::Context::InstantiationRegistry::*;
 
 /// \enum SemaPhase
 /// \brief Where the TU is in the RESOLUTION.md pipeline. Monotonically
@@ -193,12 +194,13 @@ class WellKnownDecls {
 ///                slots, poison bits, redecl chains). Passes communicate
 ///                through the AST and registries, NEVER through each other.
 class SemaContext {
-    pub var ctx:   obs::<ASTContext>;
-    pub var tu:    obs::<TranslationUnit>;
-    pub var g:     obs::<GlobalDisambigTable>;   ///< cross-TU context access (fid -> ctx).
-    pub var diag:  obs::<BufferedDiagSink>;
-    pub var opts:  SemaOptions;
-    pub var phase: SemaPhase = SemaPhase::Parsed;
+    pub var ctx:       obs::<ASTContext>;
+    pub var tu:        obs::<TranslationUnit>;
+    pub var g:         obs::<GlobalDisambigTable>;   ///< cross-TU context access (fid -> ctx).
+    pub var diag:      obs::<BufferedDiagSink>;
+    pub var opts:      SemaOptions;
+    pub var phase:     SemaPhase = SemaPhase::Parsed;
+    pub var instances: obs::<InstantiationRegistry> = &null;
 
     pub var well_known: WellKnownDecls;
 
@@ -230,12 +232,13 @@ class SemaContext {
     /// never run against a default-constructed context the driver always
     /// assigns SemaContext(ctx, g) before scheduling any stage.
     fn SemaContext(self) {
-        self.ctx   = &null;
-        self.g     = &null;
-        self.tu    = &null;
-        self.diag  = &null;
-        self.types = &null;
-        self.phase = SemaPhase::Parsed;
+        self.ctx       = &null;
+        self.g         = &null;
+        self.tu        = &null;
+        self.diag      = &null;
+        self.types     = &null;
+        self.instances = &null;
+        self.phase     = SemaPhase::Parsed;
         self.error_count_base = 0;
     }
 
@@ -253,7 +256,8 @@ class SemaContext {
         // Pointer width comes from the target, which is the only thing about a
         // builtin that is not fixed by its own name.
         if g != &null {
-            self.types = g->types();
+            self.instances = g->instances();
+            self.types     = g->types();
             var pbits: usize = 64;
             if ctx->ci != &null { pbits = ctx->ci->target.pointer_width; }
             if pbits == 0 { pbits = 64; }

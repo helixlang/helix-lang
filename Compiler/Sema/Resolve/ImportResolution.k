@@ -115,7 +115,7 @@ class ImportResolution {
             return;
         }
         if id->has_items {
-            self._fold_selective(id, overlay, src_syms, src_imms, fid);
+            self._fold_selective(id, overlay, src_syms, src_imms, fid, src_tu);
             return;
         }
         self._fold_plain(id, overlay, src_tu, fid);
@@ -204,7 +204,7 @@ class ImportResolution {
             var tok  = id->path_segments[i];
             var name = self.sc->ctx->get_spelling(tok);
             cell = self._walk_segment(cell, prev_name, first, src_syms, src_imms,
-                                      name, tok.range);
+                                      name, tok.range, src_tu);
             if cell == &null { return; }
             prev_name = name;
             last_name = name;
@@ -228,7 +228,7 @@ class ImportResolution {
     priv fn _walk_segment(self, prev: *OverloadCell, prev_name: string,
                           prev_is_module: bool, src_syms: *SymbolTable,
                           src_imms: *ImmediateTable, name: string,
-                          at: SourceRange) -> *OverloadCell {
+                          at: SourceRange, src_tu: *TranslationUnit) -> *OverloadCell {
         var disp = (f"module '{prev_name}\x27") if (prev_is_module) else (f"'{prev_name}\x27");
         var syms = src_syms;
 
@@ -242,7 +242,7 @@ class ImportResolution {
                 ).first(at).emit();
                 return &null;
             }
-            var dc = NameLookup::context_of(self._scope_canonical(d));
+            var dc = NameLookup::context_of(NameLookup::representative(d));
             if dc == &null {
                 // FIXME(diag-table)
                 self.sc->diag->report(DiagID::R015E, at.start,
@@ -254,6 +254,12 @@ class ImportResolution {
         }
 
         var cell = SymbolTable::lookup_foreign(syms, src_imms, name);
+        if (cell == &null) && (prev == &null) {
+            // Top level of the source FILE: its pub/prot imports are part of
+            // its surface (two walls). They live in its overlay, not its
+            // table. DAG order guarantees the overlay is complete.
+            cell = self._reexported_cell(src_tu, src_imms, name);
+        }
         if cell == &null {
             // FIXME(diag-table)
             self.sc->diag->report(DiagID::R015E, at.start,
@@ -264,23 +270,23 @@ class ImportResolution {
         return cell;
     }
 
-    /// The redecl canonical of a scope-owning decl; the decl itself otherwise.
-    /// A fwd decl and its definition are one scope, and only the canonical
-    /// carries the table.
-    priv fn _scope_canonical(self, d: *Decl) -> *Decl {
-        if d == &null { return &null; }
-        if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
-        if isa::<StructDecl>(d)    { return static_cast::<*Decl>(cast::<StructDecl>(d)->canonical_decl());    }
-        if isa::<UnionDecl>(d)     { return static_cast::<*Decl>(cast::<UnionDecl>(d)->canonical_decl());     }
-        if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
-        if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
-        if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
-        return d;
+    priv fn _reexported_cell(self, src_tu: *TranslationUnit, src_imms: *ImmediateTable,
+                             name: string) -> *OverloadCell {
+        if (src_tu == &null) || (src_tu->import_overlay == &null) { return &null; }
+        var key = src_imms->find_ident(name);          // probe only; never intern.
+        if key == u32(-1) { return &null; }
+        var entry = src_tu->import_overlay->entry(key);
+        if entry == &null { return &null; }
+        for var i: usize = 0; i < entry->targets.size(); ++i {
+            var o = dyn_cast::<ImportDecl>(entry->targets[i].origin);
+            if (o != &null) && (o->is_public() || o->is_protected()) { return &(entry->merged); }
+        }
+        return &null;   // private edge: not surface (wall 1).
     }
 
     priv fn _fold_selective(self, id: *ImportDecl, overlay: *ImportOverlay,
                             src_syms: *SymbolTable, src_imms: *ImmediateTable,
-                            fid: u32) {
+                            fid: u32, src_tu: *TranslationUnit) {
         for var j: usize = 0; j < id->items.size(); ++j {
             var it = id->items[j];
             if it.is_wildcard {
@@ -304,7 +310,7 @@ class ImportResolution {
                 var tok = it.sub_path[s];
                 var nm  = self.sc->ctx->get_spelling(tok);
                 cell = self._walk_segment(cell, prev_name, first, src_syms, src_imms,
-                                          nm, tok.range);
+                                          nm, tok.range, src_tu);
                 if cell == &null { break; }
                 prev_name = nm;
                 first     = false;

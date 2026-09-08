@@ -61,6 +61,11 @@ enum SpecKind derives u8 {
     Primary,
     Explicit,
     Partial,
+    ///   Instantiated  implicit instantiation node minted by the registry on
+    ///                 first concrete mention. Never written by the user, never
+    ///                 in a table, never a lookup answer. RecordType::decl for
+    ///                 a concrete instance with no explicit spec.
+    Instantiated,
 }
 
 /// CRTP mixin: a decl `T` derives TemplateParams::<T> to carry generic
@@ -76,6 +81,23 @@ class <T> TemplateParams {
     /// (`<i32>`, `<[T]>`). Empty for None/Primary-via-`<T>` forms.
     pub var spec_args: FrozenList::<*Type>;
 
+    ///   Instantiated   the pattern: the primary, or a partial spec once M2
+    ///                  selects one. Written by the registry, repointed by M2.
+    ///   Explicit/Partial  the primary. Written by T at registration.
+    ///   None/Primary   null.
+    pub var instantiated_from: *Decl = &null;
+    /// Instantiated only: M2 has filled the body. Until then the node's tables
+    /// and base list are EMPTY and lookup walks `instantiated_from`.
+    pub var instantiated: bool = false;
+
+    fn is_specialization(self) -> bool {
+        return (self.spec_kind == SpecKind::Explicit)
+            || (self.spec_kind == SpecKind::Partial)
+            || (self.spec_kind == SpecKind::Instantiated);
+    }
+
+    fn is_instance(self) -> bool { return self.spec_kind == SpecKind::Instantiated; }
+
     /// True if this decl has explicit `<T>` type parameters.
     fn has_type_params(self) -> bool {
         return !self.generic_params.is_empty();
@@ -90,11 +112,6 @@ class <T> TemplateParams {
     fn is_generic(self) -> bool {
         return self.has_type_params()
             || (self.spec_kind == SpecKind::Primary);
-    }
-
-    fn is_specialization(self) -> bool {
-        return (self.spec_kind == SpecKind::Explicit)
-            || (self.spec_kind == SpecKind::Partial);
     }
 
     fn generic_param_count(self) -> usize {

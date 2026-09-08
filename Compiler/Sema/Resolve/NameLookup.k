@@ -151,21 +151,23 @@ class NameLookup {
             dc = dc->dc_parent;
         }
 
-        // Overlay is LAST and imm-keyed by THIS TU's imms (RESOLUTION.md #2,
-        // hard invariant #2). Only plain-identifier names are folded into it;
-        // operator keys are compared cross-TU directly and ctors are
-        // context-relative, so neither routes through the overlay.
-        if (self.tu != &null) && (self.tu->import_overlay != &null) && name.is_ident() {
-            var cell = self.tu->import_overlay->lookup_ident(name.payload);
+        // The overlay of the TU the walk STARTED in, not the pass's TU. They
+        // differ when T reads a node that lives in an imported file (alias body,
+        // default on a primary): `name` is keyed by THAT file's imms and only
+        // that file's overlay shares the key space. Probing self.tu's overlay
+        // with a foreign imm is a silent wrong answer or a false miss (#2).
+        var home = NameLookup::tu_of(from);
+        if home == &null { home = self.tu; }
+        if (home != &null) && (home->import_overlay != &null) && name.is_ident() {
+            var cell = home->import_overlay->lookup_ident(name.payload);
             if cell != &null {
                 var r = SemaLookupResult{};
                 r.cell        = cell;
-                r.found_in    = static_cast::<*DeclContext>(self.tu);
+                r.found_in    = static_cast::<*DeclContext>(home);
                 r.via_overlay = true;
                 return r;
             }
         }
-
         return SemaLookupResult::not_found();
     }
 
@@ -217,6 +219,43 @@ class NameLookup {
         if isa::<ModuleDecl>(d)    { return static_cast::<*DeclContext>(cast::<ModuleDecl>(d));    }
         if isa::<ExtensionDecl>(d) { return static_cast::<*DeclContext>(cast::<ExtensionDecl>(d)); }
         return &null;
+    }
+
+    /// The canonical link of `d`'s redecl chain, or null when `d` is not a
+    /// redeclarable kind. FunctionDecl is absent on purpose: its chains need
+    /// signatures and are deferred, so its canonical is still itself and
+    /// collapsing on it would be a lie.
+    static fn chain_canonical(d: *Decl) -> *Decl {
+        if d == &null { return &null; }
+        if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
+        if isa::<StructDecl>(d)    { return static_cast::<*Decl>(cast::<StructDecl>(d)->canonical_decl());    }
+        if isa::<UnionDecl>(d)     { return static_cast::<*Decl>(cast::<UnionDecl>(d)->canonical_decl());     }
+        if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
+        if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
+        if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
+        return &null;
+    }
+
+    /// The decl that REPRESENTS the entity `d` belongs to: the chain's
+    /// canonical (the definition once N(a) retargeted it), else `d` itself.
+    /// THE identity every canonical type keys on. Use nothing else.
+    static fn representative(d: *Decl) -> *Decl {
+        var c = NameLookup::chain_canonical(d);
+        if c == &null { return d; }
+        return c;
+    }
+
+    /// Explicit/partial specialization: its own entity, never a chain link,
+    /// never a RecordType::decl. M1 pairs it with its primary.
+    static fn is_specialization(d: *Decl) -> bool {
+        if d == &null { return false; }
+        if isa::<ClassDecl>(d)    { return cast::<ClassDecl>(d)->is_specialization();    }
+        if isa::<StructDecl>(d)   { return cast::<StructDecl>(d)->is_specialization();   }
+        if isa::<UnionDecl>(d)    { return cast::<UnionDecl>(d)->is_specialization();    }
+        if isa::<FunctionDecl>(d) { return cast::<FunctionDecl>(d)->is_specialization(); }
+        if isa::<EnumDecl>(d)      { return cast::<EnumDecl>(d)->is_specialization();      }
+        if isa::<InterfaceDecl>(d) { return cast::<InterfaceDecl>(d)->is_specialization(); }
+        return false;
     }
 
     // --- Primitive 4: one qualified segment -----------------------------------

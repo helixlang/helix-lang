@@ -512,6 +512,12 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             }
             if seen { continue; }
 
+            // A specialization is its own entity: it never links into the
+            // primary's chain and never counts as a redefinition of it. Its
+            // OWN chain (fwd + def) links in T on canonical spec args -- N
+            // has no types to compare. A spec with no primary is T's.
+            if NameLookup::is_specialization(d) { continue; }
+
             group.push_back(d);
             if !isa::<FunctionDecl>(d) { all_fn = false; }
             if k0 == DeclKind::DeclKindCount { k0 = d->kind; }
@@ -590,6 +596,34 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             first->retarget_canonical(first->first_decl());
         }
     }
+
+    /// `Self` names the enclosing TYPE BODY's decl: the class/struct/... or
+    /// the ExtensionDecl (ChainBinding maps that to its target). Not a table
+    /// name, not a local. Error home for "outside a type body" in EXPRESSION
+    /// position is here; type position is T's.
+    priv fn _bind_self_type(self, n: *NamedIdentExpr) -> bool {
+        var imm = self.sc->imm_table()->intern_ident_copy("Self");   // trace label only; never a lookup key.
+
+        var dc = self.cur_dc;
+        while (dc != &null) && !(dc->is_type_scope() && (dc->owner_decl() != &null)) {
+            dc = dc->dc_parent;
+        }
+        if dc == &null {
+            self.sc->diag->report(DiagID::R001E, n->range.start,
+                "'Self' used outside of a type body"
+            ).first(n->range).emit();
+            n->poison();
+            self.sc->trace.use_site(imm, n->range, &null, TraceVia::Miss,
+                                    &null, usize(-1), 0, true, &null, TraceVia::None, &null);
+            return true;
+        }
+        var owner = NameLookup::representative(dc->owner_decl());
+        n->resolved_decl = owner;
+        self.sc->trace.use_site(imm, n->range, owner, TraceVia::Scope, dc, usize(-1),
+                                0, false, &null, TraceVia::None, &null);
+        return true;
+    }
+    
 
     /// The sole home of the redefinition diagnostic. One error at the
     /// second decl, one note at the first, every loser poisoned so uses
@@ -707,7 +741,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         // in it. Members live on the DEFINITION, so every segment steps
         // through the chain's canonical, which _validate_decls (running
         // before this) already retargeted at the definition.
-        var cur = self._representative(r.first());
+        var cur = NameLookup::representative(r.first());
         head->resolved_decl = cur;
 
         if chain != &null {
@@ -725,7 +759,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
                     st->name->poison();
                     return &null;
                 }
-                cur = self._representative(sr.first());
+                cur = NameLookup::representative(sr.first());
                 st->name->resolved_decl = cur;
             }
         }
@@ -838,7 +872,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         h.found_in    = r.found_in;
 
         if r.single() {
-            h.decl = self._representative(r.first());
+            h.decl = NameLookup::representative(r.first());
             return h;
         }
 
@@ -853,30 +887,6 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         return h;
     }
 
-    /// The canonical link of \p d's redecl chain, or null when \p d carries
-    /// no chain N has judged. FunctionDecl is deliberately absent: its chains
-    /// need signatures to link and are deferred, so its canonical is still
-    /// itself and collapsing on it would be a lie.
-    priv fn _chain_canonical(self, d: *Decl) -> *Decl {
-        if d == &null { return &null; }
-        if isa::<ClassDecl>(d)     { return static_cast::<*Decl>(cast::<ClassDecl>(d)->canonical_decl());     }
-        if isa::<StructDecl>(d)    { return static_cast::<*Decl>(cast::<StructDecl>(d)->canonical_decl());    }
-        if isa::<UnionDecl>(d)     { return static_cast::<*Decl>(cast::<UnionDecl>(d)->canonical_decl());     }
-        if isa::<InterfaceDecl>(d) { return static_cast::<*Decl>(cast::<InterfaceDecl>(d)->canonical_decl()); }
-        if isa::<EnumDecl>(d)      { return static_cast::<*Decl>(cast::<EnumDecl>(d)->canonical_decl());      }
-        if isa::<ModuleDecl>(d)    { return static_cast::<*Decl>(cast::<ModuleDecl>(d)->canonical_decl());    }
-        return &null;
-    }
-
-    /// The decl that REPRESENTS the entity \p d belongs to: the chain's
-    /// canonical (the definition, once N(a) has retargeted it) when there is
-    /// a chain, else \p d unchanged.
-    priv fn _representative(self, d: *Decl) -> *Decl {
-        var c = self._chain_canonical(d);
-        if c == &null { return d; }
-        return c;
-    }
-
     /// The one entity a multi-decl cell denotes, or null when it holds a
     /// genuine overload set or a diagnosed conflict. Every entry must be a
     /// chain link, and every entry must agree on the canonical.
@@ -884,10 +894,12 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         if cell == &null { return &null; }
         var rep: *Decl = &null;
         for var i: usize = 0; i < cell->size(); ++i {
-            var c = self._chain_canonical(cell->get(i));
-            if c == &null { return &null; }      // no chain: a real overload set.
+            var d = cell->get(i);
+            if NameLookup::is_specialization(d) { continue; }   // not a competing entity.
+            var c = NameLookup::chain_canonical(d);
+            if c == &null { return &null; }
             if rep == &null { rep = c; continue; }
-            if rep != c { return &null; }        // distinct entities sharing a name.
+            if rep != c { return &null; }
         }
         return rep;
     }
@@ -1280,6 +1292,24 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         return n;
     }
 
+    /// The init clause declares INTO the loop's own scope, not the enclosing
+    /// one -- `for var i = 0; ...` twice in a row is two `i`s.
+    fn traverse_indexed_for_stmt(self, n: *IndexedForStmt) -> *IndexedForStmt {
+        if n == &null { return n; }
+        if self.dyn()->walkup_indexed_for_stmt(n) == false { return n; }
+
+        self.locals.push_back(LocalScope{});
+        self.sc->trace.open_scope(TraceScopeKind::ForBody, &null, n->range, self.cur_dc);
+        if n->init   != &null { n->init   = self.dyn()->dispatch_stmt(n->init); }
+        if n->cond   != &null { n->cond   = self.dyn()->dispatch_expr(n->cond); }
+        if n->update != &null { n->update = self.dyn()->dispatch_expr(n->update); }
+        self._suppress_next_block_frame = true;
+        n->body = self.dyn()->traverse_block(n->body);
+        self.sc->trace.close_scope();
+        self.locals.pop_back();
+        return n;
+    }
+
     fn traverse_context_binding_stmt(self, n: *ContextBindingStmt) -> *ContextBindingStmt {
         if n == &null { return n; }
         if self.dyn()->walkup_context_binding_stmt(n) == false { return n; }
@@ -1471,21 +1501,20 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         if n->is_bound() || n->is_deferred() { return true; }
 
         // Already DIAGNOSED. N(a) walks an out-of-line def's `Class::`
-        // qualifier before the RAV ever reaches it, so without this the
-        // same unresolvable head is reported twice -- once by
-        // _resolve_qualifier and once here. Poison is the marker: one
-        // error, one home.
+        // qualifier before the RAV ever reaches it; poison is the marker so
+        // the same unresolvable head is not reported twice.
         if n->is_poisoned() { return true; }
 
         var imm = self._name_imm(n->name);
-        if imm == u32(-1) { return true; }   // not an identifier: nothing to bind.
+        if imm == u32(-1) {
+            if n->name.kind == TokenKind::BiSelf { return self._bind_self_type(n); }
+            return true;   // not an identifier: nothing to bind.
+        }
 
         var h = self._resolve_name(imm);
 
         if !h.found {
             if self._has_bare_ffi {
-                // See _has_bare_ffi: the name may be the header's. No poison
-                // (T must not treat it as errored) and no diagnostic.
                 n->foreign = true;
                 self.sc->trace.use_site(imm, n->range, &null, TraceVia::Miss,
                                         &null, usize(-1), 0, false,
@@ -1496,17 +1525,13 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             self.sc->diag->report(DiagID::R001E, n->range.start,
                 f"use of undeclared identifier '{nm}\x27"
             ).first(n->range).emit();
-            n->poison();                      // both slots stay null; T skips.
+            n->poison();
             self.sc->trace.use_site(imm, n->range, &null, TraceVia::Miss,
                                     &null, usize(-1), 0, true,
                                     &null, TraceVia::None, &null);
             return true;
         }
 
-        // Import access. I folded priv/prot names in on purpose and recorded
-        // the visibility fact; the "exists but you can't touch it" error is
-        // ours, and only fires when the ONLY way to see the name was the
-        // overlay (a local decl shadows before we ever get here).
         if h.via_overlay && !self._overlay_access_ok(imm) {
             var nm = self.sc->ctx->get_spelling(n->name);
             self.sc->diag->report(DiagID::R001E, n->range.start,
@@ -1601,6 +1626,39 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             self.sc->trace.member_step(imm, at, mk, sep, st->index);
         }
         return out;
+    }
+
+    /// A named non-variable decl at statement scope (`fn inner`, `class
+    /// Local`, `type Row = ...`). In no table by design; visible to its OWN
+    /// body (recursion), so it is declared BEFORE the walk, unlike `var`.
+    fn traverse_decl_stmt(self, n: *DeclStmt) -> *DeclStmt {
+        if n == &null { return n; }
+        if self.dyn()->walkup_decl_stmt(n) == false { return n; }
+        var d = n->decl;
+        if d == &null { return n; }
+        var imm = self._stmt_decl_imm(d);
+        if (imm != u32(-1)) && !self.locals.empty() {
+            self._declare_local(imm, d, d->range);
+        }
+        n->decl = self.dyn()->dispatch_decl(d);
+        return n;
+    }
+
+    /// Name imm for the decl kinds traverse_decl_stmt declares; u32(-1) for
+    /// everything else (VariableDecl declares itself after its initializer).
+    priv fn _stmt_decl_imm(self, d: *Decl) -> u32 {
+        if isa::<FunctionDecl>(d) {
+            var f = cast::<FunctionDecl>(d);
+            if f->is_operator || f->is_out_of_line() { return u32(-1); }
+            return self._name_imm(f->name);
+        }
+        if isa::<ClassDecl>(d)     { return self._name_imm(cast::<ClassDecl>(d)->name);     }
+        if isa::<StructDecl>(d)    { return self._name_imm(cast::<StructDecl>(d)->name);    }
+        if isa::<UnionDecl>(d)     { return self._name_imm(cast::<UnionDecl>(d)->name);     }
+        if isa::<InterfaceDecl>(d) { return self._name_imm(cast::<InterfaceDecl>(d)->name); }
+        if isa::<EnumDecl>(d)      { return self._name_imm(cast::<EnumDecl>(d)->name);      }
+        if isa::<TypeAliasDecl>(d) { return self._name_imm(cast::<TypeAliasDecl>(d)->name); }
+        return u32(-1);
     }
 
     // --- deferred: pattern heads -------------------------------------------

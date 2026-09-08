@@ -1,183 +1,36 @@
-# Symbol tables & the resolution pipeline
-
-Design doc for the TU symbol table and the ordering contract between
-ImportResolution, NameResolution, TypeResolution, and ChainBinding. This is
-the third and only REAL symbol table in the compiler. The other two are
-phase artifacts and stay untouched: DisambigTable answers one boolean for
-the parser pre-parse; the macro table belongs to the PP.
-
-Companion: IMPORTS.md (the import forms, the overlay, and how resolved
-links become emitted C++). Where this doc and IMPORTS.md overlap, IMPORTS.md
-is authoritative for anything touching an `ImportDecl`.
-
-Status legend:
-
-    [DONE]      implemented, tested against `--print-sema`
-    [PARTIAL]   implemented for a stated subset; the gap is named
-    [BROKEN]    implemented, wrong; the fix is specified
-    [MISSING]   not implemented; owner and shape are specified
-    [DECIDED]   a rule with no code behind it yet; do not relitigate
-
----
-
-## 1. Symbol table data structure [DONE]
-
-Principle: **the AST is the trie; tables are per-DeclContext leaf maps.**
-No parallel scope tree. DisambigTable's mirror-trie needed `_wire_scopes`
-to reconcile two structures; this design has nothing to reconcile.
-
-`AST/Context/SymbolTable.k` (DeclName, OverloadCell, SymbolTable), wired
-into `DeclContext::dc_symbols` + `TranslationUnit::{out_of_line,
-import_overlay}`, populated by `ASTParse::_build_symbols`.
-
-```
-class SymbolTable {                    // one per DeclContext (TU, module, type)
-    var cells:  map<u64, OverloadCell> // key: DeclName::as_key()
-    var frozen: bool = false
-    fn append(name: DeclName, d: *Decl)  // parse-time only; asserts !frozen
-    fn lookup(name: DeclName) -> *OverloadCell
-    fn freeze(self)
-}
-
-// DeclName = kind:u8 + payload:u32, packed to u64:
-//   Identifier(imm)   payload = this TU's imm ident index
-//   Operator(k0,k1)   payload = packed op-token kinds (stable cross-TU)
-//   Constructor       payload = 0; CONTEXT-RELATIVE
-//   Destructor        reserved; `fn op delete` keys as Operator for now.
-// Names stay pure name-domain: constructing a DeclName never needs type
-// info.
-```
-
-- **Keys** are per-TU `u32` imms. Cross-TU keys never mix (invariant #2).
-  Operator keys pack TokenKinds, build-stable, so ADL may compare them
-  cross-TU.
-- **Builtins are NOT names.** `i32` lexes as `AtI32`, a keyword token, and
-  never enters a table. It is a universal entity: a `BuiltinType`
-  singleton in the canonical store, resolved by token kind in T (§2.6).
-  A user decl cannot shadow it. The old WellKnownType rows for primitives
-  were permanently `<unresolved>` for this reason and are gone.
-- **Extension members** land in the ExtensionDecl's OWN table. Folding
-  them into the target type's lookup is MemberLookup's job (§2b) [DONE];
-  rewriting `semantic_dc` is ExtensionLowering's [MISSING].
-- **Enum variants** keyed into the enum's table by the build walk.
-- **Dual-context links**: `lexical_dc` / `semantic_dc` on every indexed
-  decl. Out-of-line defs get `semantic_dc = null` until N(a) attaches.
-- **Qualified lookup** walks `decl -> dc_symbols` per segment.
-- **Unqualified lookup**: this DC's table -> DC parent chain -> overlay
-  -> miss.
-- **Anonymous scopes** get no table; decls land in the enclosing DC's.
-- **Excluded**: locals and params (N's lexical stack); generic params
-  (T's frame stack). Neither is in any table by design.
-
-### Population (parser-owned) [DONE]
-
-`ASTParse::_build_symbols()` at the end of `parse()`. Append-only,
-zero diagnostics, zero judgment; `fn Class::method` to `out_of_line`;
-freeze every table at exit. One walk, one place to audit.
-
----
-
-## 1b. Canonical types [DONE]
-
-`AST/Context/CanonicalTypes.k` + `AST/Node/CanonicalNodes.k`.
-
-`Type::canonical` is a pointer, and pointers only compare inside one
-uniquing domain. Kairo has one ASTContext per fid, so a per-fid store
-would make `a->canonical == b->canonical` false the moment two TUs both
-write `i32`. Monomorphization and the instantiation registry key on that
-identity. Therefore:
-
-- **One `CanonicalTypeStore` per BUILD**, owned by `GlobalDisambigTable`,
-  reached via `SemaContext::types`. Mutex-guarded (P/N/T are per-TU
-  parallel). Own arena, so canonicals outlive any fid's `ast_alloc` reset.
-- **Two node kinds the parser never produces:** `BuiltinType` (one
-  singleton per `BuiltinKind`, self-canonical, sizes from the target's
-  pointer width for usize/isize) and `RecordType(decl, canonical args)`
-  the canonical form of every nominal type use. `Foo`, `ns::Foo`, an
-  imported `Foo`, and `Alias` all canonicalize to the same `RecordType`.
-- **Uniqued on structure, quals excluded** (Base.k invariant): pointer,
-  nullable, vector, set, map, tuple, fixed array (known extent only),
-  function pointer, generic param (on `(owner decl, index)`, never on the
-  name), opaque FFI (on spelling imm).
-- **Contract:** callers pass ALREADY-CANONICAL components. T resolves
-  bottom-up (post-order `dispatch_type` override) so this is never
-  violated.
-
-`GenericParamType` gained an `owner: *Decl` field for the uniquing key.
-`TypeKind` gained `RecordType` and `BuiltinType`; the RAV treats both as
-leaves (their components are shared build-wide and must not be re-walked
-per referring TU).
-
----
-
-## 1c. Resolution state [DONE]
-
-`Sema/Resolve/ResolutionState.k`. Per-TU side table on `SemaContext`:
-`Unresolved | InProgress | Resolved | Errored` per decl and per type node,
-plus the active resolution stack. `InProgress` is the load-bearing state:
-re-entering it is a cycle in the USER's program, reported with the stack
-as notes. `Errored` is permanent, so a bad alias used fifty times reports
-once.
-
-A side table, not a field on Decl: `ast_alloc` is reset per stage, a
-SemaContext is per-TU-per-run (LSP re-runs start clean), and Decl already
-has `poisoned` a second "done" bit that can disagree with the first is
-a second source of truth.
-
-Diagnoses NOTHING itself (leaf component, AST + Location imports only).
-The pass that hits the cycle owns the message.
-
----
-
-## 2. Pipeline order and invariants
-
-```
-P:  parse (per TU, parallel)            -> AST + frozen SymbolTables     [DONE]
-I:  ImportResolution (DAG order)        -> import_overlay built          [DONE]
-E:  Expand (requires-desugar, macros)   -> canonical syntax              [PARTIAL: desugar only]
-V:  Verify (structural checks)          -> pure reads                    [DONE]
-N:  NameResolution (per TU, parallel)   -> every HEAD bound              [DONE]
-T:  TypeResolution (per TU, DAG order)  -> every Type node canonical     [DONE]
-    ChainBinding (same stage, after T)  -> every decidable STEP bound    [DONE]
-C:  checks                              -> shape/conformance/access      [MISSING]
-L:  lowerings                           -> codegen-shaped tree           [MISSING]
-M1: instantiation registry (parallel)                                    [MISSING]
-M2: instantiate + dependent conformance (sync)                           [MISSING]
-```
 
 **Ordering is DAG order, not just parallel.** `CompilerInstance::_sema`
 runs each fid's pipeline in reverse import-tree order. I needs it (source
 overlay complete before re-export folds). T needs it (an imported file's
-Type nodes are canonical before an importer expands an alias through them
-— T WRITES `canonical` onto nodes in another fid's arena, and DAG order is
-what makes that a single write on a single thread). Invariant #4's "T is
-embarrassingly parallel" is therefore parallel ACROSS independent subtrees
-only. Do not change the loop order.
+nodes are settled before the importer READS them). Do not change the loop.
 
 ### 2.1 P parse [DONE]
 
 POST: every DC has a frozen table; `out_of_line` collected.
 INVARIANT: frozen tables are never mutated again by ANY later phase.
 
+Statement-scope named decls (`class Local`, `fn inner` inside a body) are
+linked into the enclosing executable DC's `dc_decls`
+(`StmtParse::_attach_local_decl`, never for the TU). `_build_symbols`
+indexes their BODIES through `_index_local_scopes` so members have tables;
+their NAMES go in no table (N's lexical stack / T's `ltypes` own them).
+`Self` in expression and pattern position lexes as `BiSelf` and parses as
+an ordinary `NamedIdentExpr` head; `Self<...>` never takes generic args.
+
 ### 2.2 I ImportResolution [DONE, IMPORTS.md §4]
 
-The decided contract from the previous revision of this doc stands
-unchanged and is now maintained in IMPORTS.md §2.3 and §4. Summary:
 path->fid is the PP's; keys re-intern once at the boundary; overlay cells
 are thin and multi-target; plain imports bind ONE name (the ModuleDecl);
 import everything, carry the visibility fact, diagnose at use; two walls
-against accidental transitivity; parse-time disambig is lazy; NO unfold
-pass, NO fwd-decl synthesis, NO textual rewrite.
+against accidental transitivity; NO unfold pass, NO fwd-decl synthesis.
 
-Known defects, all specified with fixes in IMPORTS.md: ModuleHandle and
-FfiAnchor excluded from `merged` (plain imports resolve to an empty cell);
-reopened namespaces flagged ambiguous; symbol-path imports
-(`import foo::X`) fold as module handles; re-export unimplemented.
+Selective and symbol-path imports of a name the source RE-EXPORTS
+(`import foo::{bar}` where foo `pub import`s bar) probe the source's
+overlay on a table miss (`_reexported_cell`). Wildcards fold re-exports.
 
 ### 2.3 E Expand [PARTIAL]
 
-`RequiresDesugar` runs. Macro expansion and eval lowering do not. Needs
-nothing past Parsed; sits after I only because the schedule is linear.
+`RequiresDesugar` runs. Macro expansion and eval lowering do not.
 
 ### 2.4 V Verify [DONE]
 
@@ -189,310 +42,260 @@ Six independent structural checks. Errors hard-stop before N.
 
 (a) Decl validation over frozen cells: link `Redeclarable` chains for the
 five type kinds + modules, retarget canonical at the definition, diagnose
-redefinition and conflicting kinds, attach `out_of_line` defs
-(`semantic_dc` := owning type's context), populate `sc.well_known`
-(library lang items only; primitives are builtins, §1).
+redefinition and conflicting kinds, attach `out_of_line` defs, populate
+`sc.well_known`. **Specializations are skipped**: their own chains link in
+T on canonical spec args (#12).
 
-    [MISSING] FUNCTION redecl chains: telling a redeclaration from an
-    overload needs signatures. Deferred to OverloadResolution. Out-of-line
-    defs are ATTACHED but not linked into the in-class decl's chain for
-    the same reason.
+    [MISSING] FUNCTION redecl chains: need signatures. OverloadResolution.
 
-(b) Binding: every `NamedIdentExpr` head gets `resolved_decl` (unique) or
-`candidate_cell` (a cell it never filters invariant #3). Order: lexical
-locals stack (innermost frame first; params and generic params of the
-enclosing FUNCTION live in its frame) -> `sc->lookup.unqualified(cur_dc)`
--> miss. Redecl chains collapse to the canonical; a genuine overload set
-goes through whole. Statement binders (`for`, `catch`, destructuring,
-`case var n`, context bindings) declare into the lexical stack; the
-value/iterable is resolved in the OUTER scope first, so `for x in x`
-names an outer `x`. Attribute names bind when a decl exists, silently
-otherwise. Import-access ("exists but private") is emitted here.
+(b) Binding: every `NamedIdentExpr` head gets `resolved_decl` or
+`candidate_cell`. Order: lexical locals stack (innermost first) ->
+`sc->lookup.unqualified(cur_dc)` -> miss. Redecl chains collapse to the
+representative; specializations never compete for a name; a genuine
+overload set goes through whole.
 
-    [DONE] A type scope's generic params are in the lexical stack.
-    `traverse_class_decl` and its struct/union/interface/enum/extension/
-    alias siblings push a locals frame holding `n->generic_params`
-    (`_open_type_generics` / `_close_type_generics`), exactly as
-    `traverse_function_decl` does, so `T` in EXPRESSION position inside
-    the body a `requires T impl X` on the class, a `ConstraintExpr`
-    lhs, `T::CONST` binds. The frame is pushed only when the decl
-    actually has generic params, so a non-generic type costs neither a
-    frame nor an empty trace scope. Test:
-    Tests/Sema/typeres_class_generic_expr.k.
-
-    [DONE, TEMPORARY] The bare-ffi miss gate. A bare
-    `ffi "c++" import "h.hh"` puts the header's names in unqualified
-    scope, but those declarations exist only inside clang until the
-    extraction pass, so an unqualified miss in a TU that carries one is
-    left unbound and marked foreign (`NamedIdentExpr::foreign`,
-    `TraceRow::foreign_gate`, skipped by NameBindingVerifier) instead of
-    diagnosed. Nothing is poisoned, so T treats the node as absent rather
-    than errored. This turns typos in such a TU into deferred clang
-    errors, which is why it is gated on the presence of a bare ffi import
-    in THIS TU and why extraction DELETES it rather than improving it.
-    IMPORTS.md §5.
-
-    [DONE, by design] N does NOT bind: chain steps (ChainBinding, §2.7);
-    ConstructorPattern / UnresolvedConstructorPattern HEADS and bare
-    `case n` (need the scrutinee type; pattern checking owns them);
-    named-initializer field names (`Point { x: 1 }` `InitField.name`
-    is a bare token; inference owns it); attribute ARGUMENTS.
+    [DONE] Lexical stack holds: params, generic params of the enclosing
+    function/type, statement binders (`for`, `catch`, destructuring,
+    `case var n`, context bindings), body `var`s (declared AFTER their
+    initializer), and statement-scope named decls (`fn inner`, `class
+    Local`, `type X` -- declared BEFORE their body, so recursion binds).
+    C-style `for var i = ...` scopes `i` to the loop.
+    [DONE] `Self` (BiSelf) in expression position binds to the enclosing
+    type body's decl -- the class/struct/... or the ExtensionDecl.
+    "Outside a type body" is N's error in expression position. (parser: BiSelf
+    is in EXPR_IDENT_TBL)
+    [DONE] Bare-ffi miss gate (TEMPORARY, IMPORTS.md §5).
+    [DONE, by design] N does NOT bind: chain steps (ChainBinding);
+    ConstructorPattern heads and bare `case n` (pattern checking);
+    named-initializer field names (inference); attribute ARGUMENTS.
 
 `NameBindingVerifier` is N's exit test: no reachable `NamedIdentExpr`
-survives with both slots null unless poisoned. Reports through the diag
-sink, not assert (release builds compile asserts out).
+survives with both slots null unless poisoned or foreign.
 
 ### 2.6 T TypeResolution [DONE]
 
 `Sema/Resolve/TypeResolve.k`. Every type node gets `canonical`,
-`type_flags`, and per-segment `resolved_decl` / `resolved_type`. Poisons
-on error.
+`type_flags`, per-segment `resolved_*`. Poisons on error.
 
-**T never rewrites a node.** `T` inside `fn foo<T>()` stays a `ChainType`
-whose canonical is a `GenericParamType`. Rewriting kinds through a RAV is
-unsafe (the parent holds the old pointer type) and buys nothing: every
-consumer reads `->canonical`.
+**T never rewrites a node.** Slots only.
 
-**Post-order, demand-driven.** `dispatch_type` is overridden: children
-first, then `resolve(node)`, memoized on ResolutionState. Aliases expand on
-demand through `_expand_alias`, which claims the alias decl before
-descending `type A = B; type B = A` is one error with every link as a
-note, not a hang. This is the interleaving RESOLUTION.md's previous
-revision said "may be fused later": the cycle that needs it is
-alias<->lookup INSIDE T, and that is where it lives. N and T remain
-separate passes.
+**Post-order, demand-driven.** `dispatch_type` resolves children first.
+Aliases expand on demand (`_expand_alias`), memoized on ResolutionState;
+`type A = B; type B = A` is one error with every link as a note.
+
+**T never dispatches a node it does not own.** An imported alias body or a
+default on an imported primary is READ through its slots (`_foreign`);
+DAG order guarantees they are filled. Re-dispatching would consult a
+per-TU memo that says "unresolved", re-run lookups from the wrong TU, and
+report foreign errors into this sink.
+
+**Unqualified lookup uses the overlay of the TU the walk started in**
+(`NameLookup::unqualified`), never the pass's TU. Same key-space rule as
+#2, applied to overlays.
 
 What T decides:
-- **Builtins** by token kind of the first segment, before any lookup.
-  `i32::x` and `i32<T>` are errors here.
-- **Heads**: generic frames (innermost first; a method's `<T>` shadows its
-  class's) -> `sc->lookup.unqualified(cur_dc)`. Redecl chains collapse to
-  the canonical; a cell with both a type and a value under one name picks
-  the type (the redefinition was N(a)'s error).
-- **`::` segments** step through `context_of(decl)`, expanding an alias
-  first. `T::Item` and `Foo<T>::Inner` are marked Dependent and stopped
-  (invariant #5); M2 owns member-of-instantiation.
-- **Final decl -> canonical**: `GenericParamDecl` -> `generic_param(owner,
-  index)`, dependent (const params in type position: error).
-  `TypeAliasDecl` -> expand; a GENERIC alias applied with args is arity-
-  checked then marked instantiation-dependent substitution is M2's.
-  Nominal types -> arity check against the primary (required = params
-  with no default and not a pack; packs unbound above) -> args placed by
-  position and by name (unknown name, duplicate name: errors) -> defaults
-  resolved in the primary's scope on demand -> `record(canon, args)`.
-  `ModuleDecl` in type position: error.
-- **Structural kinds** read their components' canonicals and ask the
-  store. `[T; N]` canonicalizes only for a literal N; otherwise
-  instantiation-dependent (the evaluator owns it; `const N` is legal and
-  not decidable here). `[T;]` is extent 0 with `is_incomplete` on the
-  syntax node. Unprototyped `fn()` canonicalizes as zero-param.
-- **`Self` / `self`-in-type-position** -> the innermost type scope's
-  record with its OWN params as args (dependent for a generic type).
-- **Receiver synthesis.** `ParamDecl::create_self` leaves `type_` null. T
-  is the one writer: a `SelfType` node with the enclosing record as
-  canonical. This is what lets ChainBinding bind `self.x` from a declared
-  type instead of asking inference.
-- **#68 refinement.** A `Primary`-classified spec whose head bound params
-  and whose args all resolve to those params stays Primary; any concrete
-  arg downgrades to Explicit. `<> Box<T>` (no head params) pre-marks its
-  spec args resolved-and-dependent so `T` is never looked up.
-- **Enum underlying** must be a builtin integer.
-- **`extend` target** resolved first with the extension's params in frame,
-  then becomes Self for the body; a non-record target is an error unless
-  dependent.
+- **Builtins** by token kind, before any lookup. `i32::x`: error.
+- **`self`/`Self` in type position** (KwSelf, BiSelf): the innermost type
+  scope's record with its own params as args.
+  `Self::Inner` is a HEAD like any other type decl and walks the enclosing
+  body's table; inside `extend Box<i32>` it walks the pattern, not the
+  unfilled instance. `Self<T>` in type position is an error.
+- **Heads**: generic frames (innermost first) -> local-type stack
+  (`ltypes`: statement-scope type decls, one frame per block) ->
+  `unqualified(cur_dc)`. Redecl chains collapse to the representative;
+  `_pick_type_candidate` picks the primary and never a specialization; a
+  name that has only specializations and no primary is an error here.
+- **`::` segments** step through `context_of(decl)`, alias expanded first,
+  spelled for cross-TU probes. `T::Item` and `Foo<T>::Inner` are marked
+  dependent and stopped (#5); M2 owns member-of-instantiation.
+- **Final decl -> canonical**: GenericParamDecl -> `generic_param(owner,
+  index)` where owner is the REPRESENTATIVE of the declaring decl (frames
+  are pushed with the representative, so a fwd decl's `T` and the
+  definition's `T` are one identity). Alias -> expand. Nominal -> arity ->
+  args by position and name -> defaults resolved in the PRIMARY's scope
+  with the primary's params in frame (`_demand_default`) -> #12: dependent
+  args -> `record(primary, args)`; concrete args -> `record(instance,
+  args)` via the registry.
+- **Specialization registration** (#12): a pre-pass over the TU's decl
+  tree registers every Explicit/Partial type spec BEFORE any use resolves
+  (`_register_specs_in`): find the primary (same name, same kind, not a
+  spec, visible from the spec's scope -- "no primary" error home), resolve
+  `spec_args` in the spec's own scope, register Explicit with concrete
+  args in the instance table and everything else as a partial. A Primary
+  the parser could not classify (#68) registers late, after
+  `_refine_spec_kind`. Second explicit spec for the same args in the same
+  file: fwd+def chain (`_link_spec`), or "redefinition of specialization".
+  Different file: error. Already-instantiated: error.
+- **Structural kinds** ask the store. `[T; N]` canonicalizes only for a
+  literal N. Unprototyped `fn()` is zero-param.
+  Dependence always flows up (`_component_ok`): `[T]`, `*T`, `(T, i32)`
+  are dependent because a component is, canonical or not.
+- **Receiver synthesis.** `ParamDecl::create_self` leaves `type_` null; T
+  writes a `SelfType` with the enclosing record as canonical.
+- **#68 refinement**; **enum underlying** must be a builtin integer;
+  **`extend` target** resolved first; a record target becomes Self for the
+  body. Non-record targets (`extend i32`, `extend <T> [T]`) are accepted --
+  extendability is ExtensionLowering's question, not T's -- but `Self`
+  inside such a body is "outside a type body" until `selfs` can hold a
+  non-decl.
 
 Error homes (all `R001E` until the diag table is split; grep
-`FIXME(diag-table)`): unknown type name, primitive with members/args,
-`self` outside a type body, generic param with args, value param as type,
-module as type, non-generic alias with args, arity, unknown/duplicate
-named arg, alias cycle, alias depth, `::` after a non-scope, no such type
-in scope, `extend` on a non-type.
+`FIXME(diag-table)`).
 
-    [PARTIAL] `_pick_type_candidate` collapses same-name type decls to
-    "first entity". Explicit/partial SPECIALIZATIONS are distinct decls
-    under one name; lookup picks the primary. Correct for name lookup,
-    insufficient for M2, which needs the specialization set. Home: the
-    instantiation registry.
+    [PARTIAL] `Foo<i32>::Inner` (concrete args) is marked IsDependent, not
+    merely instantiation-dependent; ChainBinding then refuses
+    `Foo<i32>::Inner::make()`. Mark inst-dependent only when the previous
+    segment's args are all concrete.
 
-    [PARTIAL] Default types on an IMPORTED primary resolve in the
-    importer's scope; `_collect_args` should thread the primary decl into
-    `_demand_in_scope_of`. Exercise with a test before fixing.
+    [PARTIAL] `_register_specs_in` descends type and module scopes only;
+    an explicit specialization written inside a function body is not
+    registered.
 
 ### 2.7 ChainBinding [DONE]
 
-`Sema/Resolve/ChainBinding.k`, scheduled inside the T stage after
-TypeResolution. Walks every `ChainExpr` left to right from an ANCHOR (what
-the previous step denotes) and binds each step:
+`Sema/Resolve/ChainBinding.k`, after TypeResolution in the T stage. Walks
+every `ChainExpr` left to right from an ANCHOR and binds each step:
 
-    Module   -> `::` does table lookup; `.` is an error
-    Type     -> `::` does member lookup (statics, nested, variants, ctors);
-                `.` is an error ("use ::")
-    Value    -> `.`/`->`/`?.`/`?->` peel the separator's wrapper (pointer
-                for `->`, nullable / Null<T> lang item for `?.`; `.` on a
-                pointer is an error) then member lookup on the canonical;
-                `::` is an error
-    NeedsInference / Dependent / Errored -> record why, stop the chain
+    Module   -> `::` does table lookup (every reopened scope, unioned;
+                re-exports via the module's overlay); `.` is an error
+    Type     -> `::` does member lookup; `.` is an error
+    Value    -> `.`/`->`/`?.`/`?->` peel the wrapper then member lookup on
+                the canonical; `::` is an error
+    NeedsInference / Dependent / Foreign / Errored -> record why, stop
 
-Anchors come from N's head binding + T's canonical: a param/field/typed
-var gives Value; a class/struct/enum/interface/alias gives Type; a module
-gives Module; a generic param gives Dependent; a call, an inferred `var`,
-an overload set, a function value, or an operator/tuple-index step gives
-NeedsInference. After binding a field the next anchor is the field's type;
-after a function it is NeedsInference (a call result).
+Anchors: param/field/typed var -> Value; class/struct/enum/interface/
+alias -> Type; `Self` bound to an ExtensionDecl -> Type (its target);
+module -> Module; generic param -> Dependent; call / inferred var /
+overload set / operator or tuple-index step -> NeedsInference; ffi
+anchor -> Foreign.
 
-Commit rule: one decl -> `resolved_decl`; all functions -> `candidate_cell`
-(the frozen cell when it IS the set, a sema-owned merged cell in
-`sema_alloc` otherwise); distinct non-function entities under one name
-reached through different bases -> ambiguity error with every candidate
-noted. A redecl chain (fwd + def) collapses to one entity first.
+    [DONE] A dependent RECORD is still looked up by name (`self.x` in
+    `class <T> Foo` binds to the field); only a dependent NON-record
+    (`T`, `*T`, `[T]`) stops as Dependent.
+    [DONE] `Box<i32>::make()`: a type head with explicit args in
+    expression position anchors as the registry instance -- positional,
+    every param supplied, no packs, no names. Anything else is
+    NeedsInference (inference owns defaults and named args, as for calls).
+    [DONE] Cross-TU probes are spelled, not imm-keyed.
 
-Outcomes are recorded per step location in `ResolutionTrace::member_results`
-and joined onto N's Member rows by SemaDump, so the scopes section reads
-in source order and says what happened to each step.
+Commit rule: one decl -> `resolved_decl`; all functions ->
+`candidate_cell`; distinct non-function entities under one name ->
+ambiguity error. Outcomes recorded per step in `ResolutionTrace`.
 
-    [DONE] Reopened namespaces. `Anchor.scopes` is a vector: an
-    all-`ModuleDecl` candidate cell is ONE namespace spread over N
-    scopes, not an overload set, and a `::` step searches every one of
-    them and unions the hits. A frozen source cell is reused only when a
-    single scope answered. IMPORTS.md §4.3.
-    [DONE] `AnchorKind::Foreign` for ffi. Entered from an `ImportDecl`
-    with ffi linkage; absorbing, so every later step records
-    `MemberOutcome::Foreign` with no decl, no poison and no diagnostic.
-    IMPORTS.md §5.
+### 2.8 C checks [PARTIAL]
 
-    [DONE] Cross-TU probes are spelled, not imm-keyed. A DeclContext's
-    table is keyed by ITS OWN TU's imms (hard invariant #2), so probing a
-    foreign scope with this TU's imm index is not a miss it is a silent
-    wrong answer whenever the two interners happen to agree on an index.
-    `MemberLookup::in_scope` re-interns the name into the owning TU's imm
-    space for a foreign scope; `MemberLookup::lookup` spells the name once
-    per lookup because the walk can cross several TUs (a base class in one
-    file, an extension in another). Operator and ctor keys are built from
-    TokenKinds and stay cross-TU safe, so they skip the translation.
-    Anything that RENDERS a foreign decl has the same problem and the same
-    answer: `NameLookup::ctx_of` says where a decl's names live, and the
-    sema dump renderers and ChainBinding's diagnostics ask it first.
+`ConstraintExtraction` and `TypeCycleCheck` run. `OperatorSignatureCheck`,
+`ConformanceChecking`, `ConstChecking`, `AccessCheck` are stubs.
 
-### 2.8 C checks [MISSING]
-
-`ConstraintExtraction` runs. `OperatorSignatureCheck`, `ConformanceChecking`,
-`ConstChecking`, `AccessCheck`, `TypeCycleCheck` are stubs. TypeCycleCheck
-is the first to write: EmitPlan's tier-1 sort depends on it.
+    [DECIDED] TypeCycleCheck / LayoutPass treat a `RecordType::decl` that
+    is `is_instance() && !instantiated` as "size unknown until M2", never
+    as empty.
 
 ### 2.9 L, M1, M2 [MISSING]
 
-See IMPORTS.md §6–7 for the codegen contract these feed. The mono model is
-"Kairo enumerates and checks; C++ instantiates explicitly" M1 is the
-`(template, canonical args) -> home fid` registry, M2 is the sync point
-that closes it and runs dependent conformance.
+Mono model: "Kairo enumerates and checks; C++ instantiates explicitly".
+M1 walks `InstantiationRegistry::collect`; it creates nothing (T did). M2
+is the sync point: fills `Instantiated` nodes from their pattern, selects
+partials, runs dependent conformance, resolves `T::Item`.
 
 ---
 
 ## 2b. Member lookup & OOP
 
-**Name hiding: MERGE, not hide (Java/C#-style, NOT C++).** [DONE]
-`Sema/Resolve/MemberLookup.k`. `lookup(canonical, name, out)` walks own
-table -> extensions -> bases (class `derives_list` + `implements`, struct
-`implements`, interface `derives_list`) breadth-first, dedups across
-virtual bases by decl identity, and returns the UNION. A derived `m(k)`
-and a base `m()` are two candidates, not a hidden one. Tested: `self.m()`
-in Derived yields both.
+**MERGE, not hide** [DONE]. `MemberLookup::lookup(canonical, name, out)`
+walks own table -> extensions -> bases breadth-first, deduped, UNION.
 
-**Extensions** [DONE]: index built once per run over every parsed TU
-(safe under DAG order). Records keyed by decl (so `extend <T> Vec<T>`
-contributes to every `Vec<X>` at name level; which body runs is
-dispatch); non-records keyed by canonical pointer (`extend i32 { }`).
+**Extensions** [DONE]: indexed once per run over every parsed TU.
+Records keyed by `RecordType::decl` (the primary for `extend <T> Vec<T>`);
+an instance decl also consults its `instantiated_from`'s extensions, so
+the primary's extensions apply to `Vec<i32>` whether implicit or an
+explicit spec. Generic extensions on STRUCTURAL types (`extend <T> [T]`)
+are keyed by TypeKind (shape); exact non-generic targets (`extend i32`) by
+canonical pointer.
 
-**Consequence for C++ codegen** `needs_using` [MISSING]. The slot does
-not exist on the type decls. When it does, the one writer is
-`MemberLookup::_walk_record` at the point a base cell is unioned without
-the derived type overriding it. The one consumer is `UsingDeclSynthesis`
-(lowering). Codegen stays a dumb walker.
+**Instances** [DONE]: an explicit spec walks its own body. An unfilled
+implicit instance walks its pattern (`instantiated_from`).
 
-**Virtual dispatch is NOT a lookup problem.** Unchanged, [MISSING].
+    [OPEN] Where do `[T]` / `{K:V}` / `string` members live? Today: only
+    extensions. If `push` is a corelib record method, lang items must map
+    the structural canonical to that record's decl before ChainBinding.
 
-**Access control is a late FILTER, never a lookup key.** Unchanged;
-`AccessCheck.k` [MISSING]. Lookup currently finds private members and
-nothing rejects them.
-
-**Base-walk PRE: T complete.** Now enforced by schedule: ChainBinding
-runs after TypeResolution in the same stage.
+**`needs_using`** [MISSING]. **Virtual dispatch** [MISSING]. **Access
+control** is a late filter [MISSING].
 
 ---
 
 ## 3. Hard invariants
 
-1. **Frozen means frozen.** Post-parse, source tables take no inserts.
-2. **One key space per TU.** Cross-TU goes through the spell->imm shim in
-   I, once per imported name.
+1. **Frozen means frozen.**
+2. **One key space per TU.** Cross-TU goes through the spelling shim; the
+   overlay consulted is the one of the TU the walk started in.
 3. **One error, one home.** Import existence/ambiguity: I. Import access:
-   N(b). Redefinition / spec-without-primary: N(a). Unresolved head: N(b).
-   Unknown type / arity / alias cycle / primitive misuse: T. No member /
-   wrong separator / member ambiguity: ChainBinding. Dependent
-   conformance: M2. Access: AccessCheck. No phase re-checks another's
-   territory.
-4. **Parallelism boundary.** P is parallel. I, T are DAG-ordered and
-   parallel only across independent subtrees. N and M1 are per-TU
-   parallel. M2 is the only sync point. The canonical store is the one
-   shared mutable structure and it is locked.
-5. **Dependent = deferred, not failed.** Marked and skipped by N/T/CB;
-   M2 owns it.
-6. **Tracing never changes behavior.** `sc->trace` is write-only for the
-   compiler. ChainBinding's `member_results` is the same kind of thing:
-   written for the dump, read by nothing else.
-7. **One writer per fact.** `resolved_decl`/`candidate_cell` on heads: N.
-   On steps: ChainBinding. Promotion cell->decl: inference. `canonical`,
-   `type_flags`, segment slots, `ParamDecl::type_` for `self`: T.
-   `spec_kind` refinement: T. `needs_using`: MemberLookup. A fact recomputed
-   in two places drifts.
-8. **Canonical identity is build-wide.** One store, one arena, one lock.
-   `a->canonical == b->canonical` is type identity everywhere or nowhere.
-9. **T never rewrites nodes.** Slots only.
-10. **Builtins are not names.** Resolved by token kind; unshadowable; in
-    no table; no lang-item row.
-11. **Imports are erased at N/CB.** No later pass reads an `ImportDecl`
-    except for ffi anchors and the `#include` list. (IMPORTS.md #8.)
+   N(b). Redefinition / conflicting kinds: N(a). Unresolved head, `Self`
+   outside a type body (expression): N(b). Unknown type / arity / alias
+   cycle / primitive misuse / no primary for a spec / spec redefinition /
+   spec after instantiation: T. No member / wrong separator / member
+   ambiguity: ChainBinding. Dependent conformance: M2. Access: AccessCheck.
+4. **Parallelism boundary.** P parallel. I, T DAG-ordered. N, M1 per-TU
+   parallel. M2 sync. Store and registry are the shared mutable
+   structures and both are locked.
+5. **Dependent = deferred, not failed.**
+6. **Tracing never changes behavior.**
+7. **One writer per fact.** Heads: N. Steps: ChainBinding. Promotion
+   cell->decl: inference. `canonical`, `type_flags`, segment slots, `self`
+   receiver type, `spec_kind` refinement, spec chain links,
+   `instantiated_from` on specs: T. `instantiated_from` on implicit
+   nodes: registry (then M2). `needs_using`: MemberLookup.
+8. **Canonical identity is build-wide.**
+9. **T never rewrites nodes.**
+10. **Builtins are not names.**
+11. **Imports are erased at N/CB.**
+12. **`RecordType::decl` is the record whose body defines the instance.**
+    Dependent args -> the primary's representative (a pattern). Concrete
+    args -> the instance decl from the registry: an explicit full
+    specialization with equal canonical `spec_args`, else an implicit
+    `Instantiated` node minted on first mention and filled by M2. Partial
+    specializations are patterns: never a `RecordType::decl`. Spec redecl
+    chains link in T on canonical `spec_args`, not in N(a). A spec's
+    forward declaration and definition must be in one file. Specializing
+    after instantiation is an error. Non-generic types never enter the
+    registry.
+13. **T never dispatches a foreign node.** Read the slot; DAG order fills it.
+14. **The representative is the only identity.** Every frame owner, every
+    `record()` decl, every `generic_param()` owner, every chain collapse
+    goes through `NameLookup::representative`. No local copies.
 
 ---
 
 ## 4. What remains, in the order it should be done
 
-Sema, name/type domain:
+Name/type domain -- residue:
 
-    a. N: class-level generic params into the lexical stack       DONE
-    b. IMPORTS.md §8 items 1–9 (symbol paths, merged cell,
-       reopening, foreign anchor, bare-ffi gate, re-export,
-       named roots)                                              DONE
-    c. `_representative` exists in N, T, and CB move to
-       NameLookup as a static                                    cleanup
-    d. Split R001E; grep FIXME(diag-table)                         diag table
+    a. Split R001E; grep FIXME(diag-table)                           diag table
+    b. `Foo<i32>::Inner` dependence flag (§2.6 PARTIAL)              small
+    c. `NameLookup::qualified_step` spelled overload or delete       small
+    d. decide the `[T]`/`string` member model (§2b OPEN)             design
+    e. `_register_specs_in` into executable scopes (§2.6 PARTIAL)      small
+    f. `Self` for non-record `extend` targets (§2.6)                  small
+    g. closure bodies push a null DC (`_parse_closure_expr`); decls
+       inside a closure get no parent and are not attached             small
 
-Name resolution and import lookup are complete: every form in
-IMPORTS.md §1 binds, checked end to end by
-Tests/Sema/imports_all_forms. What is left in the name domain is (c),
-a refactor, and (d), the diagnostic table.
+Type domain (each unblocks the next):
 
-Sema, type domain (each unblocks the next):
+    e. OverloadResolution     `Candidates` steps; function redecl chains;
+                                ctor selection; operators (ADL); UFCS
+    f. TypeInference          `NeedsInference` steps, inferred vars, tuple
+                                index, initializer field names, generic
+                                heads with defaults/named args
+    g. Pattern checking       ctor-pattern heads, bare `case n`, `.Variant`
+    h. AccessCheck
+    i. ConformanceChecking
+    j. ExtensionLowering      `semantic_dc` rewrite
 
-    e. OverloadResolution     clears every `Candidates` step; needed by
-                                function redecl chains, ctor selection,
-                                operator overloads (with ADL), UFCS
-    f. TypeInference          clears every `NeedsInference` step, inferred
-                                vars, tuple index, initializer field names
-    g. Pattern checking       constructor-pattern heads, bare `case n`,
-                                `.Variant`
-    h. AccessCheck            private/protected members, protected imports
-    i. ConformanceChecking    interface requirements, base validity
-    j. TypeCycleCheck         by-value containment cycles; EmitPlan needs it
-    k. ExtensionLowering      `semantic_dc` rewrite; interface emission
-                                needs extension methods folded into the
-                                class's declaration list
+Mono / codegen:
 
-Codegen (IMPORTS.md §6–7):
+    k. M1 enumeration over the registry; M2 fill + partial selection +
+       dependent resolution; EmitPlan reads `InstanceEntry::home_fid`.
 
-    l. EmitPlan, out-of-line body rule, instantiation registry,
-       EmitCXXHeader, clang extraction.
-
-Everything in (a)–(d) is name-domain and is what "name resolution
-complete" means. Everything from (e) on needs a type on an EXPRESSION
-before a name can be picked, and is not name resolution.
+Everything in (a)-(d) is name-domain residue. Everything from (e) on needs
+a type on an EXPRESSION before a name can be picked, and is not resolution.
