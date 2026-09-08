@@ -1,5 +1,5 @@
 #!/usr/bin/env fish
-# Accept/reject parity between kcc and clang over ./parity.
+# Accept/reject parity between kairo and clang over ./parity.
 # The .cpp is the ORACLE (OVERLOAD.md: behaviour is 1:1). A divergence is a
 # bug in R unless it is listed in kairo-only/README as a deliberate rule.
 #
@@ -11,10 +11,10 @@ set -l root (realpath $here/../../..)
 
 set -l mode debug
 if set -q argv[1]; set mode $argv[1]; end
-set -l kcc $root/build/x86_64-linux-gnu/$mode/bin/kairo
+set -l kairo $root/build/x86_64-linux-gnu/$mode/bin/kairo
 
-if not test -x $kcc
-    echo "no binary at $kcc"; exit 2
+if not test -x $kairo
+    echo "no binary at $kairo"; exit 2
 end
 
 set -l pass 0
@@ -30,7 +30,7 @@ for k in (find $here/parity -name "*.k" | sort)
         continue
     end
 
-    $kcc $k --type-check-only >/dev/null 2>&1
+    $kairo $k --type-check-only >/dev/null 2>&1
     set -l kv $status
     clang -fsyntax-only -std=c++20 $cpp >/dev/null 2>&1
     set -l cv $status

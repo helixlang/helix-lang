@@ -45,6 +45,7 @@ import Sema::Verify::PatternBindingCheck::*;
 import Sema::Verify::CxxNameCheck::*;
 import Sema::Check::ConstraintExtraction::*;
 import Sema::Check::TypeCycleCheck::*;
+import Sema::Check::ShadowCheck::*;
 import AST::Context::ASTContext::*;
 import AST::Context::GlobalDisambigTable::*;
 import Support::TimeReport::*;
@@ -255,6 +256,10 @@ class Sema {
         // `complete` topological sort asserts on a cycle rather than
         // diagnosing one. This pass is where a by-value loop is reported.
         { var _p = TimeRegion("TypeCycle"); TypeCycleCheck(&self.sc).run(); }
+
+        // Runs late: it REQUIRES TypeInference to be complete.
+    
+        { var _p = TimeRegion("ShadowCheck"); ShadowCheck(&self.sc).run(); }
 
         // TODO(sema): OperatorSignatureCheck(&self.sc).run();
         // TODO(sema): ConformanceChecking(&self.sc).run();
