@@ -905,10 +905,18 @@ class CompilerInstance {
             action->run();
 
             if action->result.had_fatal { result.aborted = true; }
-            result.total_errors   += action->result.error_count;
-            result.total_warnings += action->result.warn_count;
             result.tu_results.push_back(action->result);
         }
+
+        // `self._diag` is one engine shared across every TU in this batch
+        // (never reset between files), so its final counts are already the
+        // batch total - summing per-TU snapshots would double count errors
+        // reported before a given TU started. This is the single source of
+        // truth `BatchResult::ok()` uses to decide the process exit code:
+        // any error anywhere in the pipeline -> non-zero exit; warnings
+        // alone -> exit 0.
+        result.total_errors   = self._diag->error_count();
+        result.total_warnings = self._diag->warn_count();
 
         Logger::info(Logger::Stage::Driver,
             f"CompilerInstance::execute: {result.summary()}");
@@ -1322,6 +1330,13 @@ fn FrontendAction::run() {
         ) / 1000.0;
         self.result.stage   = self._stage;
         self.result.file_id = self._file_id;
+
+        // Snapshot AFTER every stage this TU reached, whichever one halted
+        // it. `_preprocess()` used to be the only writer here, which meant
+        // errors from parse/sema/codegen never made it into `result` and a
+        // TU that failed there was silently reported as clean.
+        self.result.error_count = self._ci->diag()->error_count();
+        self.result.warn_count  = self._ci->diag()->warn_count();
     }
 
     Logger::info(Logger::Stage::Driver,
@@ -1384,8 +1399,8 @@ fn FrontendAction::_preprocess() -> bool {
     var pp_res = self._ci->pp()->preprocess(self._file_id, self.module_base);
     self._fids = pp_res.fids;
 
-    self.result.error_count = self._ci->diag()->error_count();
-    self.result.warn_count  = self._ci->diag()->warn_count();
+    // error_count/warn_count are snapshotted once in run()'s finally block,
+    // after every stage this TU reaches - not here.
 
     if self._ci->diag()->has_fatal() {
         self.result.had_fatal = true;
