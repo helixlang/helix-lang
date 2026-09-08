@@ -264,7 +264,7 @@ class TokenSink {
             "automatic C++ meaning   emit it deliberately (kw_auto, kw_return, "
             "...) or let Lower/ rewrite it into a name");
 
-        ICE_IF(!is_punctuator(t.kind) && !is_operator(t.kind) && (t.kind != TokenKind::AtVoid),
+        ICE_IF((!is_punctuator(t.kind)) && (!is_operator(t.kind)) && (t.kind != TokenKind::AtVoid),
             "TokenSink::create accepts identifiers, punctuators and operators "
             "only; literals go through synth (borrowed) or create_int/str "
             "(divergent)");
