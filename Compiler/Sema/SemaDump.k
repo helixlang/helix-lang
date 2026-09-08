@@ -478,6 +478,36 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
         self._chains_in(static_cast::<*DeclContext>(tu), "<tu>");
     }
 
+    /// One decl row inside a chain/cell listing.
+    priv fn _chain_row(self, d: *Decl, canon: *Decl, indent: string) {
+        if d == &null { return; }
+        self._p.paint(Color::Tree, indent);
+        self._p.put(sema_dump_decl_brief(self.ctx, d));
+        if self._is_definition(d) { self._p.paint(Color::Keyword, "  [definition]"); }
+        if (canon != &null) && (canon == d) { self._p.paint(Color::Attr, "  [canonical]"); }
+        self._p.newline();
+    }
+
+    /// Every link in \p d's redeclaration ring, in insertion order, or
+    /// nothing when the ring is just \p d.
+    ///
+    /// The cell cannot show this. An out-of-line definition is in NO symbol
+    /// table (that is the whole reason N(a) keeps tu->out_of_line), so a
+    /// member with one in-class declaration and three out-of-line
+    /// definitions is a cell of size 1 and never reaches the chains
+    /// section at all. Whether RedeclMerge actually linked them is only
+    /// visible off the ring.
+    priv fn _dump_ring(self, d: *Decl, indent: string) -> usize {
+        var links = vec::<*Decl>();
+        NameLookup::collect_chain(d, links);        // first_decl() then walk to head
+        if links.size() <= 1 { return 0; }
+        var canon = NameLookup::chain_canonical(d);
+        for var i: usize = 0; i < links.size(); ++i {
+            self._chain_row(links[i], canon, indent);
+        }
+        return links.size();
+    }
+
     priv fn _chains_in(self, dc: *DeclContext, qual: string) {
         if dc == &null { return; }
 
@@ -493,18 +523,36 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
                 self._p.paint(Color::Tree, "  ");
                 self._p.paint(Color::Ident, f"{qual}::{name}");
 
-                var all_fn = true;
-                for var j: usize = 0; j < cell->size(); ++j {
-                    if !isa::<FunctionDecl>(cell->get(j)) { all_fn = false; }
+                // Hoisted: the label below asks the chain, not the kinds.
+                // Before R ran, an all-function cell was always an overload
+                // set, so `all_fn` was a sufficient test. It no longer is:
+                // R links same-signature functions into one chain, and a
+                // merged chain and a genuine overload set are both all-fn.
+                // What tells them apart is whether the entries AGREE on a
+                // canonical.
+                var canon = NameLookup::chain_canonical(cell->get(0));
+
+                var linked = false;
+                var mixed  = false;
+                for var j: usize = 1; j < cell->size(); ++j {
+                    var cj = NameLookup::chain_canonical(cell->get(j));
+                    if (cj != &null) && (cj == canon) { linked = true; }
+                    else                              { mixed  = true; }
                 }
-                if all_fn {
-                    self._p.paint(Color::Dim, f"   [overload set x{cell->size()}]");
-                } else {
+
+                if linked && mixed {
+                    // One cell holding both: overloads, one of which has
+                    // its own redeclaration chain. Says so rather than
+                    // picking a label that is half wrong.
+                    self._p.paint(Color::Dim, f"   [overload set x{cell->size()}, partly chained]");
+                } else if linked {
                     self._p.paint(Color::Dim, f"   [redecl chain x{cell->size()}]");
+                } else {
+                    self._p.paint(Color::Dim, f"   [overload set x{cell->size()}]");
                 }
+                
                 self._p.newline();
 
-                var canon = NameLookup::chain_canonical(cell->get(0));
                 for var j: usize = 0; j < cell->size(); ++j {
                     var d = cell->get(j);
                     if d == &null { continue; }
@@ -1077,7 +1125,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
         self._p.paint(Color::Tree, "  ");
         self._p.put(f"{self._n_ty_total} type node(s): ");
         self._p.put(f"{self._n_ty_canon} canonical, ");
-        self._p.put(f"{self._n_ty_dep} dependent, ");
+        self._p.put(f"{self._n_ty_dep} of them dependent, ");
         self._p.put(f"{self._n_ty_err} errored");
         self._p.newline();
         if (self._n_ty_total > 0) && (self._n_ty_canon == 0)

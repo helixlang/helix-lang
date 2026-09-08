@@ -1693,10 +1693,13 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
     }
 
     /// Resolve a spec's args in ITS scope, find its primary, register.
-    /// Idempotent: `instantiated_from` doubles as the done-mark.
+    /// Idempotent: `instantiated_from` doubles as the done-mark, so the
+    /// position warning below fires once per specialization however many
+    /// times registration is attempted.
     priv fn _register_type_spec(self, d: *Decl) {
         if d->is_poisoned() { return; }
         if self._instantiated_from_of(d) != &null { return; }
+        self._warn_if_local_spec(d);
         var primary = self._primary_of_spec(d);
         if primary == &null { d->poison(); return; }        // diagnosed inside.
         self._set_instantiated_from(d, primary);
@@ -1764,6 +1767,44 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         }
         // Same file, same args, second explicit spec: fwd + def, or a redefinition.
         self._link_spec(e, e->decl, d);
+    }
+
+    /// An explicit specialization written inside a function, closure, or
+    /// block body. LEGAL in Kairo and unambiguously GLOBAL: specialization
+    /// matching is structural on the arguments and not scope-sensitive, so
+    /// once the spec exists in a translation unit every use of those
+    /// arguments matches it -- including uses that cannot see this
+    /// declaration, and including C++ code that includes the emitted header.
+    /// There is no scope-restricted form to offer instead, which is why C++
+    /// forbids the position outright ([temp.expl.spec]).
+    ///
+    /// Warned rather than rejected so the message can say what the semantics
+    /// ARE, which an error could not. Promote to an error if users ask for
+    /// it: warn-to-error is a compatible tightening and the reverse is not.
+    ///
+    /// Placed in _register_type_spec rather than in traverse_class_decl
+    /// because the same late-registration block is duplicated in
+    /// traverse_struct_decl and traverse_union_decl; one call site here
+    /// covers all three.
+    priv fn _warn_if_local_spec(self, d: *Decl) {
+        var dc = reinterpret_cast::<*DeclContext>(d->lexical_dc);
+        if dc == &null { return; }
+        if dc->is_type_scope()       { return; }
+        if dc->is_translation_unit() { return; }
+        if dc->dc_kind == DeclContextKind::Module { return; }
+
+        var nm = self._decl_name_str(d);
+        // FIXME(diag-table): wants its own code so -Wno- can name it, and so
+        // it can be promoted to an error independently of the R001 sweep.
+        self.sc->diag->report(DiagID::R001W, d->range.start,
+            f"explicit specialization of '{nm}' is written inside a function body"
+        ).first(d->range)
+         .note(DiagID::R001N, d->range.start,
+            f"specializations are global regardless of where they are written; this one applies to every use of '{nm}' in the program, including uses that cannot see this declaration"
+        )
+         .note(DiagID::R001N, d->range.start,
+            "write it at module scope to make that visible")
+         .emit();
     }
 
     /// The primary this spec specializes: same name, same kind, not itself a
