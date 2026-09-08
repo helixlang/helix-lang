@@ -36,6 +36,18 @@ ffi "c++" import "Native/Types.hh";
 ///   - Exactly one link in a chain may be a definition (has_body / is
 ///     a completed type). `is_this_definition` marks it.
 ///
+///     After sema diagnoses a redefinition this stops being literally
+///     true: RedeclMerge reports the error and POISONS the loser, but
+///     leaves its flag set, matching clang (Sema marks the redefinition
+///     invalid via setInvalidDecl and never clears
+///     isThisDeclarationADefinition). `definition()` is still
+///     unambiguous -- the ring is in insertion order and it returns the
+///     first flagged link, which is the one that was there first -- so
+///     read the chain through `definition()`, never by testing
+///     `is_this_definition` on a decl you found some other way. A
+///     consumer that does must check `is_poisoned()` first, exactly as
+///     clang's CodeGen skips invalid decls.
+///
 /// The parser/indexer calls `set_prev(existing)` when it parses a decl whose
 /// name already resolved to a prior declaration of the same entity.
 class <T> Redeclarable {
@@ -148,9 +160,23 @@ class <T> Redeclarable {
         return &null;
     }
 
-    /// Mark this link as the definition. Asserts no other link already is
-    /// (redefinition is a sema error, caught with full context there; here
-    /// we only guard the AST invariant in debug).
+    /// The next link in the ring, wrapping to first_decl() at the end.
+    /// Exposed so a walker outside the mixin can iterate a chain without
+    /// reaching into `_redecl_next`; the ring is circular, so a caller must
+    /// stop when it comes back to `first_decl()`.
+    fn next_in_chain(self) -> *T {
+        if self._redecl_next == &null { return static_cast::<*T>(&self); }
+        return self._redecl_next;
+    }
+
+    /// Mark this link as the definition. ICEs if another link already is.
+    ///
+    /// Safe because the PARSER is the only caller, and at parse time every
+    /// decl is still a single-element chain, nothing has been linked yet,
+    /// so has_definition() can only be true of self. Sema is what splices
+    /// two definitions into one ring, and it reports that as a user error
+    /// with full context (RedeclMerge::_link) rather than aborting. A
+    /// post-sema caller would turn a user mistake into a compiler crash.
     fn mark_definition(self) {
         ICE_IF(self.has_definition(), "Redeclarable: two definitions in one chain");
         self.is_this_definition = true;
