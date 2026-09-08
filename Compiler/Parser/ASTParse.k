@@ -653,6 +653,35 @@ class ASTParse
         self._append_symbol(table_dc, lex_dc, DeclName::ident(im), d);
     }
 
+    /// \brief the name half of indexing a scope-owning decl. In a real scope
+    ///        the name goes in \p table_dc's table. In an EXECUTABLE scope
+    ///        (a `class Local` inside a function body) there is no table by
+    ///        design -- N's lexical stack and T's ltypes find the NAME -- so
+    ///        only the dual-context links are stamped; the decl's own body is
+    ///        still indexed by the caller.
+    priv fn _table_or_link(self, table_dc: *DeclContext, lex_dc: *DeclContext,
+                           name_tok: Token, d: *Decl, tabled: bool) {
+        if tabled {
+            self._append_ident_symbol(table_dc, lex_dc, name_tok, d);
+            return;
+        }
+        d->lexical_dc  = reinterpret_cast::<*void>(lex_dc);
+        d->semantic_dc = reinterpret_cast::<*void>(table_dc);
+    }
+
+    /// \brief indexes the BODIES of scope-owning decls written at statement
+    ///        scope (StmtParse::_attach_local_decl put them in the function's
+    ///        dc_decls). Their names are not tabled; their members are, in
+    ///        their own tables, so `l.v` on a local class resolves.
+    priv fn _index_local_scopes(self, fn_dc: *DeclContext) {
+        if fn_dc == &null { return; }
+        for var i: usize = 0; i < fn_dc->dc_decls.size(); ++i {
+            var d = *(fn_dc->dc_decls.get(i));
+            if d == &null { continue; }
+            self._index_symbol_decl(d, fn_dc, fn_dc, u32(-1), false);
+        }
+    }
+
     /// \brief DeclName for `fn op <x>` from its (up to two) operator tokens.
     priv fn _op_decl_name(self, f: *FunctionDecl) -> DeclName {
         var k0 = TokenKind::TkUnknown;
@@ -691,14 +720,21 @@ class ASTParse
         }
     }
 
-    /// \brief routes one decl into the tables. Pass-through containers
+        /// \brief routes one decl into the tables. Pass-through containers
     ///        (visibility groups, eval blocks, ffi blocks) recurse with the
     ///        SAME table_dc; scope-owning named decls append themselves and
     ///        recurse into their own context.
-    priv fn _index_symbol_decl(self, d: *Decl, walk_dc: *DeclContext, table_dc: *DeclContext, owner_name_imm: u32) {
+    ///
+    /// \param tabled false when \p d was written at STATEMENT scope (a
+    ///        `class Local` / `fn inner` inside a body, reached through
+    ///        _index_local_scopes). Its NAME then goes in no table -- N's
+    ///        lexical stack and T's ltypes find it -- but its own body is
+    ///        still indexed so its members have a table to be looked up in.
+    priv fn _index_symbol_decl(self, d: *Decl, walk_dc: *DeclContext, table_dc: *DeclContext,
+                               owner_name_imm: u32, tabled: bool = true) {
         if isa::<ClassDecl>(d) {
             var n = cast::<ClassDecl>(d);
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
 
             var dc    = static_cast::<*DeclContext>(n);
             var owner = self.ctx->get_ident_imm(n->name);
@@ -718,7 +754,7 @@ class ASTParse
             return;
         } if isa::<StructDecl>(d) {
             var n = cast::<StructDecl>(d);
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
 
             var dc    = static_cast::<*DeclContext>(n);
             var owner = self.ctx->get_ident_imm(n->name);
@@ -737,7 +773,7 @@ class ASTParse
             return;
         } if isa::<UnionDecl>(d) {
             var n = cast::<UnionDecl>(d);
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
 
             var dc    = static_cast::<*DeclContext>(n);
             var owner = self.ctx->get_ident_imm(n->name);
@@ -756,7 +792,7 @@ class ASTParse
             return;
         } if isa::<InterfaceDecl>(d) {
             var n = cast::<InterfaceDecl>(d);
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
 
             var dc    = static_cast::<*DeclContext>(n);
             var owner = self.ctx->get_ident_imm(n->name);
@@ -770,7 +806,7 @@ class ASTParse
             return;
         } if isa::<EnumDecl>(d) {
             var n = cast::<EnumDecl>(d);
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
             var dc = static_cast::<*DeclContext>(n);
             // variants are owned via n->variants (not dc_decls); key them in
             // the enum's own table so `Direction::North` resolves per segment.
@@ -780,7 +816,7 @@ class ASTParse
                     self._append_ident_symbol(dc, dc, vd->name, static_cast::<*Decl>(vd));
                 }
             }
-            
+
             self._collect_symbols(dc, dc, u32(-1));
             return;
         } if isa::<ModuleDecl>(d) {
@@ -792,8 +828,8 @@ class ASTParse
                 self._collect_symbols(dc, table_dc, owner_name_imm);
                 return;
             }
-            
-            self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+
+            self._table_or_link(table_dc, walk_dc, n->name, d, tabled);
             self._collect_symbols(dc, dc, u32(-1));
             return;
         } if isa::<ExtensionDecl>(d) {
@@ -819,29 +855,45 @@ class ASTParse
             self._collect_symbols(dc, dc, u32(-1));
             return;
         } if isa::<FunctionDecl>(d) {
-            var f = cast::<FunctionDecl>(d);
+            var f  = cast::<FunctionDecl>(d);
+            var dc = static_cast::<*DeclContext>(f);
             if f->is_out_of_line() {
                 // `fn Class::method` no table entry; N(a) attaches it.
                 self.tu->out_of_line.push(d);
                 d->lexical_dc  = reinterpret_cast::<*void>(walk_dc);
                 d->semantic_dc = &null; // unknown until attachment
+                self._index_local_scopes(dc);
                 return;
             }
 
             if f->is_operator {
-                self._append_symbol(table_dc, walk_dc, self._op_decl_name(f), d);
+                if tabled {
+                    self._append_symbol(table_dc, walk_dc, self._op_decl_name(f), d);
+                } else {
+                    d->lexical_dc  = reinterpret_cast::<*void>(walk_dc);
+                    d->semantic_dc = reinterpret_cast::<*void>(table_dc);
+                }
+                self._index_local_scopes(dc);
                 return;
             }
-            
+
             var im = self.ctx->get_ident_imm(f->name);
             if im == u32(-1) { return; }
-            if table_dc->is_type_scope() && (im == owner_name_imm) {
+            if tabled && table_dc->is_type_scope() && (im == owner_name_imm) {
                 self._append_symbol(table_dc, walk_dc, DeclName::ctor(), d);
+                self._index_local_scopes(dc);
                 return;
             }
-            
-            self._append_symbol(table_dc, walk_dc, DeclName::ident(im), d);
-            // no recursion: locals/params are excluded by design.
+
+            if tabled {
+                self._append_symbol(table_dc, walk_dc, DeclName::ident(im), d);
+            } else {
+                d->lexical_dc  = reinterpret_cast::<*void>(walk_dc);
+                d->semantic_dc = reinterpret_cast::<*void>(table_dc);
+            }
+            // Locals and params are not tabled (lexical stack / signature),
+            // but a local TYPE's body still needs a table of its own.
+            self._index_local_scopes(dc);
             return;
         }
         if isa::<VariableDecl>(d) {
@@ -863,7 +915,7 @@ class ASTParse
             var n = cast::<VisibilityGroupDecl>(d);
             for var i: usize = 0; i < n->members.count; ++i {
                 var m = n->members[i];
-                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm); }
+                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm, tabled); }
             }
             return;
         }
@@ -871,7 +923,7 @@ class ASTParse
             var n = cast::<EvalBlockDecl>(d);
             for var i: usize = 0; i < n->body.count; ++i {
                 var m = n->body[i];
-                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm); }
+                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm, tabled); }
             }
             return;
         }
@@ -879,7 +931,7 @@ class ASTParse
             var n = cast::<FFIBlockDecl>(d);
             for var i: usize = 0; i < n->body.count; ++i {
                 var m = n->body[i];
-                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm); }
+                if m != &null { self._index_symbol_decl(m, walk_dc, table_dc, owner_name_imm, tabled); }
             }
             return;
         }
@@ -887,19 +939,24 @@ class ASTParse
             // A proc macro (`macro @name(...) { ... }`) is an eval-time function:
             // it has a real name, executes at compile time, and is referenced by
             // that name. Key it by ident in the enclosing table exactly like a
-            // FunctionDecl. No recursion: params are ParamDecl (off the
-            // signature) and the body holds locals, both excluded by design   the
-            // same rule as the FunctionDecl branch above.
+            // FunctionDecl. Params are ParamDecl (off the signature) and body
+            // locals are on the lexical stack; only local TYPE bodies descend.
             //
             // NOTE distinct from MacroDecl (`macro name!`), which is a PP token
             // macro owned by the preprocessor and deliberately never tabled.
             var n = cast::<ProcedureMacroDecl>(d);
             self._append_ident_symbol(table_dc, walk_dc, n->name, d);
+            self._index_local_scopes(static_cast::<*DeclContext>(n));
+            return;
+        }
+        if isa::<TestDecl>(d) {
+            // Anonymous, never looked up -- but its body is an executable
+            // scope that may declare local types.
+            self._index_local_scopes(static_cast::<*DeclContext>(cast::<TestDecl>(d)));
             return;
         }
         // ImportDecl:                   phase I owns imports (overlay), nothing to record.
         // MacroDecl:                    the macro table belongs to the PP.
-        // TestDecl:                     anonymous, never looked up.
         // ParamDecl / GenericParamDecl: excluded (come off signatures).
         // EnumVariantDecl:              handled at its owning EnumDecl above.
     }

@@ -208,6 +208,32 @@ class <T> StmtParse {
         return s;
     }
 
+    /// A named decl at statement scope is reachable only through its DeclStmt;
+    /// nothing in the decl productions links it into the enclosing
+    /// DeclContext. `_build_symbols` walks dc_decls, so a `class Local { }`
+    /// inside a function body never got a table and every `l.v` was "no
+    /// member named v". Link every DC-owning local decl (types, fns) into the
+    /// executable scope it was written in. The enclosing scope is never a
+    /// table-bearing one here, so this adds no table entry -- N's lexical
+    /// stack and T's ltypes are still how the NAME is found.
+    ///
+    /// The TU is excluded: a top-level DeclStmt is already indexed from
+    /// program->items, and adding it to tu->dc_decls too would index it twice
+    /// and make N call it a redefinition of itself. Type bodies never reach
+    /// here (members are routed by the body parser, not as statements).
+    priv fn _attach_local_decl(self, d: *Decl) {
+        if d == &null { return; }
+        var dc = dyn()->scope.current_dc();
+        if dc == &null { return; }
+        if dc->dc_kind == DeclContextKind::TranslationUnit { return; }
+        if dc->is_type_scope() { return; }
+        if isa::<ClassDecl>(d)     || isa::<StructDecl>(d) || isa::<UnionDecl>(d)
+        || isa::<InterfaceDecl>(d) || isa::<EnumDecl>(d)   || isa::<FunctionDecl>(d)
+        || isa::<ExtensionDecl>(d) {
+            dc->add_decl(d);
+        }
+    }
+
     /// \brief routes the current token to its statement production.
     priv fn _dispatch_stmt(self) -> *Stmt {
         var cur_ptr = dyn()->current_ptr();
@@ -819,6 +845,7 @@ class <T> StmtParse {
             return static_cast::<*Stmt>(err);
         }
 
+        self._attach_local_decl(decl);
         var ds = DeclStmt::create(dyn()->ctx, decl->range, decl);
         return static_cast::<*Stmt>(ds);
     }
