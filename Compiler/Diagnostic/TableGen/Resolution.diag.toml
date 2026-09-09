@@ -794,8 +794,15 @@ group = "alias"
     ## how to fix
 
     flatten the chain so fewer aliases stand between the name and the real type, or raise the limit
-    with `--cmax-scope-depth`.
+    with `--cmax-type-alias-depth` (default 64).
+
+    the same code covers the rarer case where the alias is nested so deeply in other resolution work
+    that the shared scope stack fills first; that message names `--cmax-scope-depth` instead, because
+    lengthening the alias budget would not help.
     """
+
+    [R036.N]
+    explain = "Points at the alias whose target continues the chain past the limit."
 
 [R037]
 brief = "redeclared with a different return type"
@@ -1118,3 +1125,46 @@ group = "lookup"
 
     [R049.N]
     explain = "Points at the member declaration the unqualified name would have named."
+
+[R050]
+brief = "type alias is more visible than the type it names"
+group = "visibility"
+
+    [R050.E]
+    explain = """
+    # alias widens the visibility of its target
+
+    a type alias introduces a second name for a type, not a second entity. if the alias is more
+    visible than the thing it names, that name hands callers a type they were not allowed to reach -
+    they can hold values of it, name it in their own signatures, and call its members, all through a
+    name the author of the private type never published.
+
+    kairo rejects this at the alias rather than at the use. the alternative is to leave the alias
+    legal and diagnose every use of it, which reports the mistake far from the line that made it and
+    once per caller instead of once.
+
+    every name the alias mentions counts, not only the outermost one: a pointer, vector, tuple,
+    map or generic argument leaks its target just as directly, and so does a private module named as
+    a path segment.
+
+    ## example
+
+    ```kairo
+    priv struct Base1 {
+        var x: i32
+    }
+
+    pub type Base2 = Base1      // publishes Base1 under another name
+    pub type Base3 = *Base1     // so does this
+    ```
+
+    ## how to fix
+
+    make the alias no more visible than its target (`priv type Base2 = Base1`), or make the target as
+    visible as the alias (`pub struct Base1`). if the intent was to expose a restricted view of a
+    private type rather than the type itself, declare a wrapper with the members you mean to publish
+    - an alias cannot narrow what it names.
+    """
+
+    [R050.N]
+    explain = "Points at the less-visible declaration the alias would have published."
