@@ -68,6 +68,42 @@ overload set goes through whole.
     [DONE, by design] N does NOT bind: chain steps (ChainBinding);
     ConstructorPattern heads and bare `case n` (pattern checking);
     named-initializer field names (inference); attribute ARGUMENTS.
+    [DONE] The explicit-qualifier rule (R049), below.
+
+**The explicit-qualifier rule.** Kairo has no implicit `this->`. A name that a
+TYPE scope answers, used from inside a function or closure body, is a MEMBER
+ACCESS with the qualifier left off, and it is an error: `self.x` for an
+instance member, `Self::x` (or the type's own name) for a static one. The ONE
+exception is a name that denotes a SCOPE -- a nested type, a type alias, a
+nested module -- because naming a type is not an access through an object;
+`Nested { .. }` inside a method means `Self::Nested` and stays legal.
+
+The rule is a CONSISTENCY rule before it is a strictness one. `x` in a `class`
+body, in an `extend` body, in an out-of-line `fn Type::m`, and in a closure
+inside any of those is one construct written four ways, and all four now report
+identically. They did not before: the class body and the out-of-line
+definition bound `x` to the field, the `extend` body reported "use of
+undeclared identifier" -- and the nested-type exception did not hold in an
+`extend` body at all, because that body's DeclContext parents to the TU rather
+than to the type it extends.
+
+Two mechanisms, because the two lookups are in different passes:
+
+  - N: `_fn_depth` (a counter, not a `cur_dc` walk -- an out-of-line def sets
+    `cur_dc` straight to the owning type, so there is no function scope
+    between the use and the member to find) plus `_ext_target`, the extended
+    type's scope, probed AFTER the DC chain so a real enclosing binding still
+    wins. `_ext_target` is resolved BY NAME (N runs before T, so
+    `target->canonical` is null here); a target N cannot name costs nothing
+    and T reports whatever is wrong with it.
+  - T: `_lookup_in_selfs`, the same fallback for TYPE position, walking
+    `_selfs` innermost-first. For a class body it never fires -- the DC chain
+    answered first.
+
+Field defaults and enum variant values are written IN the type body, keep the
+type body's scope, and are outside the rule: `_fn_depth` is reset to 0 on
+entry to every type scope, so a type declared inside a function body does not
+inherit the enclosing function's depth.
 
 `NameBindingVerifier` is N's exit test: no reachable `NamedIdentExpr`
 survives with both slots null unless poisoned or foreign.
@@ -140,7 +176,7 @@ What T decides:
   non-decl.
 
 Error homes carry real diag-table codes. The name/type domain owns
-`R020`-`R048` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
+`R020`-`R049` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
 (`Semantic.diag.toml`); an invariant violation reports `I003E`. That sweep is
 complete for `Sema/` as of this writing, with one exception: `ImportResolution`
 still shares `R015E` across three distinct errors.

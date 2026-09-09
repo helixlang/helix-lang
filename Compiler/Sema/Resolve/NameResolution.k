@@ -172,6 +172,11 @@ class NameHit {
     pub var via_overlay: bool          = false;
     pub var from_local:  bool          = false;
 
+    /// The TYPE scope that answered, when the answer is a member that a
+    /// function body may not name bare (R049). Null for every other hit.
+    /// Unlike `found_in` below this one IS binding policy, not trace.
+    pub var member_scope: *DeclContext = &null;
+
     /// Provenance, for the `--print-sema` trace ONLY. Binding policy never
     /// reads these: they record WHICH source answered so a reader can see it,
     /// and a pass that branched on them would change behavior under the flag
@@ -316,6 +321,34 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
     /// why it is gated on the presence of a bare ffi import in THIS TU and why
     /// extraction is the thing that deletes it, not an optional improvement.
     priv var _has_bare_ffi: bool = false;
+
+    /// How many FUNCTION or CLOSURE bodies enclose the cursor. Nonzero means
+    /// "inside executable code", which is the only place the explicit-qualifier
+    /// rule applies: a field's at-decl default and an enum variant's value are
+    /// written IN the type body and keep the type body's scope.
+    ///
+    /// A counter, not a `cur_dc` walk: an out-of-line `fn Type::m` sets cur_dc
+    /// straight to the OWNING TYPE (see traverse_function_decl), so from cur_dc
+    /// there is no function scope between the use and the member -- and the rule
+    /// has to hold there identically or where a method is written changes what
+    /// its body can see.
+    priv var _fn_depth: usize = 0;
+
+    /// The record scope an enclosing `extend` targets, or null outside one.
+    ///
+    /// An extend body's DeclContext parents to the TU, not to the type it
+    /// extends, so the plain `unqualified` walk cannot see the target's nested
+    /// types -- the ONE thing the qualifier rule exempts. Without this an
+    /// `extend Foo` body could not write `Nested`, while the identical method
+    /// inside `class Foo` could, which is the same inconsistency in the other
+    /// direction. Probed AFTER the DC chain, so a real enclosing binding still
+    /// wins, and members reached through it get R049 like any other member.
+    ///
+    /// Resolved by name, never by type resolution: N runs before T, so
+    /// `target->canonical` is still null here. A target N cannot name (a
+    /// primitive, a structural type, an unresolvable path) leaves this null and
+    /// costs nothing -- T reports whatever is wrong with it.
+    priv var _ext_target: *DeclContext = &null;
 
     fn NameResolution(self, sc: *SemaContext) {
         self.sc = sc;
@@ -841,12 +874,24 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         }
 
         var r = self.sc->lookup.unqualified(self.cur_dc, DeclName::ident(imm));
+        // NOTE the parens: `!a && b` parses as `!(a && b)` here.
+        if (!r.found()) && (self._ext_target != &null) {
+            r = self.sc->lookup.in_context(self._ext_target, DeclName::ident(imm));
+        }
         if !r.found() { return NameHit::miss(); }
 
         var h = NameHit{};
         h.found       = true;
         h.via_overlay = r.via_overlay;
         h.found_in    = r.found_in;
+
+        // A TYPE scope answering a name used from executable code is a MEMBER
+        // access with the qualifier left off. Recorded here, diagnosed at the
+        // use site (visit_named_ident_expr) where the range lives.
+        if (!r.via_overlay) && (self._fn_depth > 0)
+                && (r.found_in != &null) && r.found_in->is_type_scope() {
+            h.member_scope = r.found_in;
+        }
 
         if r.single() {
             h.decl = NameLookup::representative(r.first());
@@ -926,7 +971,9 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         }
 
         self._suppress_next_block_frame = true;
+        self._fn_depth += 1;
         var out = RecursiveASTVisitor_NameResolution::traverse_function_decl(n);
+        self._fn_depth -= 1;
 
         self.sc->trace.close_scope();
         self.locals.pop_back();
@@ -954,7 +1001,9 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         }
 
         self._suppress_next_block_frame = true;
+        self._fn_depth += 1;
         var out = RecursiveASTVisitor_NameResolution::traverse_closure_expr(n);
+        self._fn_depth -= 1;
 
         self.sc->trace.close_scope();
         self.locals.pop_back();
@@ -1020,7 +1069,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_class_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
         self._close_type_generics(pushed);
         return out;
@@ -1032,7 +1084,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_struct_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
         self._close_type_generics(pushed);
         return out;
@@ -1044,7 +1099,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_union_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
         self._close_type_generics(pushed);
         return out;
@@ -1056,7 +1114,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_enum_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
         self._close_type_generics(pushed);
         return out;
@@ -1068,7 +1129,10 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_interface_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
         self._close_type_generics(pushed);
         return out;
@@ -1079,9 +1143,15 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var saved = self.cur_dc;
         var pushed = self._open_type_generics(static_cast::<*Decl>(n), n->generic_params,
                                               n->range, saved);
+        var saved_ext = self._ext_target;
+        self._ext_target = self._extension_target_dc(n, saved);
         self.cur_dc = static_cast::<*DeclContext>(n);
+        var saved_depth = self._fn_depth;
+        self._fn_depth  = 0;                 // a type body is not executable code.
         var out = RecursiveASTVisitor_NameResolution::traverse_extension_decl(n);
+        self._fn_depth = saved_depth;
         self.cur_dc = saved;
+        self._ext_target = saved_ext;
         self._close_type_generics(pushed);
         return out;
     }
@@ -1545,6 +1615,11 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             return true;
         }
 
+        if (h.member_scope != &null) && self._needs_qualifier(h) {
+            self._report_unqualified_member(n, h);
+            return true;
+        }
+
         if h.decl != &null {
             n->resolved_decl = h.decl;
         } else {
@@ -1560,6 +1635,158 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         self.sc->trace.use_site(imm, n->range, h.decl, via, h.found_in, h.frame,
                                 ncand, false, sh.decl, sh.via, sh.found_in);
         return true;
+    }
+
+    /// The record scope `extend <target>` names, or null when the target is
+    /// not a nameable path or does not resolve here. Silent: every error this
+    /// could report is T's, which resolves the same target properly right
+    /// after and owns the diagnostic.
+    ///
+    /// \p outer is the scope the `extend` itself was written in -- the target
+    /// is resolved THERE, not inside the extension body.
+    priv fn _extension_target_dc(self, n: *ExtensionDecl, outer: *DeclContext) -> *DeclContext {
+        if n == &null { return &null; }
+        if n->target == &null { return &null; }
+
+        var ct = dyn_cast::<ChainType>(n->target);
+        if ct == &null { return &null; }
+        if ct->segments.size() == 0 { return &null; }
+
+        var seg0 = ct->segments.get(0);
+        if (seg0 == &null) || (seg0->name == &null) { return &null; }
+        var im = self._name_imm(seg0->name->name);
+        if im == u32(-1) { return &null; }
+
+        var r = self.sc->lookup.unqualified(outer, DeclName::ident(im));
+        if !r.found() { return &null; }
+        var cur = NameLookup::representative(r.first());
+
+        for var i: usize = 1; i < ct->segments.size(); ++i {
+            var seg = ct->segments.get(i);
+            if (seg == &null) || (seg->name == &null) { return &null; }
+            var sim = self._name_imm(seg->name->name);
+            if sim == u32(-1) { return &null; }
+            var sr = self.sc->lookup.qualified_step(cur, DeclName::ident(sim));
+            if !sr.found() { return &null; }
+            cur = NameLookup::representative(sr.first());
+        }
+
+        var dc = NameLookup::context_of(cur);
+        if dc == &null { return &null; }
+        if !dc->is_type_scope() { return &null; }   // `extend` on a module is not a thing.
+        return dc;
+    }
+
+    // --- explicit-qualifier rule (R049) -----------------------------------
+    //
+    // Kairo has no implicit `this->`. A member of the enclosing type is NOT in
+    // unqualified scope inside a function body: an instance member is reached
+    // through `self`, a static one through `Self::`. Before this rule the
+    // answer depended on WHERE the body was written -- a body inside a `class`
+    // saw its fields bare, the same body moved into an `extend` did not, and an
+    // out-of-line `fn Type::m` saw them again -- which is the inconsistency
+    // this closes.
+    //
+    // The ONE exception is a name that denotes a SCOPE rather than a value:
+    // nested types, type aliases and nested modules. `Nested { a: 1 }` inside a
+    // method resolves to `Self::Nested` and stays legal, because naming a type
+    // is not an access through an object.
+
+    /// True when the answering decl denotes a scope/type rather than a member
+    /// entity -- the sole exception to the qualifier rule.
+    priv fn _is_scope_name(self, d: *Decl) -> bool {
+        if d == &null { return true; }        // nothing to demand a qualifier for.
+        if isa::<ClassDecl>(d)     { return true; }
+        if isa::<StructDecl>(d)    { return true; }
+        if isa::<EnumDecl>(d)      { return true; }
+        if isa::<UnionDecl>(d)     { return true; }
+        if isa::<InterfaceDecl>(d) { return true; }
+        if isa::<TypeAliasDecl>(d) { return true; }
+        if isa::<ModuleDecl>(d)    { return true; }
+        return false;
+    }
+
+    /// Whether this member hit must be spelled with a qualifier. An overload
+    /// set qualifies as one entity: functions are never scope names, so a
+    /// single non-exempt candidate is enough.
+    priv fn _needs_qualifier(self, h: NameHit) -> bool {
+        if h.decl != &null { return !self._is_scope_name(h.decl); }
+        if h.cell == &null { return false; }
+        for var i: usize = 0; i < h.cell->size(); ++i {
+            if !self._is_scope_name(h.cell->get(i)) { return true; }
+        }
+        return false;
+    }
+
+    /// A static member is named through the TYPE (`Self::`), an instance member
+    /// through the object (`self.`). Statics are the minority, so the instance
+    /// form is the fallback for anything unclassifiable.
+    priv fn _is_static_member(self, d: *Decl) -> bool {
+        if d == &null { return false; }
+        var f = dyn_cast::<FieldDecl>(d);
+        if f != &null { return f->storage == StorageClass::Static; }
+        var v = dyn_cast::<VariableDecl>(d);
+        if v != &null { return v->is_static(); }
+        var fn_ = dyn_cast::<FunctionDecl>(d);
+        if fn_ != &null { return !fn_->is_method(); }
+        return false;
+    }
+
+    /// The decl to blame in the note: the single hit, or the first candidate
+    /// of an overload set.
+    priv fn _hit_decl(self, h: NameHit) -> *Decl {
+        if h.decl != &null { return h.decl; }
+        if h.cell == &null { return &null; }
+        if h.cell->size() == 0 { return &null; }
+        return h.cell->get(0);
+    }
+
+    /// Is `self` bound here? False in a static method and in a free function
+    /// holding a local type -- there `self.` would be a second error, so the
+    /// fix-it must not suggest it.
+    priv fn _has_self_binding(self) -> bool {
+        if self._self_imm == u32(-1) { return false; }
+        var n = self.locals.size();
+        for var i: usize = 0; i < n; ++i {
+            if self.locals[(n - 1) - i].has(self._self_imm) { return true; }
+        }
+        return false;
+    }
+
+    /// The error home for the rule. Poisons the use: leaving it bound would
+    /// hand T a member reference with no receiver, and every later pass would
+    /// have to re-derive that this name was rejected.
+    priv fn _report_unqualified_member(self, n: *NamedIdentExpr, h: NameHit) {
+        var nm  = self.sc->ctx->get_spelling(n->name);
+        var d   = self._hit_decl(h);
+        var st  = self._is_static_member(d);
+        var pfx = "self.";
+        // Parenthesized on purpose; see the NOTE in _resolve_name.
+        if st || (!self._has_self_binding()) { pfx = "Self::"; }
+
+        var what = "member";
+        if st { what = "static member"; }
+        if (d != &null) && isa::<FunctionDecl>(d) {
+            what = "method";
+            if st { what = "static method"; }
+        }
+
+        var b = self.sc->diag->report(DiagID::R049E, n->range.start,
+            f"use of {what} '{nm}' requires an explicit qualifier"
+        );
+        b.first(n->range);
+        if d != &null {
+            b.note(DiagID::R049N, d->range.start,
+                f"'{nm}' is declared here"
+            ).first(d->range);
+        }
+        b.insert(n->range.start, pfx, f"qualify with '{pfx}\x27");
+        b.emit();
+
+        n->poison();
+        self.sc->trace.use_site(self._name_imm(n->name), n->range, d, TraceVia::Scope,
+                                h.found_in, usize(-1), 0, true,
+                                &null, TraceVia::None, &null);
     }
 
     /// False when every overlay target for \p imm is private. Protected is

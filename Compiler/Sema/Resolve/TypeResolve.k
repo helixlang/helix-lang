@@ -662,6 +662,14 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                 head = self._lookup_local_type(imm);
                 if head == &null {
                     var r = self.sc->lookup.unqualified(self.cur_dc, DeclName::ident(imm));
+                    // An `extend` body's DeclContext parents to the TU, so the
+                    // walk above never reaches the type being extended. Its
+                    // nested types and aliases ARE in scope there -- `Nested`
+                    // inside `extend Foo` means `Self::Nested`, exactly as it
+                    // does inside `class Foo`. `_selfs` already holds the
+                    // target (traverse_extension_decl pushed it); for a class
+                    // body this is a no-op, the DC chain answered first.
+                    if !r.found() { r = self._lookup_in_selfs(imm); }
                     if !r.found() {
                         var nm = self.sc->ctx->get_spelling(tok);
                         self.sc->diag->report(DiagID::R021E, seg0->name->range.start,
@@ -1599,6 +1607,28 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if isa::<FunctionDecl>(d)     { return self.sc->ctx->get_spelling(cast::<FunctionDecl>(d)->name);     }
         if isa::<GenericParamDecl>(d) { return self.sc->ctx->get_spelling(cast::<GenericParamDecl>(d)->name); }
         return "<decl>";
+    }
+
+    /// Probe the enclosing type bodies, innermost first, for `imm`. The escape
+    /// hatch for a scope the DC chain cannot reach -- today only an `extend`
+    /// body, whose parent is the TU rather than the type it extends.
+    ///
+    /// An unfilled instance (`extend Box<i32>` before M2) has an empty table;
+    /// its nested types live on the pattern it was instantiated from, so walk
+    /// that instead (#12), the same substitution `Self::Inner` makes above.
+    priv fn _lookup_in_selfs(self, imm: u32) -> SemaLookupResult {
+        var n = self._selfs.size();
+        for var i: usize = 0; i < n; ++i {
+            var d = self._selfs[(n - 1) - i];
+            if d == &null { continue; }
+            var pat = self._instantiated_from_of(d);
+            if (pat != &null) && self._is_unfilled_instance(d) { d = pat; }
+            var dc = NameLookup::context_of(d);
+            if dc == &null { continue; }
+            var r = self.sc->lookup.in_context(dc, DeclName::ident(imm));
+            if r.found() { return r; }
+        }
+        return SemaLookupResult::not_found();
     }
 
     priv fn _lookup_local_type(self, imm: u32) -> *Decl {
