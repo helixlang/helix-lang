@@ -118,6 +118,7 @@ class PPWalker
         self._imm     = lexer->get_imm_tbl();
         self._out     = std::create::<TokenBuffer::<512>>();
         self._src     = std::create::<TokenSource>(lexer, opts.max_token_count, diag);
+        self._src->set_preserve_comments(opts.preserve_comments);
         self._imports = std::create::<FileImportIndex>(sym, sm, tcm, resolver, macros, diag, fid);
         self._tracker = std::create::<ScopeTracker>(sym, sm, self._imm, tcm, module_base);
         self._sink    = self._out;

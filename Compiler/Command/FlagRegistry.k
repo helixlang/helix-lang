@@ -335,6 +335,7 @@ fn register_kairo_flags(cmd: *Command) {
     cmd->define::<FlagKind::Bool>  ("print-imports",    "",  "print-imports",    "dump the full import resolution graph",                                        false);
     cmd->define::<FlagKind::Bool>  ("print-emit-plan",  "",  "print-emit-plan",  "dump the per-TU EmitPlan: the foreign decls a C++ header would supply",        false);
     cmd->define::<FlagKind::Bool>  ("print-symbols",    "",  "print-symbols",    "dump the frozen per-DeclContext symbol tables (uses --print-ast style)",       false);
+    cmd->define::<FlagKind::Bool>  ("preserve-comments","",  "preserve-comments","keep comments in the token stream; they reach the AST as annotations",         false);
     cmd->define::<FlagKind::Bool>  ("print-generics",   "",  "print-generics",   "dump every generic instantiation and its origin site",                        false);
     cmd->define::<FlagKind::Bool>  ("verify-ir",        "",  "verify-ir",        "run LLVM IR verifier after codegen",                                           false);
     cmd->define::<FlagKind::Bool>  ("macro-debug",      "",  "macro-debug",      "dump macro expansion trace (ExpansionContext output)",                         false);

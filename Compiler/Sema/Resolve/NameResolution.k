@@ -666,12 +666,18 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         var prev = (*group)[0];
         for var i: usize = 1; i < group->size(); ++i {
             var d = (*group)[i];
-            self.sc->diag->report(DiagID::R029E, d->range.start,
+            // The note is a CHILD of the error, not a second top-level
+            // diagnostic. Emitted separately it sorts by its own location, and
+            // since the previous declaration is EARLIER in the file it renders
+            // ahead of the error it is explaining.
+            var b = self.sc->diag->report(DiagID::R029E, d->range.start,
                 f"'{name}' {what}"
-            ).first(d->range).emit();
-            self.sc->diag->report(DiagID::R029N, prev->range.start,
+            );
+            b.first(d->range);
+            b.note(DiagID::R029N, prev->range.start,
                 f"previous declaration of '{name}' is here"
-            ).first(prev->range).emit();
+            ).first(prev->range);
+            b.emit();
             d->poison();
         }
     }
@@ -1243,14 +1249,20 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
             // asymmetry no reader would predict.
             if !(self._is_immutable(prev) && self._is_immutable(d)) {
                 var nm = self.sc->imm_table()->get_ident(imm);
-                self.sc->diag->report(DiagID::R029E, at.start,
+                // Child note, not a second top-level diagnostic: the sink
+                // reorders top-level diagnostics into source order and carries
+                // children along with their parent, so a sibling note that
+                // points BACKWARDS renders ahead of the error it explains.
+                var b = self.sc->diag->report(DiagID::R029E, at.start,
                     f"redefinition of '{nm}\x27"
-                ).first(at).emit();
+                );
+                b.first(at);
                 if prev != &null {
-                    self.sc->diag->report(DiagID::R029N, prev->range.start,
+                    b.note(DiagID::R029N, prev->range.start,
                         f"previous declaration of '{nm}' is here"
-                    ).first(prev->range).emit();
+                    ).first(prev->range);
                 }
+                b.emit();
                 if d != &null { d->poison(); }
             }
         }

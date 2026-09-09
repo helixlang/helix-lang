@@ -71,6 +71,19 @@ class TokenSource {
     priv var _pulled_count:    usize = 0;   ///< frame-0 tokens pulled from the lexer
     priv var _budget_reported: bool = false;
 
+    /// Drop AtComment on the way out of the lexer, so nothing downstream ever
+    /// sees one. Comments reach the AST as annotations (ASTParse::_stash_comment
+    /// -> Decl::add_annotation) and the AST printer renders them, which means a
+    /// file's OWN comments become nodes hanging off the next declaration -- a
+    /// FileCheck test's `// RUN:`/`// CHECK:` header lands in the tree it is
+    /// asserting on. Default is to drop; `--preserve-comments` keeps them for
+    /// tooling that wants the trivia.
+    ///
+    /// Here and not in the parser on purpose: this is the one funnel every
+    /// frame-0 token passes through, so a dropped comment cannot reappear via
+    /// peek(), a splice, or a cursor that forgot to skip it.
+    priv var _drop_comments: bool = true;
+
     fn TokenSource(self, lexer: *Lexer) {
         self._lexer = lexer;
         self._ring.reserve(4);
@@ -84,6 +97,12 @@ class TokenSource {
         self._max_token_count = max_token_count;
         self._diag            = diag;
         self._ring.reserve(4);
+    }
+
+    /// Keep AtComment in the stream (--preserve-comments). Call before the
+    /// first pull; the ring is empty then, so no comment has been dropped yet.
+    fn set_preserve_comments(self, on: bool) {
+        self._drop_comments = !on;
     }
 
     // --- frame stack (== expansion chain) --------------------------------
@@ -248,19 +267,27 @@ class TokenSource {
             return false;
         }
 
-        var t = Token();
-        // CONTRACT: fn Lexer::next(out: *Token) -> bool
-        //   emits exactly one TkEof, returns true for it, false thereafter.
-        if !self._lexer->next(&t) {
-            self._eof_seen = true;
-            return false;
+        // A dropped comment is not a pull failure: the caller asked for ONE more
+        // token in the ring, so keep pulling until a real one lands (or the
+        // lexer runs out). A loop, not recursion -- a file can open with an
+        // arbitrarily long comment banner and this must not grow the stack.
+        while true {
+            var t = Token();
+            // CONTRACT: fn Lexer::next(out: *Token) -> bool
+            //   emits exactly one TkEof, returns true for it, false thereafter.
+            if !self._lexer->next(&t) {
+                self._eof_seen = true;
+                return false;
+            }
+            self._pulled_count += 1;
+            if t.kind == TokenKind::TkEof {
+                self._eof_seen = true;
+            }
+            if self._drop_comments && (t.kind == TokenKind::AtComment) { continue; }
+            self._ring.push_back(t);
+            return true;
         }
-        self._pulled_count += 1;
-        if t.kind == TokenKind::TkEof {
-            self._eof_seen = true;
-        }
-        self._ring.push_back(t);
-        return true;
+        return false;   // unreachable; the loop only exits by return.
     }
 
     // --- cursor ----------------------------------------------------------

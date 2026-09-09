@@ -1947,8 +1947,12 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
         if e == &null    { self._head("<null-expr>", is_last); self.p.paint(Color::Error, " <null>"); self.p.newline(); return; }
         if e->is_error() { self._head("RecoveryExpr", is_last); self._dim(self._recovery_name(self._expr_kind_name_of(e->recovery_kind))); self.p.newline(); return; }
 
+        // CharacterLiteralExpr belongs here with the other scalar leaves:
+        // _inline_expr already knows how to render one, and without this arm it
+        // falls all the way through to `<unknown-expr>`.
         if isa::<IntegerLiteralExpr>(e) || isa::<FloatingLiteralExpr>(e)
-        || isa::<BooleanLiteralExpr>(e) || isa::<NullLiteralExpr>(e) {
+        || isa::<BooleanLiteralExpr>(e) || isa::<NullLiteralExpr>(e)
+        || isa::<CharacterLiteralExpr>(e) {
             self._head(self._expr_kind_name(e), is_last);
             self._inline_expr(e);
             self.p.newline();

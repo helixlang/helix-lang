@@ -44,6 +44,12 @@ class PreprocessorOptions {
     // -- debug / trace -----------------------------------------------------
     pub var macro_debug_filter: string = "";     ///< --macro-debug-filter
     pub var macro_debug:        bool   = false;  ///< --macro-debug
+    // -- trivia ------------------------------------------------------------
+    /// Keep AtComment in the token stream (--preserve-comments). Off by
+    /// default: comments reach the AST as annotations and the AST printer
+    /// renders them, so a file's own comment header shows up as nodes on the
+    /// next declaration. Tooling that wants the trivia asks for it.
+    pub var preserve_comments:  bool   = false;  ///< --preserve-comments
     // macro origin tracking (TkMacroExpand + MacroExpansionInfo chain, so
     // diagnostics can point at the invocation site as well as the definition)
     // is unconditional now, not a toggle: PPWalker::_wrap_origin always runs.
@@ -58,6 +64,7 @@ class PreprocessorOptions {
         (o.max_file_size_mb)   = args.get_cfg_i32("max-file-size-mb");
         (o.max_token_count)    = args.get_cfg_i32("max-token-count");
         (o.macro_debug)        = args.get_bool("macro-debug");
+        (o.preserve_comments)  = args.get_bool("preserve-comments");
         (o.macro_debug_filter) = args.get_string("macro-debug-filter");
         (o.prelude_path)       = args.get_string("prelude");
         (o.no_prelude)         = args.get_bool("no-prelude") || args.get_bool("freestanding");
