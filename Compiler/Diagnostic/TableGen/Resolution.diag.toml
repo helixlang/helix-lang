@@ -1079,3 +1079,42 @@ group = "shadowing"
 
     [R048.N]
     explain = "Points at the outer binding that this declaration hides."
+
+[R049]
+brief = "member used without an explicit qualifier"
+group = "lookup"
+
+    [R049.E]
+    explain = """
+    # unqualified member access
+
+    inside a function body a member of the enclosing type is not in unqualified scope. kairo does
+    not have c++'s implicit `this->`: an instance member is reached through `self`, and a static
+    member through `Self::` (or the type's own name). only nested types, type aliases, and nested
+    modules are visible unqualified, because naming a type is not a member access.
+
+    the rule is the same in a `class`, `struct`, `union`, `interface` and `extend` body, and the
+    same for an out-of-line `fn Type::method` definition. without it, whether a bare name reached a
+    member or a local would depend on where the method happened to be written.
+
+    ## example
+
+    ```kairo
+    class Foo {
+        var x: i32
+        static count: i32 = 0
+
+        fn bar(self) -> i32 {
+            return x + count      // neither name is in scope here
+        }
+    }
+    ```
+
+    ## how to fix
+
+    write `self.x` for an instance field or method, and `Self::count` (or `Foo::count`) for a static
+    member. if you meant a local, declare it before the use.
+    """
+
+    [R049.N]
+    explain = "Points at the member declaration the unqualified name would have named."
