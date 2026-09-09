@@ -119,6 +119,28 @@ survives with both slots null unless poisoned or foreign.
 Aliases expand on demand (`_expand_alias`), memoized on ResolutionState;
 `type A = B; type B = A` is one error with every link as a note.
 
+**Alias chain depth is its own budget** (`--cmax-type-alias-depth`, default
+64, `sc->opts.max_type_alias_depth`), counted by `_alias_depth` across the
+nested `_expand_alias` calls -- NOT by the resolution stack, which counts
+every decl T descends into and would charge a two-link chain for the depth
+of the generic body it was reached from. The stack's own cap stays as the
+backstop for the converse case and reports a different message, naming
+`--cmax-scope-depth`, because lengthening the alias budget would not help
+there. Both are `R036`.
+
+**An alias may not be more visible than what it names** (`R050`,
+`_check_alias_visibility`, at the alias DECLARATION so the error lands once
+and on the line that made it, not once per importer). It walks the SYNTACTIC
+target, not the canonical: canonicalization erases the intermediate aliases
+and the module path segments, and `pub type C = B` over a `priv type B`, or
+`pub type D = M::T` over a `priv module M`, launders exactly as well as the
+outermost name does. Every component counts -- pointer, nullable, vector,
+set, tuple, fixed array, map, fn-pointer param and return, generic argument.
+A visibility that was never written ranks as the WIDEST it could be, so the
+check fires only on an explicitly narrowed target; the member defaults (pub
+at top level, priv for a class member, pub for a struct member) belong to
+AccessCheck, and a false positive here would reject a legal program.
+
 **T never dispatches a node it does not own.** An imported alias body or a
 default on an imported primary is READ through its slots (`_foreign`);
 DAG order guarantees they are filled. Re-dispatching would consult a
@@ -176,7 +198,7 @@ What T decides:
   non-decl.
 
 Error homes carry real diag-table codes. The name/type domain owns
-`R020`-`R049` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
+`R020`-`R050` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
 (`Semantic.diag.toml`); an invariant violation reports `I003E`. That sweep is
 complete for `Sema/` as of this writing, with one exception: `ImportResolution`
 still shares `R015E` across three distinct errors.
