@@ -94,6 +94,14 @@ class SemaOptions {
     pub var implicit_conv:     i32 = -1;  ///< allow implicit conversions.
     pub var rtti:              i32 = -1;  ///< emit RTTI-dependent features.
 
+    /// Longest chain of alias-through-alias expansions T will follow before
+    /// giving up (--cmax-type-alias-depth). NOT a tri-state: a positive count,
+    /// already defaulted by the flag parser. Separate from the resolution
+    /// stack's scope-depth cap because an alias chain is the one structure a
+    /// user can make arbitrarily long by accident (a chain of re-exports) and
+    /// wants to tune without loosening every other nesting limit.
+    pub var max_type_alias_depth: i32 = 64;
+
     fn SemaOptions(self) { }
 
     /// Populate from the invocation. The single flag -> option boundary.
@@ -105,6 +113,7 @@ class SemaOptions {
         self.strict_null       = ci->lang.strict_null;
         self.implicit_conv     = ci->lang.implicit_conv;
         self.rtti              = ci->lang.rtti;
+        self.max_type_alias_depth = ci->lang.max_type_alias_depth;
     }
 
     /// Resolve a tri-state against its profile default.

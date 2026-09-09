@@ -126,6 +126,13 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
     var _selfs:  vec::<*Decl>;
     var ltypes: vec::<LocalTypeFrame>;
 
+    /// How many alias-through-alias expansions are in flight right now. The
+    /// resolution stack cannot answer this: it counts EVERY decl T descends
+    /// into, so a two-link alias chain reached from inside a deep generic body
+    /// would trip a budget the user set for alias depth alone. Bounded by
+    /// sc->opts.max_type_alias_depth (--cmax-type-alias-depth).
+    var _alias_depth: usize = 0;
+
     /// Counters for the driver's summary line.
     pub var n_canonical: usize = 0;
     pub var n_dependent: usize = 0;
@@ -1169,12 +1176,38 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             self._report_alias_cycle(td, at);
             return &null;
         }
-        if self.sc->rstate.at_depth_limit() {
-            var nm = self.sc->ctx->get_spelling(td->name);
+        // Alias-chain depth has its own budget, checked BEFORE the resolution
+        // stack's: it is the tighter of the two by default (64 vs 256) and the
+        // one whose message can name a flag that actually helps. A chain of
+        // re-exported aliases is the realistic way to hit this, and it says
+        // nothing about how deeply nested the surrounding scopes are.
+        var alias_cap = static_cast::<usize>(self.sc->opts.max_type_alias_depth);
+        if (alias_cap > 0) && (self._alias_depth >= alias_cap) {
+            var nm   = self.sc->ctx->get_spelling(td->name);
+            var wider = alias_cap * 2;
             self.sc->diag->report(DiagID::R036E, at.start,
-                f"type alias '{nm}' nests deeper than the limit ({self.sc->rstate.max_depth()}); "
-                "raise it with --cmax-scope-depth or flatten the alias chain"
-            ).first(at).emit();
+                f"type alias '{nm}\x27 expands through more than {alias_cap} nested aliases"
+            ).first(at)
+             .note(DiagID::R036N, td->range.start,
+                f"'{nm}\x27 is declared here; the chain continues from its target"
+            ).first(td->range)
+             .fix(f"flatten the alias chain, or raise the limit with --cmax-type-alias-depth={wider}")
+             .emit();
+            self.sc->rstate.set_decl_state(td, ResolveState::Errored);
+            return &null;
+        }
+
+        // Backstop for the case the alias budget cannot catch: the alias sits
+        // so deep inside other resolution work that the shared stack fills up
+        // first. Different cause, so a different flag to name.
+        if self.sc->rstate.at_depth_limit() {
+            var nm2   = self.sc->ctx->get_spelling(td->name);
+            var scap  = self.sc->rstate.max_depth();
+            self.sc->diag->report(DiagID::R036E, at.start,
+                f"resolving type alias '{nm2}\x27 exceeded the nested scope limit ({scap})"
+            ).first(at)
+             .fix("raise the limit with --cmax-scope-depth, or reduce the nesting around this alias")
+             .emit();
             self.sc->rstate.set_decl_state(td, ResolveState::Errored);
             return &null;
         }
@@ -1207,7 +1240,9 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         self._selfs.clear();
         self._push_enclosing_selfs(self.cur_dc);
 
+        ++(self._alias_depth);
         self.dispatch_type(td->aliased);
+        --(self._alias_depth);
 
         self.cur_dc = saved_dc;
         self.frames = saved_frames;
@@ -1218,6 +1253,162 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if !ok { td->poison(); }
         self.sc->rstate.finish_decl(static_cast::<*Decl>(td), ok);
         return (td->aliased->canonical) if (ok) else (&null);
+    }
+
+    // === Alias visibility ====================================================
+
+    /// Visibility as an ordinal, widest last.
+    ///
+    /// `None` means no keyword was written, and the default then depends on
+    /// where the decl sits (pub at top level, priv for a class member, pub for
+    /// a struct member). The laundering check never has to settle that: it
+    /// fires only when a target's visibility was written DOWN explicitly, so an
+    /// unwritten one ranks as the widest thing it could be and the check stays
+    /// quiet. The bias is deliberate -- a false positive here rejects a legal
+    /// program, and the member defaults belong to AccessCheck, not to T.
+    priv fn _vis_rank(self, v: VisibilityKind) -> i32 {
+        switch v {
+            case VisibilityKind::Private   { return 0; }
+            case VisibilityKind::Protected { return 1; }
+            case VisibilityKind::Internal  { return 2; }
+            default                        { return 3; }  // Public, and None-as-widest.
+        }
+    }
+
+    priv fn _vis_word(self, v: VisibilityKind) -> string {
+        switch v {
+            case VisibilityKind::Private   { return "priv";     }
+            case VisibilityKind::Protected { return "prot";     }
+            case VisibilityKind::Internal  { return "internal"; }
+            default                        { return "pub";      }
+        }
+    }
+
+    /// An alias introduces a second NAME, not a second entity, so it must not
+    /// publish what its target did not. `pub type B = A` over a `priv A` hands
+    /// every importer a usable name for A: they can declare values of it, name
+    /// it in their own signatures and reach its members, none of which the
+    /// author of A allowed.
+    ///
+    /// Reported at the alias, once, rather than at each use: the use sites are
+    /// in other files and the mistake is not theirs, and diagnosing there would
+    /// repeat one error per caller.
+    priv fn _check_alias_visibility(self, td: *TypeAliasDecl) {
+        if td == &null              { return; }
+        if td->aliased == &null     { return; }
+        if td->is_poisoned()        { return; }
+
+        var alias_rank = self._vis_rank(td->visibility);
+        if alias_rank <= 0 { return; }   // a priv alias can widen nothing.
+
+        var worst: *Decl = &null;
+        var worst_rank   = alias_rank;
+        self._narrowest_in_type(td->aliased, &worst, &worst_rank);
+        if worst == &null { return; }
+
+        var anm = self.sc->ctx->get_spelling(td->name);
+        var tnm = self._decl_name_str(worst);
+        var aw  = self._vis_word(td->visibility);
+        var tw  = self._vis_word(worst->visibility);
+
+        var b = self.sc->diag->report(DiagID::R050E, td->range.start,
+            f"{aw} type alias \x27{anm}\x27 names \x27{tnm}\x27, which is {tw}"
+        );
+        b.first(td->range);
+        b.note(DiagID::R050N, worst->range.start,
+            f"\x27{tnm}\x27 is declared {tw} here"
+        ).first(worst->range);
+        // The narrowing edit is the safe one to offer: widening the target
+        // publishes a second entity, which is a decision only its author makes.
+        if td->visibility_range().is_valid() {
+            b.fix(td->visibility_range(), tw,
+                f"make the alias {tw}, matching \x27{tnm}\x27");
+        }
+        b.emit();
+    }
+
+    /// Narrowest decl named anywhere in \p t, recorded through the out-params.
+    ///
+    /// Walks the SYNTACTIC target, never its canonical: canonicalization erases
+    /// both the intermediate aliases and the module path segments, and each of
+    /// those launders exactly as well as the final type does. `pub type C = B`
+    /// over a `priv type B` leaks through B; `pub type D = M::T` leaks through a
+    /// priv M. Every component counts too -- a pointer, vector, tuple, map or
+    /// generic argument hands the target over just as directly.
+    priv fn _narrowest_in_type(self, t: *Type, worst: *(*Decl), worst_rank: *i32) {
+        if t == &null { return; }
+
+        switch t->kind {
+            case TypeKind::ChainType {
+                var ct = cast::<ChainType>(t);
+                for var i: usize = 0; i < ct->segments.size(); ++i {
+                    var seg = ct->segments.get(i);
+                    self._consider_vis(seg->resolved_decl, worst, worst_rank);
+                    for var j: usize = 0; j < seg->generic_args.size(); ++j {
+                        self._narrowest_in_type(seg->generic_args.get(j)->ty, worst, worst_rank);
+                    }
+                }
+            }
+            case TypeKind::RecordType {
+                self._consider_vis(cast::<RecordType>(t)->decl, worst, worst_rank);
+                var rt = cast::<RecordType>(t);
+                for var i: usize = 0; i < rt->args.size(); ++i {
+                    self._narrowest_in_type(*(rt->args.get(i)), worst, worst_rank);
+                }
+            }
+            case TypeKind::PointerType {
+                self._narrowest_in_type(cast::<PointerType>(t)->pointee, worst, worst_rank);
+            }
+            case TypeKind::NullableType {
+                self._narrowest_in_type(cast::<NullableType>(t)->inner, worst, worst_rank);
+            }
+            case TypeKind::VectorType {
+                self._narrowest_in_type(cast::<VectorType>(t)->element, worst, worst_rank);
+            }
+            case TypeKind::SetType {
+                self._narrowest_in_type(cast::<SetType>(t)->element, worst, worst_rank);
+            }
+            case TypeKind::FixedArrayType {
+                self._narrowest_in_type(cast::<FixedArrayType>(t)->element, worst, worst_rank);
+            }
+            case TypeKind::MapType {
+                var mt = cast::<MapType>(t);
+                self._narrowest_in_type(mt->key,   worst, worst_rank);
+                self._narrowest_in_type(mt->value, worst, worst_rank);
+            }
+            case TypeKind::TupleType {
+                var tt = cast::<TupleType>(t);
+                for var i: usize = 0; i < tt->elements.size(); ++i {
+                    self._narrowest_in_type(*(tt->elements.get(i)), worst, worst_rank);
+                }
+            }
+            case TypeKind::FunctionPointerType {
+                var ft = cast::<FunctionPointerType>(t);
+                for var i: usize = 0; i < ft->params.size(); ++i {
+                    self._narrowest_in_type(*(ft->params.get(i)), worst, worst_rank);
+                }
+                self._narrowest_in_type(ft->return_type, worst, worst_rank);
+            }
+            case TypeKind::CXXLValueRefType {
+                self._narrowest_in_type(cast::<CXXLValueRefType>(t)->referee, worst, worst_rank);
+            }
+            case TypeKind::CXXRValueRefType {
+                self._narrowest_in_type(cast::<CXXRValueRefType>(t)->referee, worst, worst_rank);
+            }
+            default { }
+        }
+    }
+
+    priv fn _consider_vis(self, d: *Decl, worst: *(*Decl), worst_rank: *i32) {
+        if d == &null { return; }
+        // A generic parameter of the alias itself has no visibility to leak;
+        // whatever it is instantiated with is checked at the instantiation.
+        if isa::<GenericParamDecl>(d) { return; }
+        var r = self._vis_rank(d->visibility);
+        if r < (*worst_rank) {
+            (*worst_rank) = r;
+            (*worst)      = d;
+        }
     }
 
     /// One error at the use that closed the loop, one note per link, in the
@@ -1457,6 +1648,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         if n->requires_clause != &null { n->requires_clause = self.dyn()->dispatch_expr(n->requires_clause); }
         self._pop_frame();
         self._expand_alias(n, n->range);
+        self._check_alias_visibility(n);
         return n;
     }
 
