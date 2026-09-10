@@ -352,10 +352,6 @@ class EmitPlan derives RecursiveASTVisitor::<EmitPlan> {
         switch e->kind {
             case ExprKind::NamedIdentExpr {
                 var n = cast::<NamedIdentExpr>(e);
-                // A Foreign step is a name inside an ffi header. It has no
-                // Kairo decl and Kairo never re-emits it: the `#include`
-                // already declared it (IMPORTS.md §5).
-                if n->foreign { return true; }
                 self._admit(n->resolved_decl, PlanNeed::Fwd);
                 self._admit_cell(n->candidate_cell);
             } case ExprKind::ChainExpr {
@@ -434,6 +430,9 @@ class EmitPlan derives RecursiveASTVisitor::<EmitPlan> {
         if c == &null { return; }
 
         if !self._plannable(c) { return; }
+        // Declared by its header (the PCH / #include); Kairo never re-emits a
+        // decl it imported from C++ (IMPORTS.md §5).
+        if self._is_imported(c) { return; }
         if self._fid_of(c) == self._home { return; }   // ours; emitted normally
 
         var at = self._index_of(c);
@@ -757,6 +756,16 @@ class EmitPlan derives RecursiveASTVisitor::<EmitPlan> {
     /// to declare; an import is erased (invariant 8); a variable's home TU
     /// defines it and an `extern` for it is a linker concern, not an
     /// interface one.
+    priv fn _is_imported(self, d: *Decl) -> bool {
+        if isa::<FunctionDecl>(d)  { return cast::<FunctionDecl>(d)->is_imported();  }
+        if isa::<ClassDecl>(d)     { return cast::<ClassDecl>(d)->is_imported();     }
+        if isa::<StructDecl>(d)    { return cast::<StructDecl>(d)->is_imported();    }
+        if isa::<UnionDecl>(d)     { return cast::<UnionDecl>(d)->is_imported();     }
+        if isa::<EnumDecl>(d)      { return cast::<EnumDecl>(d)->is_imported();      }
+        if isa::<InterfaceDecl>(d) { return cast::<InterfaceDecl>(d)->is_imported(); }
+        return false;
+    }
+
     priv fn _plannable(self, d: *Decl) -> bool {
         return self._is_type_decl(d) || (d->kind == DeclKind::FunctionDecl);
     }

@@ -29,6 +29,7 @@ class TargetOptions {
     pub var cxx_std:   string = "c++20";
     pub var cxx_abi:   string = "itanium";
     pub var sysroot:   string = "";
+    pub var resource_dir: string = "";  ///< clang resource dir: its include/ holds the builtin headers (stddef.h).
     pub var pic_level: i32    = 0;
     pub var m32:       bool   = false;
     pub var m64:       bool   = false;
@@ -107,6 +108,7 @@ class TargetOptions {
         (o.cxx_std)    = args.get_string("cxx-std");
         (o.cxx_abi)    = args.get_string("cxx-abi");
         (o.sysroot)    = args.get_string("sysroot");
+        (o.resource_dir) = args.get_string("resource-dir");
         (o.pic_level)  = args.get_i32("pic-level");
         return o;
     }

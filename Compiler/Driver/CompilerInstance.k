@@ -134,6 +134,9 @@ import Sema::SemaDump::*;
 import Sema::SemaContext::*;
 import AST::Context::ImportOverlay::*;
 import Interop::Clang::ClangBackend::*;
+import Interop::Clang::HeaderSet::*;
+import Sema::Foreign::HeaderIndex::*;
+import Sema::Foreign::ForeignRegistry::*;
 import Diagnostic::ClangDiagLookup::*;
 
 ffi "c++" import "llvm/TargetParser/Host.h";
@@ -211,6 +214,7 @@ class FrontendAction {
     priv fn _preprocess(self)  -> bool;
     priv fn _parse(self)       -> bool;
     priv fn _sema(self)        -> bool;
+    priv fn _attach_ffi_edges(self, tu: *TranslationUnit, ctx: *ASTContext, hs: *HeaderSet);
     priv fn _codegen(self)     -> bool;
     priv fn _dump_tokens(self);
     priv fn _dump_preprocessed_source(self);
@@ -248,6 +252,9 @@ class CompilerInstance {
     priv var _imp:     *ImportResolver;
     priv var _g_scope: *GlobalDisambigTable;
     priv var _backend: *ClangBackend = &null; ///< shared clang backend; owned
+    priv var _headers: *HeaderSetCache  = &null; ///< phase-A C++ header parses; owned, destroyed BEFORE _backend
+    priv var _hindex:  *HeaderIndex     = &null; ///< header set -> Kairo TUs; owned
+    priv var _freg:    *ForeignRegistry = &null; ///< USR -> imported decl, build-wide; owned
 
     // --- CLI state -------------------------------------------------------
     //   The invocation IS the CLI state. Flag-level queries go through
@@ -356,6 +363,18 @@ class CompilerInstance {
 
     /// Destroys all resources in reverse-construction order.
     fn op delete (self) {
+        // Header sets before the backend: a build in flight is using the
+        // backend's invocation and VFS, and a live set's clang instance
+        // shares that VFS. Drain the group so no set is mid-parse when it
+        // dies; destroying the cache releases every set.
+        if self._headers != &null {
+            self._pool->wait_group(HEADER_BUILD_GROUP());
+            std::destroy(self._headers);
+            self._headers = &null;
+        }
+        if self._hindex != &null { std::destroy(self._hindex); self._hindex = &null; }
+        if self._freg   != &null { std::destroy(self._freg);   self._freg   = &null; }
+
         // backend first: its ClangLocMap borrows _sm, and its clang SM holds
         // MemoryBufferRef views into _vfm's mmaps. The startup task must be
         // drained before teardown.
@@ -400,6 +419,17 @@ class CompilerInstance {
     fn pp(self)           -> *PreProcessor            { return self._pp;      }
     fn imp(self)          -> *ImportResolver          { return self._imp;     }
     fn backend(self)      -> *ClangBackend            { return self._backend; }
+    fn headers(self)      -> *HeaderSetCache          { return self._headers; }
+    fn header_index(self) -> *HeaderIndex             { return self._hindex;  }
+
+    /// \brief true if \p fid is a C++ header Sema/Foreign imported: a TU whose
+    ///        decls came from clang, with no Kairo source behind it.
+    fn is_foreign_fid(self, fid: u32) -> bool {
+        var ctx = self._g_scope->get_context(fid);
+        if ctx == &null { return false; }
+        var tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
+        return (tu != &null) && tu->is_foreign;
+    }
     // --- CLI query helpers -----------------------------------------------
 
     fn wants_help(self)    -> bool { return self.invocation().args.get_bool("help");               }
@@ -831,18 +861,44 @@ class CompilerInstance {
             self._report_root_collisions();
         }
 
-        self._pp = std::create::<PreProcessor>(
-            self._sm, self._tcm, self._imp, self._pool,
-            self._diag, self._g_scope, &self.invocation(), self.invocation().pp);
-
         // Shared clang backend: kick the expensive startup (invocation parse,
         // TargetInfo, FileManager/SourceManager) onto the pool NOW so it runs
         // concurrently with lex/preprocess. Joined via CLANG_STARTUP_GROUP
         // before codegen. Kairo fids are NOT registered here   that happens in
         // ClangLocMap::rebind(), inside the codegen action window.
+        //
+        // Built BEFORE the PreProcessor now: the PP hands every file's ffi
+        // header list to the HeaderSetCache, whose builds copy this backend's
+        // invocation.
         var bcfg = ClangBackendConfig{};
         (bcfg.triple) = self._effective_triple();
         (bcfg.wargs)  = _clang_wargs_from_policy(self.invocation().diag);
+
+        // The target flags clang has a spelling for. Parsed into the
+        // invocation long before this; until they are copied here they reach
+        // nothing -- `--sysroot` used to be accepted and silently dropped.
+        var tgt = self.invocation().target;
+        if !tgt.cxx_std.empty() { (bcfg.cxx_std) = tgt.cxx_std; }
+        if !tgt.mcpu.empty() {
+            bcfg.extra_cc1.push_back("-target-cpu");
+            bcfg.extra_cc1.push_back(tgt.mcpu);
+        }
+        if tgt.pic_level > 0 {
+            bcfg.extra_cc1.push_back("-mrelocation-model");
+            bcfg.extra_cc1.push_back("pic");
+            bcfg.extra_cc1.push_back("-pic-level");
+            bcfg.extra_cc1.push_back(f"{tgt.pic_level}");
+        }
+        // User header dirs for C++ interop: both flags name directories clang
+        // searches for an ffi header, ahead of the system roots.
+        for d: string in self.invocation().ffi_includes { bcfg.extra_cc1.push_back("-I"); bcfg.extra_cc1.push_back(d); }
+        for d: string in self.invocation().cxx_includes { bcfg.extra_cc1.push_back("-I"); bcfg.extra_cc1.push_back(d); }
+        // The two header-search roots, exactly as given: no discovery. With
+        // neither, clang searches no system headers at all (see the model in
+        // ClangBackend::_startup_locked), which is the honest answer.
+        (bcfg.sysroot)      = tgt.sysroot;
+        (bcfg.resource_dir) = tgt.resource_dir;
+
         self._backend = std::create::<ClangBackend>(self._sm, bcfg);
 
         inline "c++" {
@@ -853,6 +909,18 @@ class CompilerInstance {
                 be->startup();
             }, CLANG_STARTUP_GROUP());
         }
+
+        // C++ header import. Parse on the pool (HeaderSetCache), index on the
+        // driver (HeaderIndex writes the SM, the TCM and the global table),
+        // one USR -> decl identity for the build (ForeignRegistry).
+        self._headers = std::create::<HeaderSetCache>(self._backend, self._pool);
+        self._freg    = std::create::<ForeignRegistry>();
+        self._hindex  = std::create::<HeaderIndex>(self._sm, self._tcm, self._diag, self._imp,
+                                                   &self.invocation(), self._g_scope, self._freg);
+
+        self._pp = std::create::<PreProcessor>(
+            self._sm, self._tcm, self._imp, self._pool,
+            self._diag, self._g_scope, &self.invocation(), self.invocation().pp, self._headers);
     }
 
     /// Compiles all input files described by the invocation.
@@ -908,6 +976,13 @@ class CompilerInstance {
             result.tu_results.push_back(action->result);
         }
 
+        // Every set's clang instance dies here, while _backend still lives:
+        // imported decls' clang_decl point into those ASTContexts, and
+        // nothing after this reads them (codegen ran inside the loop).
+        // Releasing each set once its last importer passes Checked is the
+        // refinement; the PCH bytes and include tree outlive the release.
+        if self._headers != &null { self._headers->release_all(); }
+
         // `self._diag` is one engine shared across every TU in this batch
         // (never reset between files), so its final counts are already the
         // batch total - summing per-TU snapshots would double count errors
@@ -955,6 +1030,14 @@ class CompilerInstance {
     ///       dangles those edges. Release leaves of the import graph first, or
     ///       release the whole batch.
     fn release(self, fid: u32, from: TUStage) -> bool {
+        // A header TU is nobody's to reclaim alone: its decls are shared by
+        // every importer through the ForeignRegistry, and tearing down its
+        // context would dangle all of them. It lives as long as the build.
+        if self.is_foreign_fid(fid) {
+            Logger::warn(Logger::Stage::Driver,
+                f"CompilerInstance::release: fid={fid} is an imported C++ header; refusing");
+            return false;
+        }
         if self._has_inbound_edges(fid) {
             Logger::warn(Logger::Stage::Driver,
                 f"CompilerInstance::release: fid={fid} still imported by a live TU; refusing");
@@ -1431,7 +1514,15 @@ fn FrontendAction::_parse() -> bool {
 
     self._stage = TUStage::Parsing;
 
-    var fids = self._fids;  // tree order, fids[0] == main
+    // tree order, fids[0] == main. A C++ header is never in _fids (the PP
+    // never walks one), but a fid is only a number: filter anyway, because a
+    // header TU reaching ASTParse would lex C++ as Kairo and overwrite the TU
+    // Sema/Foreign filled.
+    var fids = vec::<u32>();
+    for f: u32 in self._fids {
+        if self._ci->is_foreign_fid(f) { continue; }
+        fids.push_back(f);
+    }
 
     // index phase: Index-mode ASTParse over each fid (same grammar as the
     // full parse, shallow materialization). Replaces the old ASTIndex
@@ -1607,6 +1698,28 @@ fn FrontendAction::_sema() -> bool {
         std::print(f"-- sema: {self.path.full_path()} --");
     }
 
+    // Phase A of header import joins here. Every set requested during
+    // preprocess must be PARSED before it can be indexed, and INDEXED before
+    // phase I of any importer folds its headers. Indexing mints the header
+    // fids, so it runs on this (driver) thread; _attach_ffi_edges then stamps
+    // each ffi ImportDecl with the closure it imports.
+    var hc = self._ci->headers();
+    if hc != &null {
+        {
+            var _tw = TimeRegion("HeaderSetWait");
+            hc->wait_all();
+        }
+        for fid: u32 in self._fids {
+            var hctx = self._global_scope->get_context(fid);
+            if hctx == &null { continue; }
+            var htu = reinterpret_cast::<*TranslationUnit>(hctx->tu);
+            if (htu == &null) || (htu->header_set == &null) { continue; }
+            var hs = reinterpret_cast::<*HeaderSet>(htu->header_set);
+            self._ci->header_index()->index(hs);
+            self._attach_ffi_edges(htu, hctx, hs);
+        }
+    }
+
     // Phases I -> E -> V -> N -> T -> checks (ImportResolution, Expand,
     // Verify, NameResolution, TypeResolution/ChainBinding, then the
     // signature/layout checks) across every fid of this TU's graph. Run in
@@ -1621,6 +1734,7 @@ fn FrontendAction::_sema() -> bool {
         if ctx == &null { continue; }
         var tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
         if tu == &null { continue; }
+        if tu->is_foreign { continue; }   // decls came from clang, already resolved; nothing to run.
         var sem = Sema(ctx, self._global_scope);
         sem.run_to(SemaPhase::Checked);
         ctx->diag_sink.drain_into(self._ci->diag(), ctx->sm);
@@ -1652,6 +1766,36 @@ fn FrontendAction::_sema() -> bool {
 
     // TODO(sema): full pipeline once N/T/checks land: Sema(ctx, gs).run().
     return true;
+}
+
+/// Stamp every ffi ImportDecl of \p tu with what its header resolved to in
+/// \p hs: resolved_fid (the header's own fid), the closure fids phase I folds,
+/// and one ImportEdge per closure header, so the import graph (importers_of,
+/// release's inbound-edge guard) sees a header the way it sees a Kairo file.
+/// A spelling clang never resolved leaves resolved_fid 0 and no edges.
+fn FrontendAction::_attach_ffi_edges(tu: *TranslationUnit, ctx: *ASTContext, hs: *HeaderSet) {
+    for var i: usize = 0; i < tu->imports.size(); ++i {
+        var slot = tu->imports[i];
+        if slot == &null { continue; }
+        var id = dyn_cast::<ImportDecl>(*slot);
+        if (id == &null) || (!id->has_ffi_linkage()) { continue; }
+        // A fid shared by two inputs' graphs reaches here twice; stamp once.
+        if id->ffi_closure_fids.size() > 0 { continue; }
+
+        var paths = vec::<string>();
+        hs->closure_of(HeaderSet::unquote(ctx->get_spelling(id->header)), paths);
+        for var p: usize = 0; p < paths.size(); ++p {
+            var k = hs->kfid_of_path(paths[p]);
+            if k == 0 { continue; }
+            if id->ffi_closure_fids.size() == 0 { id->resolved_fid = k; }
+            id->ffi_closure_fids.push_back(k);
+            var e = ImportEdge{};
+            e.target_fid = k;
+            e.decl       = static_cast::<*Decl>(id);
+            tu->import_edges.push(e);
+        }
+        id->file_seg_count = 0;
+    }
 }
 
 fn FrontendAction::_codegen() -> bool {
@@ -1692,6 +1836,26 @@ fn FrontendAction::_codegen() -> bool {
 
     var cg = CodegenBackend(be, ctx, kfid, &(ctx->codegen_alloc), ksize);
     cg.set_print_cg(fe.print_cg, self.path.full_path());
+
+    // Phase B loads phase A's PCHs instead of re-parsing the headers. The
+    // MAIN file's set goes first: it is the one that becomes the implicit
+    // PCH (see CodegenBackend::run for the one-PCH limitation).
+    var sets = vec::<*HeaderSet>();
+    var main_tu = reinterpret_cast::<*TranslationUnit>(ctx->tu);
+    if (main_tu != &null) && (main_tu->header_set != &null) {
+        sets.push_back(reinterpret_cast::<*HeaderSet>(main_tu->header_set));
+    }
+    for fid: u32 in self._fids {
+        var sctx = self._global_scope->get_context(fid);
+        if sctx == &null { continue; }
+        var stu = reinterpret_cast::<*TranslationUnit>(sctx->tu);
+        if (stu == &null) || (stu->header_set == &null) { continue; }
+        var hs  = reinterpret_cast::<*HeaderSet>(stu->header_set);
+        var dup = false;
+        for var j: usize = 0; j < sets.size(); ++j { if sets[j] == hs { dup = true; break; } }
+        if !dup { sets.push_back(hs); }
+    }
+    cg.set_header_sets(sets);
 
     var ok = false;
     {
@@ -1823,7 +1987,6 @@ fn _overlay_kind_str(k: OverlayTargetKind) -> string {
     if k == OverlayTargetKind::FunctionSet  { return "fn-set"; }
     if k == OverlayTargetKind::Type         { return "type";   }
     if k == OverlayTargetKind::ModuleHandle { return "module"; }
-    if k == OverlayTargetKind::FfiAnchor    { return "ffi";    }
     return "?";
 }
 
