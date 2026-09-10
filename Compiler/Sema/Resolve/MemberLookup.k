@@ -335,11 +335,122 @@ class MemberLookup {
     }
 
     priv fn _unfilled(self, d: *Decl) -> bool {
+        // An instance of an IMPORTED template is clang's to fill, never M2's,
+        // so its own table stays empty for the whole build and the names it
+        // has are always the pattern's (DeclImport declared them).
+        if MemberLookup::filled_by_clang(d) { return true; }
         if isa::<ClassDecl>(d)     { var n = cast::<ClassDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<StructDecl>(d)    { var n = cast::<StructDecl>(d);    return n->is_instance() && !n->instantiated; }
         if isa::<UnionDecl>(d)     { var n = cast::<UnionDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<EnumDecl>(d)      { var n = cast::<EnumDecl>(d);      return n->is_instance() && !n->instantiated; }
         if isa::<InterfaceDecl>(d) { var n = cast::<InterfaceDecl>(d); return n->is_instance() && !n->instantiated; }
+        return false;
+    }
+
+    /// True when \p d is an instance whose primary came from a C++ header.
+    /// Such an instance is clang's: M2 must SKIP it, and a `T::Item` through
+    /// it is answered by DependentResolution asking clang::Sema, not by
+    /// substituting into a Kairo body. Public because M2 is the other reader.
+    static fn filled_by_clang(d: *Decl) -> bool {
+        if d == &null { return false; }
+        if isa::<ClassDecl>(d)     { var n = cast::<ClassDecl>(d);     return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
+        if isa::<StructDecl>(d)    { var n = cast::<StructDecl>(d);    return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
+        if isa::<UnionDecl>(d)     { var n = cast::<UnionDecl>(d);     return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
+        if isa::<EnumDecl>(d)      { var n = cast::<EnumDecl>(d);      return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
+        if isa::<InterfaceDecl>(d) { var n = cast::<InterfaceDecl>(d); return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
+        return false;
+    }
+
+    static fn primary_is_imported(p: *Decl) -> bool {
+        if p == &null { return false; }
+        if isa::<ClassDecl>(p)     { return cast::<ClassDecl>(p)->is_imported();     }
+        if isa::<StructDecl>(p)    { return cast::<StructDecl>(p)->is_imported();    }
+        if isa::<UnionDecl>(p)     { return cast::<UnionDecl>(p)->is_imported();     }
+        if isa::<EnumDecl>(p)      { return cast::<EnumDecl>(p)->is_imported();      }
+        if isa::<InterfaceDecl>(p) { return cast::<InterfaceDecl>(p)->is_imported(); }
+        return false;
+    }
+
+    // === ADL ==================================================================
+
+    /// The scopes argument-dependent lookup searches for a value of type \p t:
+    /// every module enclosing the record's declaration, innermost first, up to
+    /// (excluding) its TU, then the same for each generic argument. Pointers,
+    /// references and nullables peel to what they refer to: C++ associates
+    /// `T*` and `T&` with T's namespaces, and `op <<` on `std::ostream&` is
+    /// the case this exists for. A C++ namespace imported by Sema/Foreign is
+    /// a ModuleDecl, so `std` lands here exactly as a Kairo `module` does.
+    ///
+    /// Appends only scopes not already in \p out, so callers accumulate over
+    /// every operand / argument into one list.
+    fn associated_scopes(self, t: *Type, out: *vec::<*DeclContext>) {
+        var c = self._peel(t);
+        if (c == &null) || (!isa::<RecordType>(c)) { return; }
+        var rt = cast::<RecordType>(c);
+        self._enclosing_modules(rt->decl, out);
+        for var i: usize = 0; i < rt->args.size(); ++i { self.associated_scopes(rt->args[i], out); }
+    }
+
+    /// Functions named \p name in each of \p scopes, minus anything already in
+    /// \p skip (member lookup's answer) or \p out: the ADL half of an operator
+    /// or unqualified-call candidate set. A decl reached two ways is one
+    /// candidate, the same identity rule as _append_cell.
+    fn adl_candidates(self, scopes: *vec::<*DeclContext>, name: DeclName, spelling: string,
+                      skip: *vec::<*Decl>, out: *vec::<*Decl>) {
+        for var s: usize = 0; s < scopes->size(); ++s {
+            var cell = self.in_scope((*scopes)[s], name, spelling);
+            if cell == &null { continue; }
+            for var i: usize = 0; i < cell->size(); ++i {
+                var d = cell->get(i);
+                if (d == &null) || (!isa::<FunctionDecl>(d)) { continue; }
+                if self._has(skip, d) || self._has(out, d) { continue; }
+                out->push_back(d);
+            }
+        }
+    }
+
+    priv fn _peel(self, t: *Type) -> *Type {
+        var c = t;
+        while c != &null {
+            if isa::<PointerType>(c)      { c = cast::<PointerType>(c)->pointee;      continue; }
+            if isa::<NullableType>(c)     { c = cast::<NullableType>(c)->inner;       continue; }
+            if isa::<CXXLValueRefType>(c) { c = cast::<CXXLValueRefType>(c)->referee; continue; }
+            if isa::<CXXRValueRefType>(c) { c = cast::<CXXRValueRefType>(c)->referee; continue; }
+            break;
+        }
+        return c;
+    }
+
+    /// Stops AT the TU: a Kairo file's top level is its own module_self, so
+    /// adding it would make every free function in the declaring file an ADL
+    /// candidate everywhere the type is used. Consequence for C++: a type in
+    /// the global namespace associates no scope, so a global `operator<<` for
+    /// it is not found this way.
+    priv fn _enclosing_modules(self, d: *Decl, out: *vec::<*DeclContext>) {
+        if d == &null { return; }
+        var src = d;
+        // An implicit instance may not carry a semantic_dc of its own; its
+        // primary's is the answer either way.
+        if src->semantic_dc == &null {
+            var p = self._pattern_of(d);
+            if p != &null { src = p; }
+        }
+        var dc = reinterpret_cast::<*DeclContext>(src->semantic_dc);
+        while dc != &null {
+            if dc->dc_kind == DeclContextKind::TranslationUnit { return; }
+            if (dc->dc_kind == DeclContextKind::Module) && (!self._has_dc(out, dc)) { out->push_back(dc); }
+            dc = dc->parent_context();
+        }
+    }
+
+    priv fn _has(self, v: *vec::<*Decl>, d: *Decl) -> bool {
+        if v == &null { return false; }
+        for var i: usize = 0; i < v->size(); ++i { if (*v)[i] == d { return true; } }
+        return false;
+    }
+
+    priv fn _has_dc(self, v: *vec::<*DeclContext>, dc: *DeclContext) -> bool {
+        for var i: usize = 0; i < v->size(); ++i { if (*v)[i] == dc { return true; } }
         return false;
     }
 
