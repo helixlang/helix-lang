@@ -1161,9 +1161,14 @@ class ImportDecl derives Decl, FFILinkage::<ImportDecl> {
     pub var last_seg_is_macro: bool = false;
 
     /// Source-module file id, resolved by the PP walk (FileImportIndex) at the
-    /// point the import path resolves. 0 = unresolved or ffi (ffi imports carry
-    /// linkage, not a fid). Written ONCE by the PP; read by the parser disambig
-    /// fallback (Full mode) and by Sema/ImportResolution. Never mutated after.
+    /// point the import path resolves. 0 = unresolved. Written ONCE by the PP;
+    /// read by the parser disambig fallback (Full mode) and by
+    /// Sema/ImportResolution. Never mutated after.
+    ///
+    /// ffi imports are the exception to "by the PP": a header's fid does not
+    /// exist until its HeaderSet is indexed, so the driver writes it
+    /// (FrontendAction::_attach_ffi_edges) -- the header's own fid, or 0 when
+    /// clang never resolved the spelling.
     pub var resolved_fid: u32 = 0;
 
     /// How many leading path_segments name the FILE that resolved to
@@ -1171,6 +1176,11 @@ class ImportDecl derives Decl, FFILinkage::<ImportDecl> {
     /// Written by the PP next to resolved_fid. Equals path_segments.size()
     /// for a plain module import; 0 = unresolved / ffi.
     pub var file_seg_count: u32 = 0;
+
+    /// ffi only: the fid of every header in the imported header's transitive
+    /// include closure, the header itself first. What phase I folds
+    /// (IMPORTS.md §5). Written by the driver next to resolved_fid.
+    pub var ffi_closure_fids: vec::<u32>;
 
     /// ImportDecl and MacroDecl are PP-stage nodes: the preprocessor consumes
     /// them out of the token stream into tu->imports / tu->macros, which live

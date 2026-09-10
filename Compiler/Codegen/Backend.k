@@ -41,9 +41,11 @@ ffi "c++" import "clang/Frontend/CompilerInstance.h";
 ffi "c++" import "clang/Frontend/FrontendActions.h";
 ffi "c++" import "clang/Frontend/FrontendOptions.h";
 ffi "c++" import "clang/Basic/SourceManager.h";
+ffi "c++" import "clang/Lex/PreprocessorOptions.h";
 ffi "c++" import "llvm/Support/MemoryBuffer.h";
 
 import Interop::Clang::ClangBackend::*;
+import Interop::Clang::HeaderSet::*;
 import Location::SourceLocation::*;
 import Codegen::TokenSink::*;
 import Codegen::CodegenAction::*;
@@ -71,6 +73,7 @@ class CodegenBackend derives TokenFiller {
     priv var _ksize: u32 = 0;
     priv var _print: bool = false;   ///< --print-cg
     priv var _path:  string;         ///< for the printer header
+    priv var _sets:  vec::<*HeaderSet>;  ///< header sets this TU's graph requested, main file's first
 
     fn CodegenBackend(self, be: *ClangBackend, ctx: *ASTContext, kfid: FileID,
                       arena: *ArenaAllocator, ksize: u32) {
@@ -85,6 +88,10 @@ class CodegenBackend derives TokenFiller {
         self._print = on;
         self._path  = path;
     }
+
+    /// Header sets whose PCHs this TU's emission loads. The MAIN file's set
+    /// must be first: it is the one that becomes the implicit PCH.
+    fn set_header_sets(self, sets: vec::<*HeaderSet>) { self._sets = sets; }
 
     /// M2 filler: emitter dispatch over the TU's top-level items.
     ///
@@ -144,6 +151,49 @@ class CodegenBackend derives TokenFiller {
             empty->getMemBufferRef(), clang::InputKind(clang::Language::CXX)));
         cfe->ProgramAction = clang::frontend::EmitObj;
         cfe->OutputFile    = std::string_to_nstring(out_obj).raw_string();
+
+        // Phase B: the headers were parsed once already (HeaderSet). Mount
+        // each set's PCH bytes in the backend's in-memory VFS -- once per set
+        // for the build -- and hand clang the MAIN file's set as the implicit
+        // PCH, so emission starts from phase A's AST instead of re-parsing.
+        //
+        // LIMITATION: one PCH per clang TU. A Kairo TU whose import graph
+        // spans two header sets uses the main file's; every other set's
+        // headers are `#include`d textually through Includes, by the paths
+        // phase A resolved them to (so no quoted-dir search is needed).
+        // Correct -- same headers, same order within each set -- just
+        // re-parsed.
+        //
+        // The invocation is shared by every TU's run: restore what this one
+        // changed, or the next TU inherits this TU's PCH.
+        var ppo       = &(ci->getInvocation().getPreprocessorOpts());
+        var saved_pch = ppo->ImplicitPCHInclude;
+        var saved_inc = ppo->Includes;
+        finally {
+            ppo->ImplicitPCHInclude = saved_pch;
+            ppo->Includes           = saved_inc;
+        }
+        if self._sets.size() > 0 {
+            for var i: usize = 0; i < self._sets.size(); ++i {
+                var s = self._sets[i];
+                if s->mounted || (!s->ok) { continue; }
+                self._be->mount_pch(s->pch_path(), &(s->pch->Data));
+                s->mounted = true;
+            }
+            ppo->Includes.clear();
+            var textual_from: usize = 0;
+            if self._sets[0]->mounted {
+                ppo->ImplicitPCHInclude = libcxx::string(std::string_to_nstring(self._sets[0]->pch_path()).raw_string());
+                textual_from = 1;
+            }
+            for var i: usize = textual_from; i < self._sets.size(); ++i {
+                var s = self._sets[i];
+                for var e: usize = 0; e < s->includes.size(); ++e {
+                    if s->includes[e].from_path.size() != 0 { continue; }   // direct includes; the rest follow.
+                    ppo->Includes.push_back(libcxx::string(std::string_to_nstring(s->includes[e].to_path).raw_string()));
+                }
+            }
+        }
 
         var act = KairoEmitAction();
         act.filler = &self;
