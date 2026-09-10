@@ -119,6 +119,8 @@
 
 import Sema::SemaContext::*;
 import Sema::Resolve::NameLookup::*;
+import Sema::Type::TypeUtil::*;
+import Config::Invocation::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
 import AST::Context::TranslationUnit::*;
@@ -245,7 +247,13 @@ class RedeclMerge {
             for var j: usize = i + 1; j < group.size(); ++j {
                 var b = group[j];
                 if b->is_poisoned() { continue; }
-                if !self._same_signature(a, b) { continue; }
+                if !self._same_signature(a, b) {
+                    // Two entities to Kairo -- but maybe one to the C++ it
+                    // emits. Asked here, where the pair is already known to
+                    // be an overload and nowhere else pairs them.
+                    self._check_cxx_collision(name, a, b);
+                    continue;
+                }
                 self._link(name, a, b, in_type_body);
             }
         }
@@ -426,6 +434,108 @@ class RedeclMerge {
             if ca != cb { return false; }
         }
         return true;
+    }
+
+    // === C++ signature collision ==========================================
+
+    /// Two overloads Kairo tells apart but the emitted C++ cannot: every
+    /// parameter lowers to the same C++ type, so the generated file would
+    /// declare one C++ function twice -- a redefinition clang reports
+    /// against code nobody wrote. Reported here, against the source, at the
+    /// second decl.
+    ///
+    /// The lowering compared is the BUILTIN table only, for now: `usize` and
+    /// `isize` are distinct Kairo types that lower to `size_t` / `ptrdiff_t`,
+    /// which are the fixed-width integers of the target's pointer width.
+    /// Records, pointers and references compare by canonical pointer, as
+    /// signature identity does; dependent signatures are M2's, as above.
+    ///
+    /// Kairo-authored pairs only: two imported decls are distinct C++
+    /// already (clang said so), and an imported decl is never emitted.
+    priv fn _check_cxx_collision(self, name: string, a: *FunctionDecl, b: *FunctionDecl) {
+        if self._foreign(a) || self._foreign(b) { return; }
+        if a->generic_params.size() != b->generic_params.size() { return; }
+        if a->is_variadic != b->is_variadic { return; }
+        if a->params.size() != b->params.size() { return; }
+        var pw = self._pointer_width();
+        for var i: usize = 0; i < a->params.size(); ++i {
+            var ca = self._param_canonical(a->params[i]);
+            var cb = self._param_canonical(b->params[i]);
+            if (ca == &null) || (cb == &null) { return; }
+            if self._cxx_lowered(ca, pw) != self._cxx_lowered(cb, pw) { return; }
+        }
+        var ka = self._kairo_sig(name, a);
+        var kb = self._kairo_sig(name, b);
+        var cx = self._cxx_sig(name, a, pw);
+        self.sc->diag->report(DiagID::R052E, b->range.start,
+            f"'{ka}' and '{kb}' have the same C++ signature '{cx}' on this target"
+        ).first(b->range)
+         .note(DiagID::R052N, a->range.start, f"'{ka}' declared here")
+         .first(a->range).emit();
+        b->poison();
+    }
+
+    priv fn _param_canonical(self, p: *ParamDecl) -> *Type {
+        if (p == &null) || (p->type_ == &null) { return &null; }
+        return p->type_->canonical;
+    }
+
+    /// The canonical \p t is identical to once lowered: `usize` / `isize`
+    /// become the fixed-width integer of the pointer width, anything else
+    /// is itself.
+    priv fn _cxx_lowered(self, t: *Type, pw: usize) -> *Type {
+        if !isa::<BuiltinType>(t) { return t; }
+        var k = cast::<BuiltinType>(t)->builtin;
+        if (k != BuiltinKind::USize) && (k != BuiltinKind::ISize) { return t; }
+        var sgn   = k == BuiltinKind::ISize;
+        var fixed = BuiltinKind::COUNT;
+        if pw == 16 { fixed = (BuiltinKind::I16) if (sgn) else (BuiltinKind::U16); }
+        if pw == 32 { fixed = (BuiltinKind::I32) if (sgn) else (BuiltinKind::U32); }
+        if pw == 64 { fixed = (BuiltinKind::I64) if (sgn) else (BuiltinKind::U64); }
+        if fixed == BuiltinKind::COUNT { return t; }
+        var ft = self.sc->builtin(fixed);
+        return (ft) if (ft != &null) else (t);
+    }
+
+    /// target.pointer_width, never a literal. 0 (a hand-built invocation)
+    /// reads as 64: the fallback SemaContext gives the store, so the two
+    /// cannot disagree about what `usize` is.
+    priv fn _pointer_width(self) -> usize {
+        var ci = self.sc->ctx->ci;
+        if (ci == &null) || (ci->target.pointer_width == 0) { return 64; }
+        return ci->target.pointer_width;
+    }
+
+    /// `f(u64, i32)`: value parameters only, the receiver is implied.
+    priv fn _kairo_sig(self, name: string, f: *FunctionDecl) -> string {
+        var tu = TypeUtil(self.sc);
+        var s = name + "(";
+        var first = true;
+        for var i: usize = 0; i < f->params.size(); ++i {
+            var p = f->params[i];
+            if (p == &null) || p->is_self { continue; }
+            if !first { s += ", "; }
+            first = false;
+            s += tu.str(self._param_canonical(p));
+        }
+        return s + ")";
+    }
+
+    /// The same, as the lowering spells it: EmitIR's builtin spellings.
+    priv fn _cxx_sig(self, name: string, f: *FunctionDecl, pw: usize) -> string {
+        var tu = TypeUtil(self.sc);
+        var s = name + "(";
+        var first = true;
+        for var i: usize = 0; i < f->params.size(); ++i {
+            var p = f->params[i];
+            if (p == &null) || p->is_self { continue; }
+            if !first { s += ", "; }
+            first = false;
+            var c = self._cxx_lowered(self._param_canonical(p), pw);
+            if isa::<BuiltinType>(c) { s += builtin_cxx_spelling(cast::<BuiltinType>(c)->builtin); }
+            else { s += tu.str(c); }
+        }
+        return s + ")";
     }
 
     // === agreement across a linked chain ==================================
