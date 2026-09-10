@@ -1168,3 +1168,50 @@ group = "visibility"
 
     [R050.N]
     explain = "Points at the less-visible declaration the alias would have published."
+
+[R051]
+brief = "generic parameter has no bound, so it has no members"
+group = "member-lookup"
+
+    [R051.E]
+    explain = """
+    # an unbounded generic parameter has no members
+
+    a generic parameter with no bound is opaque. it stands for *some* type, and nothing about that
+    type is known here - not its fields, not its methods, not its operators. so a member access
+    through it names nothing, and kairo says so at the template, once, rather than at each
+    instantiation.
+
+    this is the one place kairo deliberately parts with c++. a c++ template body is re-checked
+    against every argument it is instantiated with, so `t.draw()` is an error at every call that
+    passes a type without `draw` and no error at all if the template is never instantiated. kairo
+    checks the body against the parameter's DECLARATION instead: whatever the declaration promised
+    is exactly what the body may use.
+
+    ## example
+
+    ```kairo
+    fn <T> render(x: T) {
+        x.draw()                  // error: `T` promised nothing
+    }
+
+    interface Drawable { fn draw(const self) }
+
+    fn <T impl Drawable> render(x: T) {
+        x.draw()                  // fine: `draw` comes from the bound
+    }
+    ```
+
+    ## how to fix
+
+    give the parameter a bound. `impl <Interface>` promises a method set structurally;
+    `derives <Base>` promises a base class's members and its lineage. either one makes those members
+    - and only those - usable in the body.
+
+    if you genuinely want the c++ rule for this parameter, write `: type`
+    (`fn <T: type> render(x: T)`). that is the opt-in to duck typing: every access through the
+    parameter is accepted here and checked when the template is instantiated.
+    """
+
+    [R051.N]
+    explain = "Points at the generic parameter's declaration, which is where a bound would go."

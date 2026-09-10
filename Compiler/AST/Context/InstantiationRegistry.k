@@ -302,6 +302,13 @@ class InstantiationRegistry {
             n->derives_list.from_raw(static_cast::<*InheritEdge>(&null), 0);
             return static_cast::<*Decl>(n);
         }
+        // A FUNCTION instance is the primary itself. The shell nodes above
+        // exist so a member lookup on `Vec<i32>` has a table to walk; a
+        // function instance has no table and nothing looks a name up inside
+        // one, so minting an empty FunctionDecl would only create a second
+        // identity for the same entity. EmitPlan/M1 read the entry's args to
+        // write the explicit instantiation and never the node's body.
+        if isa::<FunctionDecl>(primary) { return primary; }
         return &null;
     }
 }
