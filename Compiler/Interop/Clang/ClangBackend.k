@@ -63,6 +63,8 @@ ffi "c++" import "clang/Frontend/CompilerInvocation.h";
 ffi "c++" import "clang/Frontend/TextDiagnosticPrinter.h";
 ffi "c++" import "clang/Lex/PreprocessorOptions.h";
 ffi "c++" import "llvm/ADT/IntrusiveRefCntPtr.h";
+ffi "c++" import "llvm/ADT/Twine.h";
+ffi "c++" import "llvm/Support/MemoryBuffer.h";
 ffi "c++" import "llvm/Support/TargetSelect.h";
 ffi "c++" import "llvm/Support/VirtualFileSystem.h";
 ffi "c++" import "llvm/Support/raw_ostream.h";
@@ -179,6 +181,9 @@ class ClangBackend {
 
     // --- persistent clang state (built once in _startup_locked) ----------
     priv var _vfs:       llvm::IntrusiveRefCntPtr::<llvm::vfs::FileSystem>;
+    /// Top layer of _vfs: phase-A PCH bytes mounted at /kairo/pch/<id>.pch so
+    /// phase B loads them by path without ever touching disk.
+    priv var _mem:       llvm::IntrusiveRefCntPtr::<llvm::vfs::InMemoryFileSystem>;
     priv var _diag_opts: clang::DiagnosticOptions;  ///< plain value type in 22.x
     priv var _diags0:    llvm::IntrusiveRefCntPtr::<clang::DiagnosticsEngine>; ///< arg-parse engine
     priv var _cinv:      libcxx::shared_ptr::<clang::CompilerInvocation>;
@@ -235,6 +240,18 @@ class ClangBackend {
 
     fn ci(self)     -> *clang::CompilerInstance { return self._ci; }
     fn locmap(self) -> *ClangLocMap             { return self._locmap; }
+
+    fn invocation(self) -> *clang::CompilerInvocation { return self._cinv.get(); }
+    fn vfs(self)        -> llvm::IntrusiveRefCntPtr::<llvm::vfs::FileSystem> { return self._vfs; }
+    fn mem_fs(self)     -> *llvm::vfs::InMemoryFileSystem { return self._mem.get(); }
+
+    /// Driver thread only. Idempotent per path.
+    fn mount_pch(self, path: string, data: *llvm::SmallVector::<std::Legacy::char, 0>) {
+        var np  = std::string_to_nstring(path);
+        var buf = llvm::MemoryBuffer::getMemBuffer(
+            llvm::StringRef(data->data(), data->size()), llvm::StringRef(np.raw()), false);
+        self._mem->addFile(llvm::Twine(np.raw()), 0, libcxx::move(buf));
+    }
 
     fn csm(self) -> *clang::SourceManager {
         if (self._ci == &null) || (!self._started) {
@@ -327,7 +344,10 @@ class ClangBackend {
         llvm::InitializeNativeTarget();
         llvm::InitializeNativeTargetAsmPrinter();
 
-        self._vfs     = llvm::vfs::getRealFileSystem();
+        var overlay = llvm::makeIntrusiveRefCnt::<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+        self._mem = llvm::makeIntrusiveRefCnt::<llvm::vfs::InMemoryFileSystem>();
+        overlay->pushOverlay(self._mem);
+        self._vfs = overlay;
         self._printer = std::create::<clang::TextDiagnosticPrinter>(
             llvm::errs(), self._diag_opts);
 
