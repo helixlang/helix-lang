@@ -177,7 +177,7 @@ class WellKnownDecls {
         }
     }
 
-    fn set(self, k: WellKnownType, d: *Decl) {
+    fn _set(self, k: WellKnownType, d: *Decl) {
         self._decls[static_cast::<usize>(k)] = d;
     }
 
