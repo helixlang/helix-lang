@@ -88,17 +88,28 @@ class HeaderIndex {
         if hs->indexed { return true; }
         if !hs->built.load(std::MemoryOrder::acquire) { return false; }
         hs->indexed = true;
-        if !hs->ok || (hs->ast() == &null) {
+        if (!hs->ok) || (hs->ast() == &null) {
             Logger::error(Logger::Stage::Driver, "HeaderIndex: set failed to build; nothing imported");
             return false;
         }
         var _t = TimeRegion("HeaderIndex");
 
+        // The builtin singletons are built once per build, normally by the
+        // first SemaContext -- and headers are indexed BEFORE any sema runs.
+        // Unbuilt, CanonicalTypeStore::builtin answers null and every `int`
+        // in every header imports as opaque. init() is first-caller-wins, so
+        // the width comes from exactly where SemaContext takes it; a second
+        // source would give usize two sizes depending on who ran first.
+        var pbits: usize = 64;
+        if self._inv != &null { pbits = self._inv->target.pointer_width; }
+        if pbits == 0 { pbits = 64; }
+        self._g->types()->init(pbits);
+
         // 1. fids + contexts + TUs, in clang's touch order.
         var fresh = vec::<*HeaderTarget>();
         for var i: usize = 0; i < hs->files.size(); ++i {
             var f = &(hs->files[i]);
-            var fid = self._sm->load_file(Path(f->path));     // VERIFY: returns the existing fid for a known path.
+            var fid = self._sm->load_file(Path(f->path));     // a known path answers with its existing fid (VFM cache hit).
             if fid == u32(-1) { continue; }
             f->kfid = fid;
             hs->cfid_to_kfid.insert(libcxx::make_pair(f->cfid_hash, fid));
@@ -181,8 +192,14 @@ class HeaderIndex {
             var ok = ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')) || (c == '_');
             ident += (c) if (ok) else ('_');
         }
-        var tok = t->ctx->make_token(SourceRange::invalid(), TokenKind::LitIdentifier, ident);
-        var m = ModuleDecl::create(t->ctx, SourceRange::invalid(), tok, static_cast::<*DeclContext>(t->tu));
+        // TokenText finds the interner FROM THE RANGE's fid: an invalid range
+        // spells as "$FALLBACK-MISSING-INTERN$". A zero-length range at the
+        // header's start is resolvable and honest -- the module IS the file
+        // (the same token ASTParse synthesizes for a Kairo file's module).
+        var start = self._sm->get_loc(t->fid, 0);
+        var at    = SourceRange(start, start);
+        var tok = t->ctx->make_token(at, TokenKind::LitIdentifier, ident);
+        var m = ModuleDecl::create(t->ctx, at, tok, static_cast::<*DeclContext>(t->tu));
         m->set_symbols(t->tu->dc_symbols);
         m->is_implicit = true;
         m->mark_definition();
@@ -214,9 +231,13 @@ class HeaderIndex {
                 var kd = di->declare(d);
                 if kd != &null {
                     out.push_back((reinterpret_cast::<*void>(d), kd));
+                    // Members of a CLASS template only. A templated FunctionDecl
+                    // is a DeclContext too, and its decls() are the function's
+                    // locals and parameters: walking it filed every local of
+                    // every inline libc++ template (`__i`, `__c`) as a global.
                     var td = llvm::cast::<clang::TemplateDecl>(d)->getTemplatedDecl();
                     var tdc = llvm::dyn_cast::<clang::DeclContext>(td);
-                    if tdc != &null { self._walk_declare(tdc, di, out); }
+                    if (tdc != &null) && llvm::isa::<clang::RecordDecl>(td) { self._walk_declare(tdc, di, out); }
                     // User-written specializations live in the template's spec list, not in any DeclContext walk.
                     var ct = llvm::dyn_cast::<clang::ClassTemplateDecl>(d);
                     if ct != &null {

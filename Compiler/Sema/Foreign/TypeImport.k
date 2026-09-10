@@ -43,6 +43,7 @@ ffi "c++" import "clang/AST/QualTypeNames.h";
 ffi "c++" import "clang/AST/Type.h";
 ffi "c++" import "clang/Index/USRGeneration.h";
 ffi "c++" import "llvm/ADT/SmallString.h";
+ffi "c++" import "llvm/Support/xxhash.h";
 
 import AST::Context::ASTContext::*;
 import AST::Context::CanonicalTypes::*;
@@ -62,6 +63,13 @@ class TypeImport {
     pub var kctx:      obs::<ASTContext>;              ///< for opaque-name interning (any header ctx of the set).
     pub var fid:       u32 = 0;                        ///< home fid for registry entries.
     pub var n_opaque:  usize = 0;
+
+    /// Owners of the template parameter lists in scope at the decl being
+    /// defined, outermost first: index = clang template depth. Set by
+    /// DeclImport::define before it imports anything. A CANONICAL template
+    /// type parameter carries only (depth, index), and this is how it finds
+    /// the GenericParamDecl it stands for.
+    pub var tpl_owners: vec::<*Decl>;
 
     fn TypeImport(self, store: *CanonicalTypeStore, instances: *InstantiationRegistry,
                   reg: *ForeignRegistry, cctx: *clang::ASTContext, kctx: *ASTContext, fid: u32) {
@@ -111,8 +119,26 @@ class TypeImport {
 
     fn opaque(self, qt: clang::QualType) -> *Type {
         var sp  = self.spelling(qt);
-        var imm = self.kctx->get_imm_table()->intern_ident_copy(sp);
+        var imm = self.kctx->get_imm_table()->intern_ident_copy(TypeImport::opaque_key(sp));
         return self.store->opaque(imm);
+    }
+
+    /// The name an opaque type is interned under. The interner caps a
+    /// spelling at 255 bytes (EvalHash::compute_hash crashes past it), and a
+    /// fully qualified libc++ template spelling is routinely longer. An
+    /// opaque type is never looked into -- its name is only its identity and
+    /// its label in a diagnostic -- so a long one is keyed by a readable
+    /// prefix plus a hash of the WHOLE spelling: two types may share the
+    /// prefix, never the key.
+    static fn opaque_key(sp: string) -> string {
+        var ns = std::string_to_nstring(sp);
+        if ns.size() < 200 { return sp; }
+        var h = llvm::xxh3_64bits(llvm::StringRef(ns.raw(), ns.size()));
+        var key = string(sp.raw_string().substr(0, 160)) + f"...#{h}";
+        // A prefix of non-ASCII identifiers could still be over the cap once
+        // encoded; the hash alone is always short enough.
+        if std::string_to_nstring(key).size() >= 255 { return f"opaque#{h}"; }
+        return key;
     }
 
     priv fn _map(self, qt: clang::QualType) -> *Type {
@@ -174,11 +200,18 @@ class TypeImport {
         // --- template parameters -----------------------------------------------
         var tp = llvm::dyn_cast::<clang::TemplateTypeParmType>(ty);
         if tp != &null {
+            // _import canonicalizes first, and a canonical parameter has no
+            // decl -- so the decl path is for sugared callers, and the depth
+            // table is the one every signature actually takes.
+            var owner: *Decl = &null;
             var pd = tp->getDecl();
-            if pd == &null { return &null; }
-            var owner = self._owner_of_param(pd);
+            if pd != &null {
+                owner = self._owner_of_param(pd);
+            } else if static_cast::<usize>(tp->getDepth()) < self.tpl_owners.size() {
+                owner = NameLookup::representative(self.tpl_owners[static_cast::<usize>(tp->getDepth())]);
+            }
             if owner == &null { return &null; }
-            return self.store->generic_param(owner, tp->getIndex(), pd->isParameterPack());
+            return self.store->generic_param(owner, tp->getIndex(), tp->isParameterPack());
         }
         var st = llvm::dyn_cast::<clang::SubstTemplateTypeParmType>(ty);
         if st != &null { return self._map(st->getReplacementType().getCanonicalType()); }
