@@ -43,8 +43,7 @@ enum OverlayVisibility derives u8 {
 enum OverlayTargetKind derives u8 {
     FunctionSet = 0, ///< target is a source OverloadCell of functions (unionable).
     Type,            ///< a single non-function type/module/etc. decl target.
-    ModuleHandle,    ///< a plain-import module handle (source ModuleDecl).
-    FfiAnchor,       ///< an `ffi ... as z` anchor: the ImportDecl node itself.
+    ModuleHandle,    ///< a module handle: a Kairo file's ModuleDecl, or one C++ header's under an ffi alias.
 }
 
 /// \class OverlayTarget
@@ -54,7 +53,7 @@ enum OverlayTargetKind derives u8 {
 class OverlayTarget {
     pub var kind:    OverlayTargetKind = OverlayTargetKind::Type;
     pub var cell:    obs::<OverloadCell> = &null;  ///< set iff kind == FunctionSet.
-    pub var decl:    obs::<Decl>         = &null;  ///< set for Type/ModuleHandle/FfiAnchor.
+    pub var decl:    obs::<Decl>         = &null;  ///< set for Type/ModuleHandle.
     pub var origin:  obs::<Decl>         = &null;  ///< the source *ImportDecl (typed *Decl to dodge cycle).
     pub var vis:     OverlayVisibility   = OverlayVisibility::Public;
     pub var src_fid: u32                 = 0;      ///< source module fid (for dumps/diagnostics).
@@ -92,13 +91,12 @@ class OverlayEntry {
     fn non_function_count(self) -> usize {
         var seen = vec::<obs::<Decl>>();
         for var i: usize = 0; i < self.targets.size(); ++i {
-            // A module handle and an ffi anchor name a SCOPE, not an entity:
-            // two files reopening `module util` are one namespace, and two
-            // ffi headers under one alias are one foreign scope. Neither is
-            // an ambiguity (IMPORTS.md §4.3).
+            // A module handle names a SCOPE, not an entity: two files
+            // reopening `module util` are one namespace, and the N headers of
+            // one `ffi import ... as h` closure are one foreign scope. Neither
+            // is an ambiguity (IMPORTS.md §4.3).
             var k = self.targets[i].kind;
-            if (k == OverlayTargetKind::FunctionSet) || (k == OverlayTargetKind::ModuleHandle)
-            || (k == OverlayTargetKind::FfiAnchor) { continue; }
+            if (k == OverlayTargetKind::FunctionSet) || (k == OverlayTargetKind::ModuleHandle) { continue; }
             var d = self.targets[i].decl;
             if d == &null { continue; }
             var dup = false;

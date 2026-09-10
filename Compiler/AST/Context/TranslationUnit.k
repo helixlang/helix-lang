@@ -191,8 +191,15 @@ class TranslationUnit derives DeclContext {
     pub var import_edges:   ArenaList::<ImportEdge>;
 
     /// A C++ header imported through Sema/Foreign: decls come from clang,
-    /// there is no Kairo token stream behind this fid.
+    /// there is no Kairo token stream behind this fid. Set by
+    /// HeaderIndex::_target. Never parsed, never run through sema; lives as
+    /// long as the build (CompilerInstance::release refuses it).
     pub var is_foreign:     bool = false;
+
+    /// The HeaderSet this file's ffi imports requested (PPWalker::_finalize),
+    /// or null. Typed *void: TranslationUnit cannot name Interop. Owned by the
+    /// CompilerInstance's HeaderSetCache, never by the TU.
+    pub var header_set:     obs::<void> = &null;
 
     fn TranslationUnit(self, ctx: *ASTContext, fid: u32, scope: *DisambigTable, g_scope: *GlobalDisambigTable) {
         self.init_dc(DeclContextKind::TranslationUnit, ctx, &null, &null);

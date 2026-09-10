@@ -40,6 +40,7 @@ fn register_kairo_flags(cmd: *Command) {
     cmd->define::<FlagKind::StringList>("macro-search-path","","macro-search-path",   "dedicated search path for macro-only .k files (repeatable)");
     cmd->define::<FlagKind::StringList>("force-include",  "",  "force-include",       "force-include a file before all source files (repeatable)");
     cmd->define::<FlagKind::String>   ("sysroot",         "",  "sysroot",             "override system root directory for both compilation and cross-compilation", "");
+    cmd->define::<FlagKind::String>   ("resource-dir",    "",  "resource-dir",        "clang resource directory for C++ interop; its include/ holds the builtin headers", "");
     cmd->define::<FlagKind::String>   ("prelude",         "",  "prelude",             "path to a custom prelude file (replaces the default prelude)",             "");
     cmd->define::<FlagKind::String>   ("working-dir",     "",  "working-dir",         "override working directory for all relative path resolution",              "");
     cmd->define::<FlagKind::String>   ("input-encoding",  "",  "input-encoding",      "source file encoding override: utf-8|utf-16|latin-1 (default: utf-8)",    "utf-8");
@@ -471,6 +472,7 @@ fn register_test_flags(cmd: *Command) {
     cmd->define::<FlagKind::PathList>("lib-dirs",      "L", "lib-dir",      "add directory to library search path");
     cmd->define::<FlagKind::PathList>("link-libs",     "l", "link",         "link against library");
     cmd->define::<FlagKind::String>("sysroot",       "",  "sysroot",      "override sysroot",                                "");
+    cmd->define::<FlagKind::String>("resource-dir",  "",  "resource-dir", "clang resource directory",                        "");
     cmd->define::<FlagKind::String>("prelude",       "",  "prelude",      "path to custom prelude file",                     "");
     cmd->define::<FlagKind::Bool>("no-prelude",    "",  "no-prelude",   "disable implicit prelude",                        false);
     cmd->define::<FlagKind::Bool>("no-stdlib",     "",  "no-stdlib",    "disable standard library",                        false);
