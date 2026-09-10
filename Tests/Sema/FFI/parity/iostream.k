@@ -6,12 +6,12 @@
 // literal rule (Spec: the literal takes the type), which is a deliberate
 // divergence from C++ and would make this case a test of that rule instead.
 
-ffi "c++" import "iostream" as io
+ffi "c++" import "iostream"
 
 fn say() {
     var x: i32 = 42
-    io::std::cout << x
     std::cout << x
+    std::cout << 50 as i16
 }
 
 // --- lit wiring -----------------------------------------------------------
