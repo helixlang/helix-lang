@@ -123,6 +123,24 @@ class Deduction {
             return self.conv->implicit(arg, param);
         }
 
+        // A dependent C++ reference parameter (only imported signatures have
+        // one): deduction looks THROUGH it -- [temp.deduct.call]/3, "if P is
+        // a reference type, the type referred to by P is used" -- so
+        // `push(const T&)` with an i32 deduces T := i32. Binding then ranks
+        // as Conversion::_bind_ref does: lvalue refs as the referee's match,
+        // rvalue refs never better than Converted. Concrete refs never reach
+        // here; the branch above sends them through Conversion.
+        if isa::<CXXLValueRefType>(param) || isa::<CXXRValueRefType>(param) {
+            var a = arg;
+            if isa::<CXXLValueRefType>(a) { a = cast::<CXXLValueRefType>(a)->referee; }
+            if isa::<CXXRValueRefType>(a) { a = cast::<CXXRValueRefType>(a)->referee; }
+            if isa::<CXXLValueRefType>(param) {
+                return self.unify(cast::<CXXLValueRefType>(param)->referee, a, top);
+            }
+            var rr = self.unify(cast::<CXXRValueRefType>(param)->referee, a, top);
+            return (ImplicitRank::Converted) if (rr != ImplicitRank::None) else (ImplicitRank::None);
+        }
+
         // Dependent composite: same shape, recurse exact.
         if param->kind != arg->kind {
             // *Derived -> *Base<T>: allow the top-level pointer case through

@@ -55,7 +55,6 @@ enum MemberOutcome derives u8 {
     NeedsInference,  ///< base has no declared type (inferred var, call result).
     Dependent,       ///< base is rooted in a generic param; M2 owns it.
     Errored,         ///< diagnosed here.
-    Foreign,         ///< behind an ffi anchor: clang resolves it, not us.
 }
 
 /// \class MemberResult
@@ -175,10 +174,6 @@ class TraceRow {
     pub var cell_size: usize        = 0;     ///< >0: deferred overload set.
     pub var poisoned:  bool         = false; ///< diagnosed at this use.
 
-    /// Use + Miss: the miss was ALLOWED by the bare-ffi gate rather than
-    /// diagnosed (IMPORTS.md §5). Temporary; goes with the gate.
-    pub var foreign_gate: bool = false;
-
     fn TraceRow(self) { }
 }
 
@@ -240,7 +235,7 @@ class ResolutionTrace {
     fn use_site(self, imm: u32, at: SourceRange, bound: *Decl, via: TraceVia,
                 found_in: *DeclContext, frame: usize, cell_size: usize,
                 poisoned: bool, shadowed: *Decl, shadowed_via: TraceVia,
-                shadowed_in: *DeclContext, foreign_gate: bool = false) {
+                shadowed_in: *DeclContext) {
         if !self.enabled { return; }
         var r = TraceRow{};
         r.kind              = TraceRowKind::Use;
@@ -253,7 +248,6 @@ class ResolutionTrace {
         r.frame             = frame;
         r.cell_size         = cell_size;
         r.poisoned          = poisoned;
-        r.foreign_gate      = foreign_gate;
         r.shadowed          = shadowed;
         r.shadowed_via      = shadowed_via;
         r.shadowed_found_in = shadowed_in;
