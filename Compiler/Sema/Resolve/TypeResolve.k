@@ -241,7 +241,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
     priv fn _resolve_pointer(self, n: *PointerType) {
         if !self._component_ok(n, n->pointee) { return; }
-        n->canonical = self.sc->types->pointer(n->pointee->canonical);
+        n->canonical = self.sc->types->pointer(n->pointee->canonical, n->is_unsafe);
     }
 
     priv fn _resolve_nullable(self, n: *NullableType) {
@@ -1659,6 +1659,20 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         fr.owner  = owner;
         fr.params = params;
         self.frames.push_back(fr);
+
+        // THE one place a param learns its declarer. Every canonical
+        // GenericParamType is uniqued on (fr.owner, index) -- see
+        // _type_of_decl -- so stamping from the same value here is what makes
+        // `param -> owner` and `canonical -> owner` the same answer, which is
+        // what ChainBinding's bound lookup stands on. Guarded on null so a
+        // closure frame (owner null by construction) never clears a real
+        // owner and a re-entered frame is idempotent.
+        if owner == &null { return; }
+        for var i: usize = 0; i < params.size(); ++i {
+            var gp = params[i];
+            if gp == &null { continue; }
+            if gp->owner == &null { gp->owner = owner; }
+        }
     }
 
     priv fn _pop_frame(self) {

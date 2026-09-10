@@ -20,13 +20,23 @@
 ///     (`var a = g(); a.x`), or after an overload set. Those are marked
 ///     NeedsInference and left with null slots -- NOT poisoned, NOT
 ///     diagnosed. TypeInference owns them (one writer rule: it promotes
-///     candidate cells and fills the rest). A step rooted in a generic
-///     param is marked Dependent for M2 (hard invariant #5).
+///     candidate cells and fills the rest).
+///
+///     A step rooted in a GENERIC PARAMETER is decided by that parameter's
+///     declaration, not deferred wholesale (see "The dependent regimes"
+///     below). `<T: type>` defers everything to M2, the C++ rule. A bounded
+///     `<T impl I>` / `<T derives B>` resolves against the bound's members
+///     right here, once, at the template. An unbounded `<T>` has no members
+///     at all and says so -- at the template, which is the whole difference
+///     from C++. Only a dependent COMPOSITE (`[T]`, an unfilled
+///     `Foo<T>::Inner`) is still Dependent for M2 (hard invariant #5).
 ///
 ///   \par One error, one home
 ///     "no member named X", "X is a type, use ::", "'::' after a value",
 ///     "'.' on a pointer (use ->)", ambiguous non-function members across
-///     bases: HERE. Unknown head: N. Bad types: T. Access: AccessCheck.
+///     bases, "T has no members": HERE. Unknown head: N. Bad types: T.
+///     Access: AccessCheck. Whether an INSTANTIATION satisfies the bound:
+///     ConformanceChecking.
 ///
 ///   Phase: RESOLVE (T stage, after TypeResolution)
 ///
@@ -40,6 +50,7 @@
 /// ------------------------------------------------------------------------ ///
 
 import Sema::SemaContext::*;
+import Sema::Check::ConstraintSet::*;
 import Sema::Resolve::NameLookup::*;
 import Sema::Resolve::MemberLookup::*;
 import Sema::Resolve::ResolutionTrace::*;
@@ -107,9 +118,24 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
 
     priv var _self_imm: u32 = u32(-1);
 
+    /// Default ctor so ChainBinding can be a MEMBER of a pass that builds it
+    /// in its own body (ExprTyper holds one). Leaves sc null: every entry
+    /// point dereferences it, so a default-constructed binder must be
+    /// assigned a real one before use.
+    fn ChainBinding(self) { self.sc = &null; }
+
     fn ChainBinding(self, sc: *SemaContext) {
         self.sc = sc;
         self.ml = MemberLookup(sc);
+    }
+
+    /// One-time setup the STEP BINDER needs, split out of run() because
+    /// ExprTyper drives bind_step() directly without ever walking the program
+    /// here. Idempotent: run() calls it too, and calling it twice costs an
+    /// intern hit and a re-index, not correctness.
+    fn prepare(self) {
+        self._self_imm = self.sc->imm_table()->intern_ident_copy("self");
+        self.ml.index_extensions();
     }
 
     fn run(self) {
@@ -118,8 +144,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         if tu == &null { return; }
         if tu->program == &null { return; }
 
-        self._self_imm = self.sc->imm_table()->intern_ident_copy("self");
-        self.ml.index_extensions();
+        self.prepare();
 
         var items = &(tu->program->items);
         for var i: usize = 0; i < items->size(); ++i {
@@ -304,8 +329,16 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                 return a;
             }
             case DeclKind::GenericParamDecl {
+                // `T::Name` in expression position. Dependent, but NOT opaque:
+                // the canonical is what the bound lookup keys on, so a
+                // Dependent anchor carries it exactly as a Value anchor does.
+                var gp = cast::<GenericParamDecl>(d);
                 a.kind = AnchorKind::Dependent;
                 a.decl = d;
+                if gp->owner != &null {
+                    a.ty = self.sc->types->generic_param(
+                               NameLookup::representative(gp->owner), gp->index, gp->is_pack);
+                }
                 return a;
             }
             case DeclKind::ParamDecl {
@@ -390,8 +423,53 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
                      else (AnchorKind::NeedsInference);
             return a;
         }
+        return self._value_anchor_from(d, t->canonical);
+    }
+
+    /// The same anchor built from a canonical that has no syntax node behind
+    /// it -- ExprTyper's case, where the left side of a step is the type of an
+    /// EXPRESSION (`f().x`) and there is no declared type to read.
+    priv fn _value_anchor_from(self, d: *Decl, canonical: *Type) -> Anchor {
+        var a = Anchor{};
+        a.decl = d;
+        if canonical == &null { a.kind = AnchorKind::NeedsInference; return a; }
         a.kind = AnchorKind::Value;
-        a.ty   = t->canonical;
+        a.ty   = canonical;
+        return a;
+    }
+
+    // === The binder, for a second caller =======================================
+    //
+    // ExprTyper reaches the steps ChainBinding had to leave alone: the ones
+    // whose left side only becomes knowable once expressions have types. It
+    // uses the SAME binder rather than a copy of it, which is the whole reason
+    // these three are public.
+
+    /// Bind one `::`/`.` step against \p a, exactly as run() would.
+    /// PRE: prepare() has been called on this instance.
+    fn bind_step(self, chain: *ChainExpr, st: *ChainExpr::Step, a: Anchor) -> Anchor {
+        return self._bind_step(chain, st, a);
+    }
+
+    /// Anchor for a value of canonical type \p canonical. \p d is optional and
+    /// only feeds diagnostics ("declared here").
+    fn anchor_for_value(self, d: *Decl, canonical: *Type) -> Anchor {
+        return self._value_anchor_from(d, canonical);
+    }
+
+    /// Anchor for a TYPE the typer computed: a record resolves to its decl so
+    /// member lookup can walk the table; anything else can still answer
+    /// `T::assoc`-shaped questions from the type alone.
+    fn anchor_for_type(self, t: *Type) -> Anchor {
+        if t == &null {
+            var e = Anchor{};
+            e.kind = AnchorKind::Errored;
+            return e;
+        }
+        if isa::<RecordType>(t) { return self._type_anchor(cast::<RecordType>(t)->decl); }
+        var a = Anchor{};
+        a.kind = AnchorKind::Type;
+        a.ty   = t;
         return a;
     }
 
@@ -414,9 +492,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
             return a;
         }
         if a.kind == AnchorKind::Dependent {
-            self._record(loc, MemberOutcome::Dependent, &null, 0, a.decl);
-            self.n_dependent += 1;
-            return a;
+            return self._bind_dependent_step(st, a);
         }
         if a.kind == AnchorKind::Foreign {
             // Foreign is absorbing: every later step is foreign too.
@@ -573,11 +649,16 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         // A dependent RECORD still has a known decl, and MemberLookup keys on
         // the decl: `self.x` in `class <T> Foo` binds to the field today, and
         // only the NEXT anchor (the field's type) carries the dependence. A
-        // dependent non-record (`T`, `*T`, `[T]`) has no scope to look into.
-        if ty->is_dependent() && !isa::<RecordType>(ty) {
-            self._record(loc, MemberOutcome::Dependent, &null, 0, a.decl);
-            self.n_dependent += 1;
-            var r = Anchor{}; r.kind = AnchorKind::Dependent; r.decl = a.decl; return r;
+        // dependent non-record (`T`, `*T`, `[T]`) has no scope of its own --
+        // what it has is whatever its DECLARATION promised, which is the
+        // dependent path's question. Hand it the PEELED type: `p->draw()` on
+        // a `p: *T` asks about T, not about the pointer.
+        if ty->is_dependent() && (!isa::<RecordType>(ty)) {
+            var dep = Anchor{};
+            dep.kind = AnchorKind::Dependent;
+            dep.decl = a.decl;
+            dep.ty   = ty;
+            return self._bind_dependent_step(st, dep);
         }
 
         var cands = vec::<*Decl>();
@@ -670,6 +751,193 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         var r = Anchor{}; r.kind = AnchorKind::NeedsInference; r.decl = owner; return r;
     }
 
+    // === The dependent regimes =====================================================
+    //
+    // A step whose left side is a generic parameter has THREE possible
+    // answers, and which one applies is a property of the parameter's
+    // DECLARATION, not of the step:
+    //
+    //   `<T: type>`            duck: defer everything to instantiation, the
+    //                          C++ rule. No diagnostic here, ever.
+    //   `<T impl I>` /         bounded: the parameter's members are exactly
+    //   `<T derives B>`        the bound's members. Resolved NOW, at the
+    //                          template, once -- not once per instantiation.
+    //   `<T>`                  opaque: no bound, so no members. `x.anything`
+    //                          is an error AT THE TEMPLATE, which is the whole
+    //                          difference from C++.
+    //
+    // Everything below is the middle case doing real work; the other two are
+    // one branch each.
+
+    /// \class ParamBounds
+    /// \brief What a generic parameter's declaration lets a body see.
+    class ParamBounds {
+        pub var duck:       bool = false;        ///< `: type`: defer everything.
+        pub var interfaces: vec::<*Decl>;        ///< `impl I` bounds.
+        pub var bases:      vec::<*Decl>;        ///< `derives B` bounds.
+        pub var param:      *GenericParamDecl = &null;
+        fn ParamBounds(self) { }
+    }
+
+    /// The declaring GenericParamDecl behind a canonical, or null when the
+    /// canonical is not a bare parameter (`*T`, `[T]`: no declaration to ask).
+    priv fn _param_of(self, t: *Type) -> *GenericParamDecl {
+        if (t == &null) || (!isa::<GenericParamType>(t)) { return &null; }
+        var g = cast::<GenericParamType>(t);
+        if g->owner == &null { return &null; }
+        var gps = self._generic_params_of_any(g->owner);
+        if static_cast::<usize>(g->param_index) >= gps.size() { return &null; }
+        return gps[static_cast::<usize>(g->param_index)];
+    }
+
+    /// The bounds \p gp's declaration promised. The requires clause is the
+    /// SINGLE source of truth for conformance: RequiresDesugar hoisted every
+    /// inline `impl`/`derives` into it and cleared the inline lists, and
+    /// ConstraintExtraction filed the partition in sc->bounds. Only the kind
+    /// bound stays on the parameter, because it describes the slot rather
+    /// than conjoining a constraint.
+    priv fn _bounds_of(self, gp: *GenericParamDecl, owner: *Decl) -> ParamBounds {
+        var b = ParamBounds{};
+        if gp == &null { return b; }
+        b.param = gp;
+        b.duck  = (gp->kind_bound == GenericParamKindBound::Duck);
+
+        var it = self.sc->bounds.find(reinterpret_cast::<u64>(owner));
+        if it == self.sc->bounds.end() { return b; }
+        var set = &(it->second);
+        for var i: usize = 0; i < set->impl_constraints.size(); ++i {
+            var c = set->impl_constraints[i];
+            if !self._constraint_names(c, gp) { continue; }
+            var d = self._record_decl_of(c->rhs);
+            if d != &null { b.interfaces.push_back(d); }
+        }
+        for var i: usize = 0; i < set->derives_constraints.size(); ++i {
+            var c = set->derives_constraints[i];
+            if !self._constraint_names(c, gp) { continue; }
+            var d = self._record_decl_of(c->rhs);
+            if d != &null { b.bases.push_back(d); }
+        }
+        return b;
+    }
+
+    /// Whether conjunct \p c constrains \p gp. The lhs is an ordinary
+    /// identifier N bound like any other, so this is a pointer compare and not
+    /// a name compare: `fn <T> f() requires T impl I` inside `class <T> C`
+    /// constrains the FUNCTION's T, and the two T are different entities.
+    priv fn _constraint_names(self, c: *ConstraintExpr, gp: *GenericParamDecl) -> bool {
+        if (c == &null) || (c->lhs == &null) { return false; }
+        var id = dyn_cast::<NamedIdentExpr>(c->lhs);
+        if id == &null { return false; }
+        return id->resolved_decl == static_cast::<*Decl>(gp);
+    }
+
+    /// The record decl a bound's written type names, or null if it names none
+    /// (a builtin, a pointer: nothing with members to offer).
+    priv fn _record_decl_of(self, t: *Type) -> *Decl {
+        if (t == &null) || (t->canonical == &null) { return &null; }
+        if !isa::<RecordType>(t->canonical) { return &null; }
+        return NameLookup::representative(cast::<RecordType>(t->canonical)->decl);
+    }
+
+    /// One step whose left side is dependent.
+    priv fn _bind_dependent_step(self, st: *ChainExpr::Step, a: Anchor) -> Anchor {
+        var at  = st->range;
+        var loc = st->range.start.id;
+        if st->name != &null { at = st->name->range; loc = st->name->range.start.id; }
+
+        var gp = self._param_of(a.ty);
+        if gp == &null {
+            // A dependent COMPOSITE (`[T]`, an unfilled `Foo<T>::Inner`, or a
+            // parameter whose declarer T never stamped): no single declaration
+            // to read a promise off. Undecidable before M2.
+            self._record(loc, MemberOutcome::Dependent, &null, 0, a.decl);
+            self.n_dependent += 1;
+            return a;
+        }
+        var owner = cast::<GenericParamType>(a.ty)->owner;
+        var b     = self._bounds_of(gp, owner);
+
+        // `: type` -- the C++ regime. Not a hole we failed to fill: a hole the
+        // author asked for.
+        if b.duck {
+            self._record(loc, MemberOutcome::Dependent, &null, 0, a.decl);
+            self.n_dependent += 1;
+            return a;
+        }
+
+        var pname = self._decl_name_str(static_cast::<*Decl>(gp));
+        if (b.interfaces.size() == 0) && (b.bases.size() == 0) {
+            var what = "this member";
+            if st->name != &null { what = f"'{self.sc->ctx->get_spelling(st->name->name)}\x27"; }
+            var d = self.sc->diag->report(DiagID::R051E, at.start,
+                f"'{pname}' has no members, so {what} cannot be resolved"
+            );
+            d.first(at);
+            d.note(DiagID::R051N, gp->range.start,
+                f"'{pname}' is declared with no bound; add 'impl <Interface>' to give it members, or ': type' to defer every access to instantiation"
+            ).first(gp->range);
+            d.emit();
+            if st->name != &null { st->name->poison(); }
+            self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
+            self.n_errored += 1;
+            var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
+        }
+
+        // An operator or a tuple index through a bound needs the operand's
+        // TYPE, which is the typer's to supply, not this pass's.
+        if st->is_operator() || st->is_tuple_index() || (st->name == &null) {
+            self._record(loc, MemberOutcome::NeedsInference, &null, 0, a.decl);
+            self.n_inference += 1;
+            var r = Anchor{}; r.kind = AnchorKind::NeedsInference; r.decl = a.decl; return r;
+        }
+
+        if st->access_kind == ChainExpr::AccessKind::ColonColon {
+            // `T::Name`: statics and nested types of a BASE. An interface
+            // declares neither today (no statics, no associated types), so a
+            // parameter bounded only by interfaces has an empty `::` scope.
+            if b.bases.size() == 0 {
+                self._err(DiagID::R027E, at,
+                    f"'::' on '{pname}': its interface bounds declare no static members or nested types");
+                st->name->poison();
+                self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
+                var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
+            }
+        }
+
+        var imm = self._name_imm(st->name->name);
+        if imm == u32(-1) {
+            var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
+        }
+        var name    = DeclName::ident(imm);
+        var spelled = self.sc->ctx->get_spelling(st->name->name);
+        var cands   = vec::<*Decl>();
+        var empty   = vec::<*Type>();
+        for var i: usize = 0; i < b.interfaces.size(); ++i {
+            self.ml.lookup(self.sc->types->record(b.interfaces[i], &empty), name, &cands);
+        }
+        for var i: usize = 0; i < b.bases.size(); ++i {
+            self.ml.lookup(self.sc->types->record(b.bases[i], &empty), name, &cands);
+        }
+        if cands.empty() {
+            self._err(DiagID::R025E, at, f"no member named '{spelled}' in the bounds of '{pname}\x27");
+            st->name->poison();
+            self._record(loc, MemberOutcome::Errored, &null, 0, a.decl);
+            var r = Anchor{}; r.kind = AnchorKind::Errored; return r;
+        }
+        // _commit binds it like any other member, and the anchor it hands back
+        // is already right: an interface method yields NeedsInference (a call
+        // result), a base field yields that field's declared type.
+        return self._commit(st, loc, &cands, self._bound_owner(&b), &null);
+    }
+
+    /// The decl a bound-resolved member is REPORTED against: the sole bound
+    /// when there is one, nothing when several could have answered (naming
+    /// one of them would be a guess).
+    priv fn _bound_owner(self, b: *ParamBounds) -> *Decl {
+        if (b->interfaces.size() == 1) && (b->bases.size() == 0) { return b->interfaces[0]; }
+        if (b->bases.size() == 1) && (b->interfaces.size() == 0) { return b->bases[0]; }
+        return &null;
+    }
     // === helpers ===================================================================
 
     /// The decl that OWNS `d`'s scope -- the type a member was declared in,
@@ -716,6 +984,18 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         return create_empty_frozen_list::<*GenericParamDecl>();
     }
 
+    /// _generic_params_of covers the RECORD kinds, which is all member lookup
+    /// ever needs. A generic PARAMETER, though, can be declared by a function,
+    /// an alias or an extension too, and `canonical -> declaring param` has to
+    /// work for every one of them.
+    priv fn _generic_params_of_any(self, d: *Decl) -> FrozenList::<*GenericParamDecl> {
+        if d == &null { return create_empty_frozen_list::<*GenericParamDecl>(); }
+        if isa::<FunctionDecl>(d)  { return cast::<FunctionDecl>(d)->generic_params;  }
+        if isa::<TypeAliasDecl>(d) { return cast::<TypeAliasDecl>(d)->generic_params; }
+        if isa::<ExtensionDecl>(d) { return cast::<ExtensionDecl>(d)->generic_params; }
+        return self._generic_params_of(d);
+    }
+
     priv fn _generic_count(self, d: *Decl) -> usize {
         return self._generic_params_of(d).size();
     }
@@ -738,6 +1018,7 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         if isa::<VariableDecl>(d)     { return ctx->get_spelling(cast::<VariableDecl>(d)->name);     }
         if isa::<FieldDecl>(d)        { return ctx->get_spelling(cast::<FieldDecl>(d)->name);        }
         if isa::<EnumVariantDecl>(d)  { return ctx->get_spelling(cast::<EnumVariantDecl>(d)->name);  }
+        if isa::<GenericParamDecl>(d) { return ctx->get_spelling(cast::<GenericParamDecl>(d)->name); }
         return "<decl>";
     }
 
