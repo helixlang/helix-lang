@@ -87,7 +87,24 @@ class <T> CallTyping {
         if dyn()->literal_shape(e, &a) { return a; }
         a.ty = dyn()->type_of(e, &null);
         if (a.ty == &null) && (!e->is_poisoned()) { a.dependent = true; }
+        a.cat      = e->value_category;          // set by the typer's finish (paren copies its inner).
+        a.is_const = self._const_lvalue(e);
         return a;
+    }
+
+    /// An lvalue's const-ness as far as a reference parameter can see it: a
+    /// `const` binding or parameter, or a `const T&`-typed result. Only a
+    /// plain `T&` reads it -- a const lvalue does not bind there.
+    priv fn _const_lvalue(self, e: *Expr) -> bool {
+        var x = dyn()->tu.strip_parens(e);
+        if x == &null { return false; }
+        if (x->type_ != &null) && isa::<CXXLValueRefType>(x->type_) { return cast::<CXXLValueRefType>(x->type_)->is_const; }
+        if !isa::<NamedIdentExpr>(x) { return false; }
+        var d = cast::<NamedIdentExpr>(x)->resolved_decl;
+        if d == &null { return false; }
+        if isa::<VariableDecl>(d) { return cast::<VariableDecl>(d)->is_const(); }
+        if isa::<ParamDecl>(d)    { return cast::<ParamDecl>(d)->is_const; }
+        return false;
     }
 
     fn build_args(self, list: FrozenList::<*Expr>, out: *vec::<ArgInfo>) -> bool {
@@ -149,6 +166,7 @@ class <T> CallTyping {
             var a = &((*args)[i]);
             if (a->carrier == &null) || (a->carrier == a->expr) { continue; }
             if a->expr->is_poisoned() { a->carrier->poison(); }
+            a->carrier->value_category = a->expr->value_category;   // the wrapper IS its value.
             dyn()->finish(a->carrier, a->expr->type_);
         }
     }

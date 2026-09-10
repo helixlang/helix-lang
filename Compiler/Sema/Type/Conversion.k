@@ -53,6 +53,16 @@ enum ImplicitRank derives u8 {
     None,
 }
 
+/// \enum RefRel
+/// \brief How an argument's VALUE type relates to a reference parameter's
+///        referee, before its value category is consulted (ref_binding).
+enum RefRel derives u8 {
+    None = 0,   ///< binds at no category.
+    Same,       ///< the referee itself.
+    Derived,    ///< a class derived from the referee: binds the base subobject.
+    Converts,   ///< converts implicitly: binding goes through a temporary.
+}
+
 /// Can an untyped integer literal of the given magnitude take builtin \p bk?
 /// \p negative is the unary-minus fold; the magnitude then may reach 2^(bits-1).
 fn literal_fits_int(lo: u64, hi: u64, big: bool, negative: bool, bk: BuiltinKind, ptr_bits: usize) -> bool {
@@ -128,27 +138,6 @@ class Conversion {
         return (b == BuiltinKind::USize) || (b == BuiltinKind::ISize);
     }
 
-    /// `u64 -> usize`, `i64 -> isize` (`u32`/`i32` on a 32-bit target): the
-    /// same integer, when the fixed width IS the target's pointer width. The
-    /// reason is C++, not taste: clang canonicalizes `size_t` away to
-    /// `unsigned long` and TypeImport maps by (width, sign), so every header
-    /// `size()` returns u64 and nothing at import time can tell it from a
-    /// real one. Exact because nothing converts -- which is also why
-    /// -fno-implicit-conv leaves it alone.
-    ///
-    /// ONE direction. `usize -> u64` stays E (§4): were both implicit,
-    /// join(u64, usize) would see a two-way conversion and refuse
-    /// (invariant 2). The width comes from the store's usize singleton, which
-    /// took it from the target; never a literal 64.
-    priv fn _ptr_int_alias(self, s: BuiltinKind, t: BuiltinKind) -> bool {
-        if (t != BuiltinKind::USize) && (t != BuiltinKind::ISize) { return false; }
-        if self._is_ptr_int(s) || (!builtin_is_integer(s)) { return false; }
-        if builtin_is_signed(s) != builtin_is_signed(t) { return false; }
-        var pw = self.sc->builtin(t);
-        if pw == &null { return false; }
-        return builtin_fixed_bits(s) == pw->size_bits;
-    }
-
     priv fn _int_int(self, s: BuiltinKind, t: BuiltinKind) -> ConvClass {
         if self._is_ptr_int(s) || self._is_ptr_int(t) { return ConvClass::E; }   // §4
         var sb = builtin_fixed_bits(s);
@@ -210,7 +199,6 @@ class Conversion {
         var fk = self.tu.kind_of(from);
         var tk = self.tu.kind_of(to);
         if (fk != BuiltinKind::COUNT) && (tk != BuiltinKind::COUNT) {
-            if self._ptr_int_alias(fk, tk) { return ImplicitRank::Exact; }
             if self.classify(fk, tk) == ConvClass::W {
                 return (ImplicitRank::Converted) if (self.implicit_enabled()) else (ImplicitRank::None);
             }
@@ -290,6 +278,76 @@ class Conversion {
         }
         if lr->is_const && (self.implicit(src, referee) != ImplicitRank::None) { return ImplicitRank::Converted; }
         return ImplicitRank::None;
+    }
+
+    // === reference binding at an argument ([over.ics.ref]) ===================
+
+    /// Binding an ARGUMENT of known value category to \p to, a C++ reference
+    /// parameter. [over.ics.ref] reduced to what Kairo has:
+    ///
+    ///   `T&`        a non-const LVALUE of T                   Exact
+    ///   `const T&`  any lvalue or rvalue of T                 Exact
+    ///   `T&&`       an RVALUE (prvalue or xvalue) of T        Exact
+    ///
+    /// and outside that table, today's ranking on the referee: a derived
+    /// class binds the base subobject at Converted under the same category
+    /// rule, and a value that only CONVERTS to T binds a temporary at
+    /// Converted -- viable for `const T&` and `T&&` whatever its category,
+    /// never for a plain `T&`.
+    ///
+    /// Only an argument site knows the category. implicit() -- returns,
+    /// initializers, the post-selection re-check -- keeps the category-blind
+    /// _bind_ref, which accepts everything this accepts.
+    fn ref_binding(self, to: *Type, cat: Expr::ValueCategory, from_const: bool, rel: RefRel) -> ImplicitRank {
+        if rel == RefRel::None { return ImplicitRank::None; }
+        var rvalue = (cat == Expr::ValueCategory::RValue) || (cat == Expr::ValueCategory::XValue);
+        var lvalue = cat == Expr::ValueCategory::LValue;
+        var exact  = rel == RefRel::Same;
+
+        if isa::<CXXRValueRefType>(to) {
+            if rel == RefRel::Converts { return ImplicitRank::Converted; }   // a temporary is an rvalue.
+            if !rvalue { return ImplicitRank::None; }
+            return (ImplicitRank::Exact) if (exact) else (ImplicitRank::Converted);
+        }
+        if !isa::<CXXLValueRefType>(to) { return ImplicitRank::None; }
+        if cast::<CXXLValueRefType>(to)->is_const {
+            return (ImplicitRank::Exact) if (exact) else (ImplicitRank::Converted);
+        }
+        // Plain `T&`: a modifiable lvalue, and never a temporary.
+        if (!lvalue) || from_const || (rel == RefRel::Converts) { return ImplicitRank::None; }
+        return (ImplicitRank::Exact) if (exact) else (ImplicitRank::Converted);
+    }
+
+    /// \p src (a value type) against \p referee.
+    fn ref_rel(self, src: *Type, referee: *Type) -> RefRel {
+        if (src == &null) || (referee == &null) { return RefRel::None; }
+        if src == referee { return RefRel::Same; }
+        var fd = self.tu.record_decl(src);
+        var td = self.tu.record_decl(referee);
+        if (fd != &null) && (td != &null) && (fd != td) && self.tu.derives_from(fd, td) { return RefRel::Derived; }
+        if self.implicit(src, referee) != ImplicitRank::None { return RefRel::Converts; }
+        return RefRel::None;
+    }
+
+    /// implicit() for an ARGUMENT whose category is known: a reference
+    /// parameter goes through ref_binding, anything else is unchanged.
+    fn implicit_arg(self, from: *Type, to: *Type, cat: Expr::ValueCategory, from_const: bool) -> ImplicitRank {
+        if (from == &null) || (to == &null) { return ImplicitRank::None; }
+        var to_l = isa::<CXXLValueRefType>(to);
+        var to_r = isa::<CXXRValueRefType>(to);
+        if (!to_l) && (!to_r) { return self.implicit(from, to); }
+        // A reference-typed argument's value is its referee, and a `const T&`
+        // one is const whatever its arm said.
+        var src = from;
+        var c   = from_const;
+        if isa::<CXXLValueRefType>(from) {
+            c   = c || cast::<CXXLValueRefType>(from)->is_const;
+            src = cast::<CXXLValueRefType>(from)->referee;
+        } else if isa::<CXXRValueRefType>(from) {
+            src = cast::<CXXRValueRefType>(from)->referee;
+        }
+        var referee = (cast::<CXXLValueRefType>(to)->referee) if (to_l) else (cast::<CXXRValueRefType>(to)->referee);
+        return self.ref_binding(to, cat, c, self.ref_rel(src, referee));
     }
 
     fn convertible(self, from: *Type, to: *Type) -> bool {

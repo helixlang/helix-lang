@@ -224,9 +224,33 @@ class ExprTyper
               | static_cast::<u8>(Expr::ExprFlags::IsInstantiationDependent));
         }
         if e->value_category == Expr::ValueCategory::Unknown {
-            e->value_category = Expr::ValueCategory::RValue;
+            e->value_category = self._default_category(e, t);
         }
         self.n_typed += 1;
+    }
+
+    /// The category of a typed expression whose arm did not set one.
+    ///
+    ///   1. By TYPE. An expression of C++ reference type is the referent
+    ///      ([expr.type]/1): `T&` an lvalue, `T&&` an xvalue. Only imported
+    ///      signatures produce these, and every kind can -- a call, an
+    ///      operator (`cout << 1` is `ostream&`, and the next `<<` binds it
+    ///      to `ostream&`), a member -- so it is decided here once.
+    ///   2. By KIND. What only ever makes a new value is a prvalue: literals,
+    ///      by-value calls, temporaries, casts, arithmetic, control
+    ///      expressions. The kinds whose category is whatever they NAME --
+    ///      identifiers, chains, subscripts, parens, assignments -- get
+    ///      nothing: their arm decides, and ValueCategoryPass ICEs on one
+    ///      that did not. A default there would hide the missing arm.
+    priv fn _default_category(self, e: *Expr, t: *Type) -> Expr::ValueCategory {
+        if isa::<CXXLValueRefType>(t) { return Expr::ValueCategory::LValue; }
+        if isa::<CXXRValueRefType>(t) { return Expr::ValueCategory::XValue; }
+        var k = e->kind;
+        if (k == ExprKind::NamedIdentExpr) || (k == ExprKind::ChainExpr) || (k == ExprKind::SubscriptExpr)
+        || (k == ExprKind::ParenExpr) || (k == ExprKind::AssignOperatorExpr) {
+            return Expr::ValueCategory::Unknown;
+        }
+        return Expr::ValueCategory::RValue;
     }
 
     priv fn _dispatch(self, e: *Expr, expected: *Type) -> *Type {
@@ -336,12 +360,14 @@ class ExprTyper
                 var ed  = (edc->owner_decl()) if (edc != &null) else (&null);
                 if ed == &null { self.mark_unknown(n); return &null; }
                 var a = vec::<*Type>();
+                n->value_category = Expr::ValueCategory::RValue;    // a variant is a value, not storage.
                 return self.sc->types->record(NameLookup::representative(ed), &a);
             }
             case DeclKind::FunctionDecl {
                 var f = cast::<FunctionDecl>(d);
                 var ci = self.new_chain_info_for_ident(n);
                 ci->callable_cands.push_back(d);
+                n->value_category = Expr::ValueCategory::RValue;    // as a value: the fn pointer.
                 if (!f->is_method()) && (f->generic_params.size() == 0) { return self.fn_pointer_type(f); }
                 return &null;
             }
