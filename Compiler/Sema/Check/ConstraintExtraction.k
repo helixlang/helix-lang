@@ -21,9 +21,14 @@
 ///             -> a VALUE PREDICATE. A compile-time gate checked at
 ///                instantiation, never a resolution input.
 ///
-///     The result is a ConstraintSet per decl. Definition-side checking,
-///     the bound table, and monomorphization read the ConstraintSet; they do
-///     NOT re-walk the requires expr. One classification, one home.
+///     The result is a ConstraintSet per decl, recorded in SemaContext's bound
+///     table under the OWNER decl. Definition-side checking, name binding
+///     inside a generic body, and monomorphization read the ConstraintSet;
+///     they do NOT re-walk the requires expr. One classification, one home.
+///
+///   Phase: RESOLVE (T stage, between TypeResolution and ChainBinding --
+///          ChainBinding resolves member access through a bound and so reads
+///          the table this pass writes).
 ///
 ///     This pass does NOT resolve names or types (that is N/T's job, already
 ///     done by this phase) it only structurally sorts the already-parsed
@@ -44,6 +49,7 @@
 /// ----------------------------------------------------------------- ///
 
 import Sema::SemaContext::*;
+import Sema::Check::ConstraintSet::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
 import AST::Context::TranslationUnit::*;
@@ -59,42 +65,6 @@ import AST::Kind::ExprKind::*;
 import Token::TokenKind::*;
 import Diagnostic::Registry::*;
 
-///
-/// \class ConstraintSet
-/// \brief The partitioned constraints of one decl. Built by
-///        ConstraintExtraction; read by the bound table, definition-side
-///        checking, call-site conformance, and monomorphization.
-///
-///   impl_constraints    : structural interface bounds  (T impl Foo)
-///   derives_constraints : nominal base/lineage bounds   (T derives Base)
-///   value_predicates    : compile-time gates            (sizeof T > 10, ...)
-///
-/// Each ConstraintExpr pointer aliases the node in the requires clause; this
-/// set is an index, not a copy. The owning decl is recorded so downstream
-/// passes can key back to it.
-///
-class ConstraintSet {
-    pub var owner:               *Decl = &null;
-    pub var impl_constraints:    vec::<*ConstraintExpr>;
-    pub var derives_constraints: vec::<*ConstraintExpr>;
-    pub var value_predicates:    vec::<*Expr>;
-
-    fn ConstraintSet(self, owner: *Decl) {
-        self.owner = owner;
-    }
-
-    fn is_empty(self) -> bool {
-        return self.impl_constraints.size() == 0
-            && self.derives_constraints.size() == 0
-            && self.value_predicates.size() == 0;
-    }
-
-    fn has_conformance(self) -> bool {
-        return self.impl_constraints.size() > 0
-            || self.derives_constraints.size() > 0;
-    }
-}
-
 class ConstraintExtraction {
     pub var sc: *SemaContext;
 
@@ -106,7 +76,13 @@ class ConstraintExtraction {
     }
 
     fn run(self) {
-        self.sc->require_phase(SemaPhase::TypesResolved);
+        // NamesResolved, not TypesResolved: this pass runs INSIDE the T stage,
+        // between TypeResolution and ChainBinding, because ChainBinding reads
+        // the bound table it writes. Extraction itself needs no canonicals --
+        // it sorts conjuncts by node kind -- and the canonicals its consumers
+        // read are already in place by the time TypeResolution returns; only
+        // the phase flag has yet to flip.
+        self.sc->require_phase(SemaPhase::NamesResolved);
         var tu = self.sc->tu;
         if tu == &null { return; }
         if tu->program == &null { return; }
@@ -178,6 +154,10 @@ class ConstraintExtraction {
 
         if !set.is_empty() {
             self.sets.push_back(set);
+            // THE bound table. Keyed by the owner decl so a body resolving
+            // `x.draw()` on an `x: T` can ask what T's declaration promised
+            // without re-walking anyone's requires clause.
+            self.sc->bounds[reinterpret_cast::<u64>(owner)] = set;
         }
     }
 
