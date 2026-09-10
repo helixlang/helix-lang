@@ -223,8 +223,10 @@ class CanonicalTypeStore {
         return self._unary(TypeKind::SetType, element);
     }
 
-    fn cxx_lref(self, referee: *Type) -> *Type {
-        return self._unary(TypeKind::CXXLValueRefType, referee);
+    /// `const T&` and `T&` are two entities: const is part of the key, riding
+    /// the same kind bit PointerType uses for safety.
+    fn cxx_lref(self, referee: *Type, is_const: bool = false) -> *Type {
+        return self._unary(TypeKind::CXXLValueRefType, referee, is_const);
     }
 
     fn cxx_rref(self, referee: *Type) -> *Type {
@@ -476,9 +478,10 @@ class CanonicalTypeStore {
     /// Shared body for the one-component kinds. Each has exactly one child
     /// slot at a different field name, so the probe and the fill switch on
     /// kind; everything else is identical.
-    /// \param is_unsafe only meaningful for PointerType; every other kind
-    ///        passes false, which folds a constant into the hash and leaves
-    ///        their keys unchanged relative to each other.
+    /// \param is_unsafe the per-kind key bit: safety for PointerType, const
+    ///        for CXXLValueRefType. Every other kind passes false, which
+    ///        folds a constant into the hash and leaves their keys unchanged
+    ///        relative to each other.
     priv fn _unary(self, k: TypeKind, child: *Type, is_unsafe: bool = false) -> *Type {
         if child == &null { return &null; }
         var h = canon_hash_u64(0, static_cast::<u64>(static_cast::<u8>(k)));
@@ -497,6 +500,9 @@ class CanonicalTypeStore {
                 // what keeps a bucket collision from merging them anyway.
                 if k == TypeKind::PointerType {
                     if cast::<PointerType>(c)->is_unsafe != is_unsafe { continue; }
+                }
+                if k == TypeKind::CXXLValueRefType {
+                    if cast::<CXXLValueRefType>(c)->is_const != is_unsafe { continue; }
                 }
                 return c;
             }
@@ -530,7 +536,8 @@ class CanonicalTypeStore {
             }
             case TypeKind::CXXLValueRefType {
                 var n = self._alloc::<CXXLValueRefType>();
-                n->referee = child;
+                n->referee  = child;
+                n->is_const = is_unsafe;
                 ty = static_cast::<*Type>(n);
             }
             case TypeKind::CXXRValueRefType {

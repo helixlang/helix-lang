@@ -284,6 +284,7 @@ class ParamDecl derives Decl {
     pub var is_const:    bool = false;     ///< true for the `const` parameter.
     pub var index:       u32 = 0;          ///< position in the parameter list.
     pub var unname:      bool = false;     ///< true for the `unnamed` parameter.
+    pub var has_default: bool = false;     ///< imported C++ param with a default arg; no Kairo expr to carry.
     
     static fn create(
         ctx:   *ASTContext,
@@ -716,7 +717,8 @@ class InterfaceDecl
   derives Decl,
           DeclContext,
           Redeclarable::<InterfaceDecl>,
-          TemplateParams::<InterfaceDecl> {
+          TemplateParams::<InterfaceDecl>,
+          FFILinkage::<InterfaceDecl> {
     pub var name:         Token;
     pub var methods:      FrozenList::<*FunctionDecl>;  ///< requirement signatures.
     pub var derives_list: FrozenList::<InheritEdge>;    ///< parent interfaces.
@@ -869,7 +871,8 @@ class EnumDecl
   derives Decl,
           DeclContext,
           Redeclarable::<EnumDecl>,
-          TemplateParams::<EnumDecl> {
+          TemplateParams::<EnumDecl>,
+          FFILinkage::<EnumDecl> {
     pub var name:       Token;
     pub var underlying: *Type = &null;                  ///< `derives u8` etc; null if default/ADT.
     pub var variants:   FrozenList::<*EnumVariantDecl>;
