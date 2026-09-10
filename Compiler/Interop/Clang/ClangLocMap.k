@@ -107,6 +107,7 @@ ffi "c++" import "llvm/Support/MemoryBufferRef.h";
 import Location::SourceLocation::*;
 import Location::SourceRange::*;
 import Location::SourceManager::*;
+import Support::FileIO::Path::*;
 
 class ClangLocMap {
     priv var _ksm: obs::<SourceManager>;                ///< owned by the driver, outlives this
@@ -347,14 +348,28 @@ class ClangLocMap {
         var h = cfid.getHashValue();
         var b = self._cfid0.getHashValue();
 
-        if h < b { return static_cast::<FileID>(u32(-1)); }
+        if h < b { return self._by_path(cfid); }
 
         var k = h - b;
         if static_cast::<usize>(k) >= self._n {
-            return static_cast::<FileID>(u32(-1));
+            return self._by_path(cfid);
         }
 
         return static_cast::<FileID>(k);
+    }
+
+    /// COLD: a FileID outside the Kairo block, i.e. a header clang entered
+    /// from a phase-A PCH (a LOADED FileID, never adjacent to ours). Header
+    /// locs map by FILE IDENTITY, the HeaderSet rule: the FileEntry's path
+    /// names the fid HeaderIndex minted for it, and its offsets are that
+    /// file's bytes. A scratch buffer or <built-in> has no FileEntry and no
+    /// Kairo fid.
+    priv fn _by_path(self, cfid: clang::FileID) -> FileID {
+        if self._csm == &null { return static_cast::<FileID>(u32(-1)); }
+        var fe = self._csm->getFileEntryRefForID(cfid);
+        if !fe { return static_cast::<FileID>(u32(-1)); }
+        var name = fe->getName();
+        return self._ksm->find_fid(Path(string(name.data(), name.size())));
     }
 
     /// kairo fid -> clang FileID. COLD PATH: this is a binary search over

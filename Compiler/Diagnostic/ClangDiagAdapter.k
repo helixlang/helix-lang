@@ -116,12 +116,14 @@ class ClangDiagAdapter derives clang::DiagnosticConsumer {
 
     /// clang loc -> Kairo SourceRange via EXPANSION loc (never spelling loc:
     /// arena literals spell in <kairo-literals>; expansion is the .kro span).
-    /// Offsets in this TU's clang FileID ARE byte offsets in the Kairo file
-    /// (same bytes, same buffer), so the mapping is direct construction
-    /// against ksm/kfid once the fid is confirmed.
+    /// The FileID names the Kairo fid (ClangLocMap::kairo_fid): this TU's,
+    /// another Kairo file's in the block, or an imported C++ header's by
+    /// path. Offsets in any of them ARE byte offsets in that Kairo file (same
+    /// bytes), so the mapping is direct construction against THAT fid.
     ///
-    /// Returns SourceRange::invalid() for "none": blamed in a header/runtime
-    /// include -> loc-less forward; policy layer classifies.
+    /// Returns SourceRange::invalid() for "none": a loc in no file Kairo
+    /// loaded (runtime include, scratch buffer) -> loc-less forward; policy
+    /// layer classifies.
     priv fn _to_kairo_loc(self, info: cref::<clang::Diagnostic>) -> SourceRange {
         if (!info.hasSourceManager()) || (info.getLocation().isInvalid()) {
             return SourceRange::invalid();
@@ -130,18 +132,18 @@ class ClangDiagAdapter derives clang::DiagnosticConsumer {
         var dec = info.getSourceManager()
                       .getDecomposedExpansionLoc(info.getLocation());
 
-        if (self.locmap == &null) || (!self.locmap->is_kairo_fid(dec.first, self.kfid)) {
-            return SourceRange::invalid();
-        }
+        if self.locmap == &null { return SourceRange::invalid(); }
+        var kf = self.locmap->kairo_fid(dec.first);
+        if kf == static_cast::<FileID>(u32(-1)) { return SourceRange::invalid(); }
 
-        // dec.second == byte offset into the .kro == byte offset in kfid.
-        // Single-byte primary span; ranges/fixits widen it in
-        // _apply_ranges_and_fixits.
-        return self.ksm->get_range(self.kfid, static_cast::<usize>(dec.second), 1);
+        // dec.second == byte offset in kf. Single-byte primary span;
+        // ranges/fixits widen it in _apply_ranges_and_fixits.
+        return self.ksm->get_range(kf, static_cast::<usize>(dec.second), 1);
     }
 
-    /// Translates one clang CharSourceRange into a Kairo SourceRange,
-    /// or invalid if either endpoint escapes this TU's fid.
+    /// Translates one clang CharSourceRange into a Kairo SourceRange in the
+    /// fid its BEGIN is in, or invalid if the end is in a different file (or
+    /// in none): a span cannot cross files.
     priv fn _range_in_kfid(self, cr: cref::<clang::CharSourceRange>, info: cref::<clang::Diagnostic>) -> SourceRange {
         if (!cr.isValid()) || (!info.hasSourceManager()) || (self.locmap == &null) {
             return SourceRange::invalid();
@@ -150,10 +152,9 @@ class ClangDiagAdapter derives clang::DiagnosticConsumer {
         var b = info.getSourceManager().getDecomposedExpansionLoc(cr.getBegin());
         var e = info.getSourceManager().getDecomposedExpansionLoc(cr.getEnd());
 
-        if (!self.locmap->is_kairo_fid(b.first, self.kfid))
-            || (!self.locmap->is_kairo_fid(e.first, self.kfid)) {
-            return SourceRange::invalid();
-        }
+        var kb = self.locmap->kairo_fid(b.first);
+        if kb == static_cast::<FileID>(u32(-1)) { return SourceRange::invalid(); }
+        if self.locmap->kairo_fid(e.first) != kb { return SourceRange::invalid(); }
 
         var start: usize = static_cast::<usize>(b.second);
         var end:   usize = static_cast::<usize>(e.second);
@@ -177,7 +178,7 @@ class ClangDiagAdapter derives clang::DiagnosticConsumer {
             end = start + 1;
         }
 
-        return self.ksm->get_range(self.kfid, start, end - start);
+        return self.ksm->get_range(kb, start, end - start);
     }
 
     priv fn _map_severity(self, lvl: clang::DiagnosticsEngine::Level) -> DiagSeverity {

@@ -366,22 +366,34 @@ class ClangBackend {
         self._arg(&argv, f"-std={self._cfg.cxx_std}");
         self._arg(&argv, "-fgnuc-version=4.2.1");
 
-        if !self._cfg.resource_dir.empty() {
-            self._arg(&argv, "-resource-dir");
-            self._arg(&argv, self._cfg.resource_dir);
-            self._arg(&argv, "-internal-isystem"); // builtin <stdint.h> -> uintptr_t
-            self._arg(&argv, f"{self._cfg.resource_dir}/include");
+        // Header search: ONE explicit model for every target, the host
+        // included. cc1 is told exactly which roots to search and never falls
+        // back to whatever the machine has (the driver's job, and cc1 has no
+        // driver): the roots are exactly --sysroot and --resource-dir, never
+        // discovered (CompilerInstance::initialize copies them), and the same
+        // layout is what every kbld SYSROOT.toml declares (include_dirs =
+        // include/c++/v1, include; cc_isolation = -nostdlibinc -nostdinc++).
+        //
+        //   <sysroot>/include/c++/v1   libc++
+        //   <resource>/include         clang builtins (stddef.h, intrinsics)
+        //   <sysroot>/include          libc
+        //
+        // A root that did not resolve is left out rather than guessed; the
+        // resolver has already logged which one and why.
+        var sr = self._cfg.sysroot;
+        var rd = self._cfg.resource_dir;
+        self._arg(&argv, "-nostdsysteminc");   // cc1 spelling of -nostdlibinc
+        self._arg(&argv, "-nostdinc++");
+        if !rd.empty() { self._arg(&argv, "-resource-dir"); self._arg(&argv, rd); }
+        if !sr.empty() { self._arg(&argv, "-isystem");      self._arg(&argv, f"{sr}/include/c++/v1"); }
+        if !rd.empty() { self._arg(&argv, "-isystem");      self._arg(&argv, f"{rd}/include"); }
+        if !sr.empty() {
+            self._arg(&argv, "-isystem");  self._arg(&argv, f"{sr}/include");
+            self._arg(&argv, "-isysroot"); self._arg(&argv, sr);
         }
-
-        if !self._cfg.sysroot.empty() {
-            self._arg(&argv, "-nostdsysteminc");   // cc1 spelling of -nostdlibinc
-            self._arg(&argv, "-nostdinc++");
-            self._arg(&argv, "-isystem");
-            self._arg(&argv, f"{self._cfg.sysroot}/include/c++/v1");
-            self._arg(&argv, "-isystem");
-            self._arg(&argv, f"{self._cfg.sysroot}/include");
-            self._arg(&argv, "-isysroot");
-            self._arg(&argv, self._cfg.sysroot);
+        if !rd.empty() {
+            self._arg(&argv, "-internal-isystem");   // builtin <stdint.h> -> uintptr_t
+            self._arg(&argv, f"{rd}/include");
         }
 
         for a: string in self._cfg.extra_cc1 {
