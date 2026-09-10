@@ -122,6 +122,13 @@ default class Path {
     }
 
     ///
+    /// \brief returns the final filename component without its extension.
+    ///
+    const fn stem(self) -> string {
+        return self.path_data.stem().generic_wstring();
+    }
+
+    ///
     /// \brief returns the absolute normalized path as string.
     ///
     const fn full_path(self) -> string {
