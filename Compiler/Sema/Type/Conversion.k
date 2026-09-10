@@ -128,6 +128,27 @@ class Conversion {
         return (b == BuiltinKind::USize) || (b == BuiltinKind::ISize);
     }
 
+    /// `u64 -> usize`, `i64 -> isize` (`u32`/`i32` on a 32-bit target): the
+    /// same integer, when the fixed width IS the target's pointer width. The
+    /// reason is C++, not taste: clang canonicalizes `size_t` away to
+    /// `unsigned long` and TypeImport maps by (width, sign), so every header
+    /// `size()` returns u64 and nothing at import time can tell it from a
+    /// real one. Exact because nothing converts -- which is also why
+    /// -fno-implicit-conv leaves it alone.
+    ///
+    /// ONE direction. `usize -> u64` stays E (§4): were both implicit,
+    /// join(u64, usize) would see a two-way conversion and refuse
+    /// (invariant 2). The width comes from the store's usize singleton, which
+    /// took it from the target; never a literal 64.
+    priv fn _ptr_int_alias(self, s: BuiltinKind, t: BuiltinKind) -> bool {
+        if (t != BuiltinKind::USize) && (t != BuiltinKind::ISize) { return false; }
+        if self._is_ptr_int(s) || (!builtin_is_integer(s)) { return false; }
+        if builtin_is_signed(s) != builtin_is_signed(t) { return false; }
+        var pw = self.sc->builtin(t);
+        if pw == &null { return false; }
+        return builtin_fixed_bits(s) == pw->size_bits;
+    }
+
     priv fn _int_int(self, s: BuiltinKind, t: BuiltinKind) -> ConvClass {
         if self._is_ptr_int(s) || self._is_ptr_int(t) { return ConvClass::E; }   // §4
         var sb = builtin_fixed_bits(s);
@@ -189,6 +210,7 @@ class Conversion {
         var fk = self.tu.kind_of(from);
         var tk = self.tu.kind_of(to);
         if (fk != BuiltinKind::COUNT) && (tk != BuiltinKind::COUNT) {
+            if self._ptr_int_alias(fk, tk) { return ImplicitRank::Exact; }
             if self.classify(fk, tk) == ConvClass::W {
                 return (ImplicitRank::Converted) if (self.implicit_enabled()) else (ImplicitRank::None);
             }

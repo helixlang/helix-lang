@@ -397,6 +397,22 @@ class OverloadResolution {
     }
 
     priv fn _rank_literal(self, a: *ArgInfo, pt: *Type) -> ImplicitRank {
+        // A C++ reference parameter, which only imported signatures carry.
+        // A literal is a temporary: it binds `const T&` as a T would (an
+        // identity, Conversion::_bind_ref's rule), never a plain `T&`, and
+        // `T&&` at Converted like every rvalue-ref binding. A deduced `const
+        // T&` never got here -- deduction strips the reference -- which is
+        // why this was invisible until clang-filled instances made
+        // `push(const int&)` concrete.
+        if isa::<CXXLValueRefType>(pt) {
+            var lr = cast::<CXXLValueRefType>(pt);
+            if !lr->is_const { return ImplicitRank::None; }
+            return self._rank_literal(a, lr->referee);
+        }
+        if isa::<CXXRValueRefType>(pt) {
+            var r = self._rank_literal(a, cast::<CXXRValueRefType>(pt)->referee);
+            return (ImplicitRank::Converted) if (r != ImplicitRank::None) else (ImplicitRank::None);
+        }
         var target = self.tu.strip_nullable(pt);
         switch a->lit {
             case LitKind::Int {
