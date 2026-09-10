@@ -3,7 +3,7 @@
 // AST-NEXT: | `-TypeCastExpr -> i32
 // AST-NEXT: |   `-NamedIdentExpr foo
 // AST-NEXT: `-ExpressionStmt
-// AST-NEXT:   `-TypeCastExpr unsafe -> *i32
+// AST-NEXT:   `-TypeCastExpr unsafe -> unsafe *i32
 // AST-NEXT:     `-NamedIdentExpr foo
 foo as i32
 foo as unsafe *i32

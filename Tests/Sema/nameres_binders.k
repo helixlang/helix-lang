@@ -8,19 +8,19 @@
 // `use of undeclared identifier` on its own binder.
 //
 // Kept separate from name_resolution.k so that file's hardcoded line numbers
-// stay stable.
+// stay stable. The fixtures must also TYPE-check (ExprTyper runs here).
 
 var shadow: i32 = 1;
 
 // Ranged for: `x` is visible in the body only.
-fn f_for(xs: *i32) -> i32 {
+fn f_for(xs: [i32]) -> i32 {
     var total: i32 = 0;
     for x in xs { total = total + x; }
     return total
 }
 
 // A binder shadows a file-scope name of the same spelling.
-fn f_shadow(xs: *i32) -> i32 {
+fn f_shadow(xs: [i32]) -> i32 {
     for shadow in xs { return shadow }
     return 0
 }
@@ -36,7 +36,7 @@ fn f_match(v: i32) -> i32 {
 }
 
 // Tuple destructuring declares into the ENCLOSING frame, not a new scope.
-fn f_destructure(t: i32) -> i32 {
+fn f_destructure(t: (i32, i32)) -> i32 {
     var (a, b) = t;
     return a + b
 }

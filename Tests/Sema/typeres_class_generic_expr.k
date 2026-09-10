@@ -24,8 +24,16 @@
 // parameter `T` in a `::` chain position, exactly as it would if `T` were a
 // function generic (contrast typeres_dependent.k's CASE 3, where a
 // FUNCTION's own `<T>` already resolved this way).
+//
+// The parameter is declared `<T: type>` because what the step DOES is a
+// separate question from whether `T` is found, and only the second one is
+// this file's subject. A bare `<T>` promises nothing, so `T::SIZE` on it is
+// now an error at the template (ChainBinding's opaque regime, see
+// Sema/ExprTyper/bounds_opaque.k); `: type` is the opt-in to C++ duck typing,
+// where the step defers to instantiation. Either way `T` itself binds, which
+// is the [BROKEN] item this file guards.
 
-class <T> Box {
+class <T: type> Box {
     var val: T;
 
     fn describe(self) -> i32 {
