@@ -166,7 +166,10 @@ class DeclImport {
         if dc == &null { return static_cast::<*DeclContext>(t->tu); }
         // Transparent contexts: linkage specs, inline namespaces, anonymous
         // structs/unions, export blocks -- their members belong to the parent.
-        if dc->isTransparentContext() || dc->isInlineNamespace() {
+        // NOT an unscoped enum, which clang also calls transparent: its
+        // enumerators belong in the enum's own table (`Color::Green`), and
+        // _bind_named adds them to the enclosing scope separately.
+        if (dc->isTransparentContext() && (!llvm::isa::<clang::EnumDecl>(dc))) || dc->isInlineNamespace() {
             return self.scope_for(t, dc->getParent());
         }
         if dc->isTranslationUnit() { return static_cast::<*DeclContext>(t->tu); }
@@ -178,7 +181,11 @@ class DeclImport {
             var kdc = NameLookup::context_of(kd);
             if kdc != &null { return kdc; }
         }
-        return static_cast::<*DeclContext>(t->tu);
+        // A context with no Kairo scope (a function body, a record nobody
+        // imported): the decl has nowhere to live, so it is not imported.
+        // Falling back to the TU made every such decl a GLOBAL, and libc++
+        // alone then had dozens of "ambiguous" `type`s at file scope.
+        return &null;
     }
 
     fn table_of(self, t: *HeaderTarget, dc: *DeclContext) -> *SymbolTable {
@@ -211,6 +218,7 @@ class DeclImport {
         if it != t->namespaces.end() { return it->second; }
 
         var parent = self.scope_for(t, ns->getParent());
+        if parent == &null { parent = static_cast::<*DeclContext>(t->tu); }   // a namespace's parent is always a namespace or the TU.
         var at = self.range_of(ns);
         var name = self.ident(t, self._str(ns->getName()), self.name_range_of(ns));
         var m = ModuleDecl::create(t->ctx, at, name, parent);
@@ -236,6 +244,15 @@ class DeclImport {
 
         var t = self.target_of(d);
         if t == &null { self.n_skipped += 1; return &null; }
+
+        // A namespace is not ONE entity to Kairo: each header's reopening is
+        // its own ModuleDecl (namespace_for), unioned by phase I and
+        // ChainBinding as a reopened module. Registering it by USR -- which
+        // every reopening shares -- bound the FIRST header's ModuleDecl into
+        // each later header's table, while that header's members went into a
+        // ModuleDecl nothing bound.
+        var ns = llvm::dyn_cast::<clang::NamespaceDecl>(d);
+        if ns != &null { return static_cast::<*Decl>(self.namespace_for(t, ns)); }
 
         var canon = d->getCanonicalDecl();
         var usr   = TypeImport::usr_of(canon);
@@ -277,6 +294,7 @@ class DeclImport {
     /// The empty Kairo node of the right kind, parented, no slots filled.
     priv fn _mint(self, t: *HeaderTarget, nd: *clang::NamedDecl) -> *Decl {
         var parent = self.scope_for(t, nd->getDeclContext());
+        if parent == &null { return &null; }                 // nowhere to live: see scope_for.
         var at     = self.range_of(nd);
         var name   = self.ident(t, self._display_name(nd), self.name_range_of(nd));
         var out: *Decl = &null;
@@ -422,6 +440,7 @@ class DeclImport {
     /// The name binding: ident key, or ctor / operator key for functions.
     priv fn _bind_named(self, t: *HeaderTarget, nd: const_obs::<clang::NamedDecl>, kd: *Decl) {
         var dc = self.scope_for(t, nd->getDeclContext());
+        if dc == &null { return; }
         var fn_ = llvm::dyn_cast::<clang::FunctionDecl>(nd);
         if fn_ != &null {
             if llvm::isa::<clang::CXXConstructorDecl>(fn_) { self.bind(t, dc, DeclName::ctor(), kd); return; }
@@ -442,16 +461,30 @@ class DeclImport {
                 return;
             }
         }
-        var imm = t->ctx->get_imm_table()->intern_ident_copy(self._display_name(nd));
-        self.bind(t, dc, DeclName::ident(imm), kd);
+        self.bind(t, dc, self._ident_key(t, dc, self._display_name(nd)), kd);
         // An UNSCOPED enumerator is also visible in the enum's enclosing scope.
         var ec = llvm::dyn_cast::<clang::EnumConstantDecl>(nd);
         if ec != &null {
             var ed = llvm::dyn_cast::<clang::EnumDecl>(ec->getDeclContext());
             if (ed != &null) && (!ed->isScoped()) {
-                self.bind(t, self.scope_for(t, ed->getDeclContext()), DeclName::ident(imm), kd);
+                var outer = self.scope_for(t, ed->getDeclContext());
+                if outer != &null { self.bind(t, outer, self._ident_key(t, outer, self._display_name(nd)), kd); }
             }
         }
+    }
+
+    /// The identifier key for \p dc's table. A table is keyed by ITS OWN
+    /// TU's imms (hard invariant #2), and the TU owning \p dc need not be the
+    /// header being walked: a class template forward-declared in one header
+    /// and defined in another (all of libc++: <__fwd/vector.h>) gets its
+    /// members from the second header, into the first header's decl.
+    /// Interning through the walking header filed every such member under a
+    /// key no lookup could probe -- `v.push_back` was "no member".
+    priv fn _ident_key(self, t: *HeaderTarget, dc: *DeclContext, s: string) -> DeclName {
+        var ctx = t->ctx;
+        var tu  = NameLookup::tu_of(dc);
+        if (tu != &null) && (tu->ctx != &null) { ctx = tu->ctx; }
+        return DeclName::ident(ctx->get_imm_table()->intern_ident_copy(s));
     }
 
     /// C++ overloaded operator -> the Kairo `fn op` token pair. False for an
@@ -520,6 +553,11 @@ class DeclImport {
         if (t == &null) || t->frozen { return; }
         self.n_defined += 1;
 
+        // Which Kairo decl owns each template depth in scope here: without
+        // it every `T` in a template's signature imports as opaque.
+        ti->tpl_owners.clear();
+        self._template_owners(d, ti->tpl_owners);
+
         switch d->getKind() {
             case clang::Decl::CXXRecord                          { self._define_record(t, llvm::cast::<clang::CXXRecordDecl>(d), kd, ti); }
             case clang::Decl::Record                             { self._define_record_c(t, llvm::cast::<clang::RecordDecl>(d), kd, ti); }
@@ -559,6 +597,48 @@ class DeclImport {
             case clang::Decl::Concept      { 0; }        // constraint-only bound; no surface to import.
             default { 0; }
         }
+    }
+
+    /// Every Kairo decl owning a template parameter list that encloses \p d
+    /// (\p d's own included), outermost first: index = clang depth. A method
+    /// of a class template sees the class at depth 0; a member template of
+    /// it adds itself at depth 1.
+    priv fn _template_owners(self, d: *clang::Decl, out: ref!(vec::<*Decl>)) {
+        var inner_first = vec::<*Decl>();
+        var cur = d;
+        while cur != &null {
+            var kd = self._tpl_owner(cur);
+            if kd != &null { inner_first.push_back(kd); }
+            var dc = cur->getDeclContext();
+            if (dc == &null) || dc->isTranslationUnit() { break; }
+            cur = clang::Decl::castFromDeclContext(dc);
+        }
+        var n = inner_first.size();
+        for var i: usize = 0; i < n; ++i { out.push_back(inner_first[n - 1 - i]); }
+    }
+
+    /// The Kairo decl for \p c when \p c owns a template parameter list: a
+    /// template (registered under its templated decl's USR too), a record or
+    /// function a template describes, or a partial specialization.
+    priv fn _tpl_owner(self, c: *clang::Decl) -> *Decl {
+        var td = llvm::dyn_cast::<clang::TemplateDecl>(c);
+        if td != &null {
+            var inner = td->getTemplatedDecl();                 // null for a concept.
+            if inner == &null { return &null; }
+            return self.reg->find(TypeImport::usr_of(inner->getCanonicalDecl()));
+        }
+        if llvm::isa::<clang::ClassTemplatePartialSpecializationDecl>(c) {
+            return self.reg->find(TypeImport::usr_of(c->getCanonicalDecl()));
+        }
+        var rd = llvm::dyn_cast::<clang::CXXRecordDecl>(c);
+        if (rd != &null) && (rd->getDescribedClassTemplate() != &null) {
+            return self.reg->find(TypeImport::usr_of(rd->getCanonicalDecl()));
+        }
+        var fd = llvm::dyn_cast::<clang::FunctionDecl>(c);
+        if (fd != &null) && (fd->getDescribedFunctionTemplate() != &null) {
+            return self.reg->find(TypeImport::usr_of(fd->getCanonicalDecl()));
+        }
+        return &null;
     }
 
     // --- records ----------------------------------------------------------------
@@ -763,7 +843,12 @@ class DeclImport {
         var def = ed->getDefinition();
         var ke  = cast::<EnumDecl>(kd);
         ke->ffi_scoped_enum = ed->isScoped();
-        if def == &null { return; }
+        // define() runs once per CLANG redeclaration, and every one of them
+        // maps to this one Kairo decl (the registry). Fill and mark it only
+        // from the definition itself: libc++ forward-declares enums
+        // (`enum class byte : unsigned char;`) and defines them later, and a
+        // second mark_definition is the "two definitions in one chain" ICE.
+        if (def == &null) || (def != ed) { return; }
         ke->mark_definition();
         ke->underlying = ti->_import(def->getIntegerType());
         var vs = vec::<*EnumVariantDecl>();

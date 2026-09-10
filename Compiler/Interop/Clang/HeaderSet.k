@@ -144,6 +144,9 @@ class HeaderSet {
 
     // Filled by index() on the driver thread.
     pub var indexed:  bool = false;
+    /// Phase B: the PCH bytes are in the backend's in-memory VFS at
+    /// pch_path(). Once per set for the build; CodegenBackend::run sets it.
+    pub var mounted:  bool = false;
     pub var cfid_to_kfid: libcxx::unordered_map::<u32, u32>;   ///< clang FileID hash -> Kairo fid. THE table.
 
     // The live phase-A instance.
@@ -181,6 +184,22 @@ class HeaderSet {
     fn sema_lock(self) -> *std::Mutex { return &(self._sema_mu); }
 
     fn pch_path(self) -> string { return f"/kairo/pch/{self.id}.pch"; }
+
+    /// A header as written in the .k, minus the literal's quotes (and angle
+    /// brackets, if someone wrote `"<vector>"`). The one spelling: the PP keys
+    /// the set on it, build() wraps it in `#include "..."`, and the driver
+    /// matches it in closure_of. Two spellings of one header would silently
+    /// miss the closure and import nothing.
+    static fn unquote(lit: string) -> string {
+        var s = lit;
+        if (s.size() >= 2) && (s[0] == '\x22') && (s[s.size() - 1] == '\x22') {
+            s = string(s.raw_string().substr(1, s.size() - 2));
+        }
+        if (s.size() >= 2) && (s[0] == '<') && (s[s.size() - 1] == '>') {
+            s = string(s.raw_string().substr(1, s.size() - 2));
+        }
+        return s;
+    }
 
     /// Kairo fid for a clang FileID in THIS set's SM, or 0.
     fn kfid_for(self, cfid: clang::FileID) -> u32 {
@@ -260,11 +279,15 @@ class HeaderSet {
             buf->getMemBufferRef(), clang::InputKind(clang::Language::CXX)));
         fe->DisableFree = true;                          // we own the AST's lifetime.
         // A quoted include from a .k file resolves relative to that file's
-        // directory, exactly as it would from a .cpp beside it.
+        // directory, exactly as it would from a .cpp beside it. IgnoreSysRoot
+        // (the last argument) MUST be true: the directory is a real absolute
+        // path, and with `-isysroot` set clang would otherwise prefix it with
+        // the sysroot and search /usr/<the .k's dir> -- every local ffi header
+        // "file not found" the moment a sysroot is passed.
         if self.import_dir.size() > 0 {
             var e = clang::HeaderSearchOptions::Entry(
                 std::string_to_nstring(self.import_dir).raw_string(),
-                clang::frontend::Quoted, false, false);
+                clang::frontend::Quoted, false, true);
             inv->getHeaderSearchOpts().UserEntries.insert(
                 inv->getHeaderSearchOpts().UserEntries.begin(), e);
         }
@@ -340,7 +363,9 @@ class HeaderSetCache {
         return k;
     }
 
-    /// Get-or-mint. Mint enqueues the build. Driver thread only.
+    /// Get-or-mint. Mint enqueues the build. Any thread: PPWalker::_finalize
+    /// calls this from the pool (the wave walks files in parallel); `_mu`
+    /// covers the map, and the build touches only the set it was given.
     fn request(self, headers: vec::<string>, import_dir: string) -> *HeaderSet {
         var key = HeaderSetCache::key_of(headers);
         var nk  = libcxx::string(std::string_to_nstring(key).raw_string());
