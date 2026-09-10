@@ -398,7 +398,12 @@ completes the specialization (`CheckTemplateIdType` + `RequireCompleteType`,
 under the set's `sema_lock`), and DeclImport in fill mode imports the
 ClassTemplateSpecializationDecl's members into the shell, which is then
 `instantiated`. So `size()` returns clang's answer for `size_type`, not the
-pattern's dependent spelling. A fill that cannot run -- an arg with no clang
+pattern's dependent spelling. The members LIVE in the primary's header
+(scope, tables, bindings), but each name TOKEN is minted in the header it
+is written in (`DeclImport::_home_at`): a token's text is read back through
+its range's TU, and a name interned in `<__fwd/vector.h>` but ranged in
+`<__vector/vector.h>` rendered as whatever identifier held that index
+there (`.size` as `cend`). A fill that cannot run -- an arg with no clang
 spelling (a Kairo-native record, a decl from another set), or a
 specialization clang rejects -- is sticky (`foreign_fill_failed`) and lookup
 walks the pattern, as it did before fills existed. [MISSING] a Kairo

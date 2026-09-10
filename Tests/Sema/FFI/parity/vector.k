@@ -26,5 +26,18 @@ fn use_vector() -> u64 {
 // to match: `usize` is a distinct type and crossing to it takes `as`
 // (Tests/Sema/usize_distinct.k), exactly as the oracle's `unsigned long`.
 //
+// The bound NAMES, not just the types: the fill pins members to vector's
+// forward-declaring header (<__fwd/vector.h>) while they are written in
+// <__vector/vector.h>, and a name token minted in the first's interner but
+// ranged in the second read back as another identifier -- `.size` bound as
+// `fn cend`, `.push_back` as `fn at`, with the types still right. Header
+// lines are left open: they are the host libc++'s, not this tree's.
+//
 // RUN: %parity %s
+// RUN: { %kairo %s --type-check-only --print-sema 2>/dev/null || true; } | %FileCheck %s --check-prefix=SEMA
 // REQUIRES: clang
+//
+// SEMA:      member  .size  {{.*}} -> fn size @ {{[0-9]+:[0-9]+}}  [member of vector]  [filled by clang
+// SEMA:      -- name bindings --
+// SEMA:      .push_back  @ 9:7 -> fn push_back @ {{[0-9]+:[0-9]+}}{{$}}
+// SEMA:      .size  @ 10:14 -> fn size @ {{[0-9]+:[0-9]+}}{{$}}

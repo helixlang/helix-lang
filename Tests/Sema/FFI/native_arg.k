@@ -28,8 +28,8 @@ fn use_native() {
 
 // Answered from the PATTERN: no fill marker on either row, and size()'s
 // dependent `size_type` comes back opaque.
-// SEMA:      member  .push  {{.*}} -> fn push @ 13:5  [member of cont]{{$}}
-// SEMA:      member  .size  {{.*}} -> fn size @ 12:5  [member of cont]{{$}}
+// SEMA:      member  .push  {{.*}} -> fn push @ 14:5  [member of cont]{{$}}
+// SEMA:      member  .size  {{.*}} -> fn size @ 13:5  [member of cont]{{$}}
 // SEMA:      0 unknown, 0 errored
 // SEMA:      -- inferred decls --
 // SEMA-NEXT: n : <ffi type>

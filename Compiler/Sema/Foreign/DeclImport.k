@@ -32,6 +32,9 @@
 ///     and that header is frozen); `fill_spec` -> `fill_scope` maps the
 ///     specialization to its registry shell; the tables a fill creates go to
 ///     `fill_scopes` for the fill to freeze, not to the target's `scopes`.
+///     Only the decl moves: its name token is still minted in the header its
+///     location is IN (_home_at), since a token's text is read back through
+///     its range.
 ///
 ///   Part of the Kairo Project, under the Apache License v2.0 with the
 ///   Kairo Runtime Library Exception.
@@ -138,16 +141,38 @@ class DeclImport {
         return self.ksm->get_range(kb, static_cast::<usize>(b.second), len);
     }
 
-    /// The header a decl was WRITTEN in, as a target; null when it is in no
-    /// file we track. Falls back through redecls so a definition in a file
-    /// we never entered still lands next to its declaration.
+    /// Where a decl LIVES: the header it was written in, as a target; null
+    /// when it is in no file we track. Falls back through redecls so a
+    /// definition in a file we never entered still lands next to its
+    /// declaration. Scopes, tables and bindings follow this; the decl's name
+    /// TOKEN does not (_home_at).
     fn target_of(self, d: const_obs::<clang::Decl>) -> *HeaderTarget {
         // Fill mode: an instantiated member carries its PATTERN's location, so
         // the path below would answer with the pattern's header -- frozen
         // since HeaderIndex finished it -- and the member would be dropped.
         if self.fill_target != &null { return self.fill_target; }
         var loc = self.csm->getDecomposedExpansionLoc(d->getLocation());
-        var kf = self._set->kfid_for(loc.first);
+        return self._target_for(self._set->kfid_for(loc.first));
+    }
+
+    /// Which header's context owns the interner for a token ranged at \p at:
+    /// the file the range is IN, always. Fill mode and `frozen` do not enter
+    /// into it -- interning a spelling writes no table. Null for a range in
+    /// no file we track.
+    ///
+    /// Not target_of, because TokenText finds a token's imm table from its
+    /// RANGE (hard invariant #2, display side). A fill pins every decl to the
+    /// primary's header, <__fwd/vector.h>, while `push_back` is written in
+    /// <__vector/vector.h>: minting the name in the first and ranging it in
+    /// the second read back whatever sat at that index in the second's table,
+    /// and `.size` printed as `cend`. Keys never had the problem; _ident_key
+    /// interns through the table's own TU.
+    priv fn _home_at(self, at: SourceRange) -> *HeaderTarget {
+        if !at.is_valid() { return &null; }
+        return self._target_for(self.ksm->get_fid(at));
+    }
+
+    priv fn _target_for(self, kf: u32) -> *HeaderTarget {
         if kf == 0 { return &null; }
         var it = self.targets->find(kf);
         if it == self.targets->end() { return &null; }
@@ -157,7 +182,17 @@ class DeclImport {
     // === tokens ================================================================
 
     fn ident(self, t: *HeaderTarget, s: string, at: SourceRange) -> Token {
-        return t->ctx->make_token(at, TokenKind::LitIdentifier, s);
+        return self._tok(t, at, TokenKind::LitIdentifier, s);
+    }
+
+    /// Every token DeclImport makes goes through here, so its text and its
+    /// range agree on a TU (_home_at). \p t answers only for a range in no
+    /// tracked file, where no TU can read it back by range anyway.
+    priv fn _tok(self, t: *HeaderTarget, at: SourceRange, k: TokenKind, s: string) -> Token {
+        var ctx = t->ctx;
+        var h = self._home_at(at);
+        if h != &null { ctx = h->ctx; }
+        return ctx->make_token(at, k, s);
     }
 
     priv fn _str(self, s: llvm::StringRef) -> string {
@@ -250,7 +285,8 @@ class DeclImport {
         var parent = self.scope_for(t, ns->getParent());
         if parent == &null { parent = static_cast::<*DeclContext>(t->tu); }   // a namespace's parent is always a namespace or the TU.
         var at = self.range_of(ns);
-        var name = self.ident(t, self._str(ns->getName()), self.name_range_of(ns));
+        var nm = self._str(ns->getName());
+        var name = self.ident(t, nm, self.name_range_of(ns));
         var m = ModuleDecl::create(t->ctx, at, name, parent);
         m->set_visibility(VisibilityKind::Public, at);
         m->is_inline  = ns->isInline();
@@ -258,7 +294,9 @@ class DeclImport {
         m->semantic_dc = reinterpret_cast::<*void>(parent);
         m->mark_definition();
         parent->add_decl(static_cast::<*Decl>(m));
-        self.bind(t, parent, DeclName::ident(t->ctx->get_ident_imm(name)), static_cast::<*Decl>(m));
+        // Keyed through _ident_key, not the token's imm: the token is interned
+        // where its RANGE is (_tok), the key where the TABLE is.
+        self.bind(t, parent, self._ident_key(t, parent, nm), static_cast::<*Decl>(m));
         t->namespaces.insert(libcxx::make_pair(nq, m));
         return m;
     }
@@ -922,7 +960,7 @@ class DeclImport {
         var is_dtor = llvm::isa::<clang::CXXDestructorDecl>(fd);
         if (m != &null) && (!m->isStatic()) {
             var at = self.name_range_of(fd);
-            var self_tok = t->ctx->make_token(at, TokenKind::KwSelf, "self");
+            var self_tok = self._tok(t, at, TokenKind::KwSelf, "self");
             var sp = ParamDecl::create_self(t->ctx, at, self_tok);
             sp->type_    = ti->_import(m->getThisType()->getPointeeType());
             sp->is_const = m->isConst();
@@ -968,8 +1006,8 @@ class DeclImport {
             if self._op_kinds(fd->getOverloadedOperator(), &k0, &k1) {
                 var toks = vec::<Token>();
                 var at = self.name_range_of(fd);
-                toks.push_back(t->ctx->make_token(at, k0, std::nstring_to_string(libcxx::string(clang::getOperatorSpelling(fd->getOverloadedOperator())))));
-                if k1 != TokenKind::TkUnknown { toks.push_back(t->ctx->make_token(at, k1, "")); }
+                toks.push_back(self._tok(t, at, k0, std::nstring_to_string(libcxx::string(clang::getOperatorSpelling(fd->getOverloadedOperator())))));
+                if k1 != TokenKind::TkUnknown { toks.push_back(self._tok(t, at, k1, "")); }
                 kf->op_token.from_vec(&toks, t->ctx);
             }
         }
@@ -977,14 +1015,14 @@ class DeclImport {
             kf->is_operator = true;
             kf->ffi_conversion_op = true;
             var toks = vec::<Token>();
-            toks.push_back(t->ctx->make_token(self.name_range_of(fd), TokenKind::KwAs, "as"));
+            toks.push_back(self._tok(t, self.name_range_of(fd), TokenKind::KwAs, "as"));
             kf->op_token.from_vec(&toks, t->ctx);
         }
 
         if is_dtor {
             kf->is_operator = true;
             var toks = vec::<Token>();
-            toks.push_back(t->ctx->make_token(self.name_range_of(fd), TokenKind::KwDelete, "delete"));
+            toks.push_back(self._tok(t, self.name_range_of(fd), TokenKind::KwDelete, "delete"));
             kf->op_token.from_vec(&toks, t->ctx);
         }
 

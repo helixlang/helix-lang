@@ -20,7 +20,8 @@ fn use_nested() -> u64 {
 // the Kairo `cont<i32>` are one registry instance.
 // DIAG-NOT: error
 
-// SEMA:      member  .push  {{.*}} -> fn push @ 13:5  [member of cont]  [filled by clang, 16 bytes, align 8]
-// SEMA:      member  .size  {{.*}} -> fn size @ 12:5  [member of cont]  [filled by clang, 16 bytes, align 8]
+// Bound names and traits_typedef.h's lines, as in traits_typedef.k.
+// SEMA:      member  .push  {{.*}} -> fn push @ 14:5  [member of cont]  [filled by clang, 16 bytes, align 8]
+// SEMA:      member  .size  {{.*}} -> fn size @ 13:5  [member of cont]  [filled by clang, 16 bytes, align 8]
 // SEMA:      0 unknown, 0 errored
 // SEMA:      0 of them dependent, 0 errored
