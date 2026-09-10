@@ -13,6 +13,8 @@ ffi "c++" import "traits_typedef.h"
 fn use_cont() -> u64 {
     var c: cont<i32>
     c.push(1)
+    type my_size = traits<alloc>::size_type
+    typeof my_size
     return c.size()
 }
 

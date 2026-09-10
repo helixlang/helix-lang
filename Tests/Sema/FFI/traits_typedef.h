@@ -5,6 +5,7 @@
 
 template <class A> struct traits { using size_type = typename A::st; };
 struct alloc { using st = unsigned long; };
+
 template <class T, class A = alloc> struct cont {
     using size_type = typename traits<A>::size_type;
     T* first;

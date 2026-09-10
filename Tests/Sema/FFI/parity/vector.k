@@ -4,7 +4,7 @@
 
 ffi "c++" import "vector"
 
-fn use_vector() -> usize {
+fn use_vector() -> u64 {
     var v: std::vector<i32>
     v.push_back(1)
     return v.size()
@@ -22,8 +22,9 @@ fn use_vector() -> usize {
 // `size_type` is spelled through `allocator_traits<...>::size_type`, a
 // dependent member typedef the pattern cannot answer. The first lookup into
 // `std::vector<i32>` fills the instance from clang (ForeignInstantiate), so
-// size() returns canonical `unsigned long` -- u64, which is Exact to usize
-// on a 64-bit target (Conversion::_ptr_int_alias).
+// size() returns canonical `unsigned long` -- u64. The function returns u64
+// to match: `usize` is a distinct type and crossing to it takes `as`
+// (Tests/Sema/usize_distinct.k), exactly as the oracle's `unsigned long`.
 //
 // RUN: %parity %s
 // REQUIRES: clang

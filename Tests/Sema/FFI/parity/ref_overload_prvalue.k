@@ -16,13 +16,10 @@ fn use_prvalue() {
 // PARITY CASE. The .cpp beside this file is the ORACLE: the assertion is that
 // kairo and clang reach the same verdict. See Tests/parity_check.py.
 //
-// XFAIL until value categories reach overload resolution: today a literal or
-// temporary against `const T&` ranks Exact and against `T&&` Converted, so
-// kairo picks `f(const T&)` -> i32 where clang picks `f(T&&)` -> double.
-// Ticket: "value categories in overload resolution" (ExprTyper categories,
-// ArgInfo category, Conversion reference binding, && / & tie-breaks).
+// Was XFAIL until value categories reached overload resolution: `T()` is a
+// prvalue, both overloads bind it at Exact, and the reference tiebreak
+// (OverloadResolution::_ref_better) prefers `T&&`.
 //
 // RUN: %parity %s
 // RUN: { %kairo %s --type-check-only --print-sema 2>/dev/null || true; } | %FileCheck %s --check-prefix=SEMA
 // REQUIRES: clang
-// XFAIL: *
