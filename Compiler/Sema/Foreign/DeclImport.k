@@ -1,0 +1,885 @@
+/// --- The Kairo Project -------------------- Sema/Foreign/DeclImport.k --- ///
+///
+///   \brief clang::Decl -> Kairo Decl, into the TU of the header it came
+///          from. Two passes over the same decls, called by HeaderIndex:
+///
+///            declare(d)  mint the Kairo node, register its USR, put its
+///                        NAME in the right table. No types, no members.
+///            define(d)   fill types, params, fields, bases, layout, the
+///                        FFILinkage facts. Every cross-decl reference
+///                        resolves through the registry, which pass 1
+///                        completed, so a field may name a record declared
+///                        three headers later.
+///
+///   \par What the rest of sema sees
+///     An ordinary Decl with every slot T would have filled already filled:
+///     `type_` / `aliased` / `InheritEdge.base` / `return_type` hold the
+///     CANONICAL node (self-canonical). `NameLookup::ctx_of(d)` is the
+///     header's context, so `TypeResolution::_foreign` reads and never
+///     dispatches; `lookup_foreign` re-interns through the header's imm
+///     table. Nothing after N knows the decl was not parsed.
+///
+///   \par What is NOT imported (skipped, by design, for this shot)
+///     friend decls, using-directives, static_assert, deduction guides,
+///     variable templates, bit-field widths, default-argument EXPRESSIONS
+///     (presence is recorded), implicit instantiations found in the header
+///     (the registry mints them on demand), non-type template arguments.
+///
+///   Part of the Kairo Project, under the Apache License v2.0 with the
+///   Kairo Runtime Library Exception.
+///
+///   See: https://www.kairolang.org/LICENSE.txt
+///   SPDX-License-Identifier: Apache-2.0 WITH KAIRO-RUNTIME-EXCEPTION
+///   Copyright (c) 2026 Dhruvan Kartik
+///
+/// ------------------------------------------------------------------------ ///
+
+ffi "c++" import "Native/Types.hh";
+ffi "c++" import "clang/AST/ASTContext.h";
+ffi "c++" import "clang/AST/Attr.h";
+ffi "c++" import "clang/AST/Decl.h";
+ffi "c++" import "clang/AST/DeclBase.h";
+ffi "c++" import "clang/AST/DeclCXX.h";
+ffi "c++" import "clang/AST/DeclTemplate.h";
+ffi "c++" import "clang/AST/RecordLayout.h";
+ffi "c++" import "clang/Basic/OperatorKinds.h";
+ffi "c++" import "clang/Basic/SourceManager.h";
+
+import AST::Context::ASTContext::*;
+import AST::Context::DeclContext::*;
+import AST::Context::SymbolTable::*;
+import AST::Context::TranslationUnit::*;
+import AST::Context::CanonicalTypes::*;
+import AST::Context::InstantiationRegistry::*;
+import AST::ASTSupport::*;
+import AST::Node::Base::*;
+import AST::Node::Declarations::*;
+import AST::Node::CanonicalNodes::*;
+import AST::Node::Casting::*;
+import AST::Kind::DeclKind::*;
+import AST::Mixin::FFILinkage::*;
+import Location::SourceManager::*;
+import Location::SourceRange::*;
+import Token::Token::*;
+import Token::TokenKind::*;
+import Sema::Resolve::NameLookup::*;
+import Sema::Foreign::ForeignRegistry::*;
+import Sema::Foreign::TypeImport::*;
+import Interop::Clang::HeaderSet::*;
+
+/// Per-header import state: the TU being filled, its context, and the
+/// tables being built (frozen by HeaderIndex when the set is done).
+class HeaderTarget {
+    pub var fid:    u32 = 0;
+    pub var ctx:    obs::<ASTContext>;
+    pub var tu:     obs::<TranslationUnit>;
+    pub var frozen: bool = false;              ///< already indexed by an earlier set: read-only.
+    /// qualified namespace name -> this header's ModuleDecl for it.
+    pub var namespaces: libcxx::unordered_map::<libcxx::string, *ModuleDecl>;
+    /// every DeclContext this header owns whose table must be frozen at the end.
+    pub var scopes: vec::<*DeclContext>;
+    fn HeaderTarget(self) { }
+}
+
+class DeclImport {
+    pub var _set:   obs::<HeaderSet>;
+    pub var reg:   obs::<ForeignRegistry>;
+    pub var ksm:   obs::<SourceManager>;
+    pub var store: obs::<CanonicalTypeStore>;
+    pub var instances: obs::<InstantiationRegistry>;
+    pub var cctx:  obs::<clang::ASTContext>;
+    pub var csm:   obs::<clang::SourceManager>;
+
+    /// header fid -> target. Owned by HeaderIndex; borrowed here.
+    pub var targets: obs::<libcxx::unordered_map::<u32, *HeaderTarget>>;
+
+    pub var n_declared: usize = 0;
+    pub var n_defined:  usize = 0;
+    pub var n_skipped:  usize = 0;
+
+    fn DeclImport(self) { }
+
+    // === locations ==============================================================
+
+    /// Kairo range for a clang range, or invalid when the loc is not in a
+    /// file we minted a fid for (scratch buffers, <built-in>).
+    fn range_of(self, d: const_obs::<clang::Decl>) -> SourceRange {
+        var b = self.csm->getDecomposedExpansionLoc(d->getBeginLoc());
+        var e = self.csm->getDecomposedExpansionLoc(d->getEndLoc());
+        var kb = self._set->kfid_for(b.first);
+        if kb == 0 { return SourceRange::invalid(); }
+        var ke = self._set->kfid_for(e.first);
+        var len: usize = 1;
+        if (ke == kb) && (e.second >= b.second) { len = static_cast::<usize>(e.second - b.second) + 1; }
+        return self.ksm->get_range(kb, static_cast::<usize>(b.second), len);
+    }
+
+    fn name_range_of(self, d: const_obs::<clang::NamedDecl>) -> SourceRange {
+        var b = self.csm->getDecomposedExpansionLoc(d->getLocation());
+        var kb = self._set->kfid_for(b.first);
+        if kb == 0 { return SourceRange::invalid(); }
+        var n = d->getNameAsString();
+        var len = n.size();
+        if len == 0 { len = 1; }
+        return self.ksm->get_range(kb, static_cast::<usize>(b.second), len);
+    }
+
+    /// The header a decl was WRITTEN in, as a target; null when it is in no
+    /// file we track. Falls back through redecls so a definition in a file
+    /// we never entered still lands next to its declaration.
+    fn target_of(self, d: const_obs::<clang::Decl>) -> *HeaderTarget {
+        var loc = self.csm->getDecomposedExpansionLoc(d->getLocation());
+        var kf = self._set->kfid_for(loc.first);
+        if kf == 0 { return &null; }
+        var it = self.targets->find(kf);
+        if it == self.targets->end() { return &null; }
+        return it->second;
+    }
+
+    // === tokens ================================================================
+
+    fn ident(self, t: *HeaderTarget, s: string, at: SourceRange) -> Token {
+        return t->ctx->make_token(at, TokenKind::LitIdentifier, s);
+    }
+
+    priv fn _str(self, s: llvm::StringRef) -> string {
+        return string(s.data(), s.size());
+    }
+
+    priv fn _qual(self, d: const_obs::<clang::NamedDecl>) -> string {
+        var pol = clang::PrintingPolicy(self.cctx->getLangOpts());
+        pol.FullyQualifiedName = true;
+        pol.SuppressUnwrittenScope = true;
+        var s: libcxx::string;
+        var os = llvm::raw_string_ostream(s);
+        d->printQualifiedName(os, pol);
+        os.flush();
+        return "::" + std::nstring_to_string(s);
+    }
+
+    // === tables ===================================================================
+
+    /// The table a decl in clang context \p dc goes into, on header \p t:
+    /// the TU for the global namespace, a ModuleDecl for a namespace, the
+    /// record's own context for a member.
+    fn scope_for(self, t: *HeaderTarget, dc: const_obs::<clang::DeclContext>) -> *DeclContext {
+        if dc == &null { return static_cast::<*DeclContext>(t->tu); }
+        // Transparent contexts: linkage specs, inline namespaces, anonymous
+        // structs/unions, export blocks -- their members belong to the parent.
+        if dc->isTransparentContext() || dc->isInlineNamespace() {
+            return self.scope_for(t, dc->getParent());
+        }
+        if dc->isTranslationUnit() { return static_cast::<*DeclContext>(t->tu); }
+        var ns = llvm::dyn_cast::<clang::NamespaceDecl>(dc);
+        if ns != &null { return static_cast::<*DeclContext>(self.namespace_for(t, ns)); }
+        var rd = clang::Decl::castFromDeclContext(dc);
+        if rd != &null {
+            var kd = self.reg->find(TypeImport::usr_of(rd->getCanonicalDecl()));
+            var kdc = NameLookup::context_of(kd);
+            if kdc != &null { return kdc; }
+        }
+        return static_cast::<*DeclContext>(t->tu);
+    }
+
+    fn table_of(self, t: *HeaderTarget, dc: *DeclContext) -> *SymbolTable {
+        if dc->dc_symbols == &null {
+            var tbl = t->ctx->alloc_init_cleanup::<SymbolTable>();
+            dc->set_symbols(tbl);
+            t->scopes.push_back(dc);
+        }
+        return dc->dc_symbols;
+    }
+
+    /// Append \p d under \p name in \p dc's table unless already there.
+    fn bind(self, t: *HeaderTarget, dc: *DeclContext, name: DeclName, d: *Decl) {
+        if t->frozen { return; }
+        var tbl = self.table_of(t, dc);
+        var cell = tbl->lookup(name);
+        if cell != &null {
+            for var i: usize = 0; i < cell->size(); ++i { if cell->get(i) == d { return; } }
+        }
+        tbl->append(name, d);
+    }
+
+    /// One ModuleDecl per (header, qualified namespace). Reopenings within
+    /// the header share it; across headers they are distinct decls that
+    /// ChainBinding's multi-scope Module anchor unions.
+    fn namespace_for(self, t: *HeaderTarget, ns: const_obs::<clang::NamespaceDecl>) -> *ModuleDecl {
+        var q  = self._qual(ns);
+        var nq = libcxx::string(std::string_to_nstring(q).raw_string());
+        var it = t->namespaces.find(nq);
+        if it != t->namespaces.end() { return it->second; }
+
+        var parent = self.scope_for(t, ns->getParent());
+        var at = self.range_of(ns);
+        var name = self.ident(t, self._str(ns->getName()), self.name_range_of(ns));
+        var m = ModuleDecl::create(t->ctx, at, name, parent);
+        m->set_visibility(VisibilityKind::Public, at);
+        m->is_inline  = ns->isInline();
+        m->lexical_dc  = reinterpret_cast::<*void>(parent);
+        m->semantic_dc = reinterpret_cast::<*void>(parent);
+        m->mark_definition();
+        parent->add_decl(static_cast::<*Decl>(m));
+        self.bind(t, parent, DeclName::ident(t->ctx->get_ident_imm(name)), static_cast::<*Decl>(m));
+        t->namespaces.insert(libcxx::make_pair(nq, m));
+        return m;
+    }
+
+    // === pass 1: declare =======================================================
+
+    /// Mint + register + bind the name. Returns the Kairo decl (existing one
+    /// if this USR was already imported by an earlier set or redecl).
+    fn declare(self, d: *clang::Decl) -> *Decl {
+        var nd = llvm::dyn_cast::<clang::NamedDecl>(d);
+        if nd == &null { return &null; }
+        if nd->getDeclName().isEmpty() && (!self._anon_with_typedef(nd)) { return &null; }
+
+        var t = self.target_of(d);
+        if t == &null { self.n_skipped += 1; return &null; }
+
+        var canon = d->getCanonicalDecl();
+        var usr   = TypeImport::usr_of(canon);
+        if usr.empty() { self.n_skipped += 1; return &null; }
+
+        var existing = self.reg->find(usr);
+        if existing != &null {
+            // Second declaration of a known entity: only the NAME binding
+            // in THIS header's table is new.
+            self._bind_named(t, nd, existing);
+            return existing;
+        }
+
+        var kd = self._mint(t, nd);
+        if kd == &null { self.n_skipped += 1; return &null; }
+        var won = self.reg->put(usr, kd);
+        if won != kd { self._bind_named(t, nd, won); return won; }
+
+        self._stamp(kd, d, nd, usr, t);
+        self._bind_named(t, nd, kd);
+        self.n_declared += 1;
+        return kd;
+    }
+
+    priv fn _anon_with_typedef(self, nd: const_obs::<clang::NamedDecl>) -> bool {
+        var tag = llvm::dyn_cast::<clang::TagDecl>(nd);
+        if tag == &null { return false; }
+        return tag->getTypedefNameForAnonDecl() != &null;
+    }
+
+    priv fn _display_name(self, nd: const_obs::<clang::NamedDecl>) -> string {
+        var tag = llvm::dyn_cast::<clang::TagDecl>(nd);
+        if (tag != &null) && (tag->getTypedefNameForAnonDecl() != &null) {
+            return self._str(tag->getTypedefNameForAnonDecl()->getName());
+        }
+        return std::nstring_to_string(nd->getNameAsString());
+    }
+
+    /// The empty Kairo node of the right kind, parented, no slots filled.
+    priv fn _mint(self, t: *HeaderTarget, nd: *clang::NamedDecl) -> *Decl {
+        var parent = self.scope_for(t, nd->getDeclContext());
+        var at     = self.range_of(nd);
+        var name   = self.ident(t, self._display_name(nd), self.name_range_of(nd));
+        var out: *Decl = &null;
+
+        switch nd->getKind() {
+            case clang::Decl::Namespace {
+                return static_cast::<*Decl>(self.namespace_for(t, llvm::cast::<clang::NamespaceDecl>(nd)));
+            }
+            case clang::Decl::CXXRecord { out = self._mint_record(t, llvm::cast::<clang::CXXRecordDecl>(nd), at, name, parent); }
+            case clang::Decl::Record    { out = self._mint_record(t, llvm::cast::<clang::RecordDecl>(nd),    at, name, parent); }
+            case clang::Decl::ClassTemplate {
+                var ct = llvm::cast::<clang::ClassTemplateDecl>(nd);
+                out = self._mint_record(t, ct->getTemplatedDecl(), at, name, parent);
+                // The template decl and its templated record are one entity to us.
+                self.reg->put(TypeImport::usr_of(ct->getTemplatedDecl()->getCanonicalDecl()), out);
+            }
+            case clang::Decl::ClassTemplateSpecialization {
+                var sp = llvm::cast::<clang::ClassTemplateSpecializationDecl>(nd);
+                if !sp->isExplicitSpecialization() { return &null; }       // implicit: the registry's.
+                out = self._mint_record(t, sp, at, name, parent);
+            }
+            case clang::Decl::ClassTemplatePartialSpecialization {
+                out = self._mint_record(t, llvm::cast::<clang::CXXRecordDecl>(nd), at, name, parent);
+            }
+            case clang::Decl::Enum {
+                var e = EnumDecl::create(t->ctx, at, name, parent);
+                out = static_cast::<*Decl>(e);
+            }
+            case clang::Decl::Function     { out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent)); }
+            case clang::Decl::CXXMethod    { out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent)); }
+            case clang::Decl::CXXConstructor { out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent)); }
+            case clang::Decl::CXXDestructor  { out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent)); }
+            case clang::Decl::CXXConversion  { out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent)); }
+            case clang::Decl::FunctionTemplate {
+                var ft = llvm::cast::<clang::FunctionTemplateDecl>(nd);
+                out = static_cast::<*Decl>(FunctionDecl::create(t->ctx, at, name, parent));
+                self.reg->put(TypeImport::usr_of(ft->getTemplatedDecl()->getCanonicalDecl()), out);
+            }
+            case clang::Decl::Typedef   { out = static_cast::<*Decl>(TypeAliasDecl::create(t->ctx, at, name, &null)); }
+            case clang::Decl::TypeAlias { out = static_cast::<*Decl>(TypeAliasDecl::create(t->ctx, at, name, &null)); }
+            case clang::Decl::TypeAliasTemplate {
+                var at_ = llvm::cast::<clang::TypeAliasTemplateDecl>(nd);
+                out = static_cast::<*Decl>(TypeAliasDecl::create(t->ctx, at, name, &null));
+                self.reg->put(TypeImport::usr_of(at_->getTemplatedDecl()->getCanonicalDecl()), out);
+            }
+            case clang::Decl::Var {
+                var v = llvm::cast::<clang::VarDecl>(nd);
+                var sc = StorageClass::Var;
+                if v->isConstexpr() || v->getType().isConstQualified() { sc = StorageClass::Const; }
+                if v->isStaticDataMember() || v->getStorageClass() == clang::SC_Static { sc = StorageClass::Static; }
+                out = static_cast::<*Decl>(VariableDecl::create(t->ctx, at, name, sc));
+            }
+            case clang::Decl::Field {
+                var f = llvm::cast::<clang::FieldDecl>(nd);
+                out = static_cast::<*Decl>(FieldDecl::create(t->ctx, at, name, StorageClass::Var, &null, f->getFieldIndex()));
+            }
+            case clang::Decl::EnumConstant {
+                var ec = llvm::cast::<clang::EnumConstantDecl>(nd);
+                var parent_enum = llvm::dyn_cast::<clang::EnumDecl>(ec->getDeclContext());
+                var idx: u32 = 0;
+                if parent_enum != &null {
+                    for e in parent_enum->enumerators() { if e == ec { break; } idx += 1; }
+                }
+                out = static_cast::<*Decl>(EnumVariantDecl::create(t->ctx, at, name, idx));
+            }
+            case clang::Decl::Concept {
+                var i = InterfaceDecl::create(t->ctx, at, name, parent);
+                i->is_cxx_concept = true;
+                out = static_cast::<*Decl>(i);
+            }
+            default { return &null; }   // using, friend, static_assert, deduction guide, ...
+        }
+        if out == &null { return &null; }
+        out->lexical_dc  = reinterpret_cast::<*void>(parent);
+        out->semantic_dc = reinterpret_cast::<*void>(parent);
+        out->set_visibility(self._vis(nd), at);
+        parent->add_decl(out);
+        return out;
+    }
+
+    priv fn _mint_record(self, t: *HeaderTarget, rd: *clang::RecordDecl, at: SourceRange,
+                         name: Token, parent: *DeclContext) -> *Decl {
+        if rd->isUnion() {
+            var u = UnionDecl::create(t->ctx, at, name, parent);
+            u->ffi_is_union = true;
+            if rd->isCompleteDefinition() { u->mark_definition(); }
+            return static_cast::<*Decl>(u);
+        }
+        // C++ `struct` and `class` are one thing to clang and two to Kairo;
+        // a Kairo `struct` admits no named methods, so everything with a
+        // method or a base is a ClassDecl. Plain aggregates stay structs.
+        var cxx = llvm::dyn_cast::<clang::CXXRecordDecl>(rd);
+        var is_class = (cxx != &null) && cxx->hasDefinition()
+                    && ((cxx->getNumBases() > 0) || cxx->isPolymorphic() || self._has_named_methods(cxx));
+        if is_class || rd->isClass() {
+            var c = ClassDecl::create(t->ctx, at, name, parent);
+            if rd->isCompleteDefinition() { c->mark_definition(); }
+            if cxx != &null {
+                c->is_final    = cxx->hasAttr::<clang::FinalAttr>();
+                c->is_abstract = cxx->hasDefinition() && cxx->isAbstract();
+            }
+            return static_cast::<*Decl>(c);
+        }
+        var s = StructDecl::create(t->ctx, at, name, parent);
+        if rd->isCompleteDefinition() { s->mark_definition(); }
+        return static_cast::<*Decl>(s);
+    }
+
+    priv fn _has_named_methods(self, cxx: const_obs::<clang::CXXRecordDecl>) -> bool {
+        for m in cxx->methods() {
+            if m->isImplicit() { continue; }
+            if llvm::isa::<clang::CXXConstructorDecl>(m) || llvm::isa::<clang::CXXDestructorDecl>(m) { continue; }
+            if m->isOverloadedOperator() { continue; }
+            return true;
+        }
+        return false;
+    }
+
+    priv fn _vis(self, nd: const_obs::<clang::NamedDecl>) -> VisibilityKind {
+        switch nd->getAccess() {
+            case clang::AS_private   { return VisibilityKind::Private; }
+            case clang::AS_protected { return VisibilityKind::Protected; }
+            default                  { return VisibilityKind::Public; }
+        }
+    }
+
+    /// The FFILinkage stamp. Every imported kind derives it except
+    /// EnumDecl / InterfaceDecl / EnumVariant / Field / Module; those carry
+    /// no per-decl foreign facts sema needs.
+    priv fn _stamp(self, kd: *Decl, d: *clang::Decl, nd: *clang::NamedDecl, usr: libcxx::string, t: *HeaderTarget) {
+        var sp   = self._qual(nd);
+        var us   = std::nstring_to_string(usr);
+        var vset = reinterpret_cast::<*void>(self._set);
+        var vd   = reinterpret_cast::<*void>(d);
+        if isa::<FunctionDecl>(kd)  { cast::<FunctionDecl>(kd)->set_imported(vd, us, sp, vset, t->fid);  return; }
+        if isa::<ClassDecl>(kd)     { cast::<ClassDecl>(kd)->set_imported(vd, us, sp, vset, t->fid);     return; }
+        if isa::<StructDecl>(kd)    { cast::<StructDecl>(kd)->set_imported(vd, us, sp, vset, t->fid);    return; }
+        if isa::<UnionDecl>(kd)     { cast::<UnionDecl>(kd)->set_imported(vd, us, sp, vset, t->fid);     return; }
+        if isa::<TypeAliasDecl>(kd) { cast::<TypeAliasDecl>(kd)->set_imported(vd, us, sp, vset, t->fid); return; }
+        if isa::<VariableDecl>(kd)  { cast::<VariableDecl>(kd)->set_imported(vd, us, sp, vset, t->fid);  return; }
+    }
+
+    /// The name binding: ident key, or ctor / operator key for functions.
+    priv fn _bind_named(self, t: *HeaderTarget, nd: const_obs::<clang::NamedDecl>, kd: *Decl) {
+        var dc = self.scope_for(t, nd->getDeclContext());
+        var fn_ = llvm::dyn_cast::<clang::FunctionDecl>(nd);
+        if fn_ != &null {
+            if llvm::isa::<clang::CXXConstructorDecl>(fn_) { self.bind(t, dc, DeclName::ctor(), kd); return; }
+            if llvm::isa::<clang::CXXDestructorDecl>(fn_) {
+                self.bind(t, dc, DeclName::op_name(TokenKind::KwDelete, TokenKind::TkUnknown), kd);
+                return;
+            }
+            if fn_->isOverloadedOperator() {
+                var k0 = TokenKind::TkUnknown;
+                var k1 = TokenKind::TkUnknown;
+                if self._op_kinds(fn_->getOverloadedOperator(), &k0, &k1) {
+                    self.bind(t, dc, DeclName::op_name(k0, k1), kd);
+                }
+                return;
+            }
+            if llvm::isa::<clang::CXXConversionDecl>(fn_) {
+                self.bind(t, dc, DeclName::op_name(TokenKind::KwAs, TokenKind::TkUnknown), kd);
+                return;
+            }
+        }
+        var imm = t->ctx->get_imm_table()->intern_ident_copy(self._display_name(nd));
+        self.bind(t, dc, DeclName::ident(imm), kd);
+        // An UNSCOPED enumerator is also visible in the enum's enclosing scope.
+        var ec = llvm::dyn_cast::<clang::EnumConstantDecl>(nd);
+        if ec != &null {
+            var ed = llvm::dyn_cast::<clang::EnumDecl>(ec->getDeclContext());
+            if (ed != &null) && (!ed->isScoped()) {
+                self.bind(t, self.scope_for(t, ed->getDeclContext()), DeclName::ident(imm), kd);
+            }
+        }
+    }
+
+    /// C++ overloaded operator -> the Kairo `fn op` token pair. False for an
+    /// operator Kairo has no spelling for; the Kairo decl still exists for
+    /// EmitIR, it just is not findable by name.
+    ///
+    /// NOT here on purpose: OO_New / OO_Delete / OO_Array_New / OO_Array_Delete.
+    /// Kairo's `op delete` is the DESTRUCTOR (cleanup of a possibly stack
+    /// object, C++ `~T()`), not deallocation; C++ `operator delete` is
+    /// allocation-side and has no Kairo counterpart. See _bind_named for the
+    /// destructor mapping.
+    priv fn _op_kinds(self, oo: clang::OverloadedOperatorKind, k0: *TokenKind, k1: *TokenKind) -> bool {
+        (*k1) = TokenKind::TkUnknown;
+        switch oo {
+            case clang::OO_Plus                { (*k0) = TokenKind::OpPlus; }
+            case clang::OO_Minus               { (*k0) = TokenKind::OpMinus; }
+            case clang::OO_Star                { (*k0) = TokenKind::OpStar; }
+            case clang::OO_Slash               { (*k0) = TokenKind::OpSlash; }
+            case clang::OO_Percent             { (*k0) = TokenKind::OpPercent; }
+            case clang::OO_Caret               { (*k0) = TokenKind::OpCaret; }
+            case clang::OO_Amp                 { (*k0) = TokenKind::OpAmp; }
+            case clang::OO_Pipe                { (*k0) = TokenKind::OpPipe; }
+            case clang::OO_Tilde               { (*k0) = TokenKind::OpTilde; }
+            case clang::OO_Exclaim             { (*k0) = TokenKind::OpExclaim; }
+            case clang::OO_Equal               { (*k0) = TokenKind::OpEqual; }
+            case clang::OO_Less                { (*k0) = TokenKind::OpLess; }
+            case clang::OO_Greater             { (*k0) = TokenKind::OpGreater; }
+            case clang::OO_PlusEqual           { (*k0) = TokenKind::OpPlusEqual; }
+            case clang::OO_MinusEqual          { (*k0) = TokenKind::OpMinusEqual; }
+            case clang::OO_StarEqual           { (*k0) = TokenKind::OpStarEqual; }
+            case clang::OO_SlashEqual          { (*k0) = TokenKind::OpSlashEqual; }
+            case clang::OO_PercentEqual        { (*k0) = TokenKind::OpPercentEqual; }
+            case clang::OO_CaretEqual          { (*k0) = TokenKind::OpCaretEqual; }
+            case clang::OO_AmpEqual            { (*k0) = TokenKind::OpAmpEqual; }
+            case clang::OO_PipeEqual           { (*k0) = TokenKind::OpPipeEqual; }
+            case clang::OO_LessLess            { (*k0) = TokenKind::OpLessLess; }
+            case clang::OO_GreaterGreater      { (*k0) = TokenKind::OpGreaterGreater; }
+            case clang::OO_LessLessEqual       { (*k0) = TokenKind::OpLessLessEqual; }
+            case clang::OO_GreaterGreaterEqual { (*k0) = TokenKind::OpGreaterGreaterEqual; }
+            case clang::OO_EqualEqual          { (*k0) = TokenKind::OpEqualEqual; }
+            case clang::OO_ExclaimEqual        { (*k0) = TokenKind::OpExclaimEqual; }
+            case clang::OO_LessEqual           { (*k0) = TokenKind::OpLessEqual; }
+            case clang::OO_GreaterEqual        { (*k0) = TokenKind::OpGreaterEqual; }
+            case clang::OO_Spaceship           { (*k0) = TokenKind::OpLessEqualGreater; }
+            case clang::OO_AmpAmp              { (*k0) = TokenKind::OpAmpAmp; }
+            case clang::OO_PipePipe            { (*k0) = TokenKind::OpPipePipe; }
+            case clang::OO_PlusPlus            { (*k0) = TokenKind::OpPlusPlus; }
+            case clang::OO_MinusMinus          { (*k0) = TokenKind::OpMinusMinus; }
+            case clang::OO_Comma               { (*k0) = TokenKind::OpComma; }
+            case clang::OO_Arrow               { (*k0) = TokenKind::OpArrow; }
+            case clang::OO_ArrowStar           { (*k0) = TokenKind::OpArrowStar; }
+            case clang::OO_Call                { (*k0) = TokenKind::OpLParen;  (*k1) = TokenKind::OpRParen; }
+            case clang::OO_Subscript           { (*k0) = TokenKind::OpLSquare; (*k1) = TokenKind::OpRSquare; }
+            default { return false; }   // new/delete family, co_await, conditional.
+        }
+        return true;
+    }
+
+    // === pass 2: define ==========================================================
+
+    /// Fill the slots. Idempotent: a second set reaching the same decl sees
+    /// the registry hit in declare() and never calls this.
+    fn define(self, d: *clang::Decl, kd: *Decl, ti: *TypeImport) {
+        if (d == &null) || (kd == &null) { return; }
+        var t = self.target_of(d);
+        if (t == &null) || t->frozen { return; }
+        self.n_defined += 1;
+
+        switch d->getKind() {
+            case clang::Decl::CXXRecord                          { self._define_record(t, llvm::cast::<clang::CXXRecordDecl>(d), kd, ti); }
+            case clang::Decl::Record                             { self._define_record_c(t, llvm::cast::<clang::RecordDecl>(d), kd, ti); }
+            case clang::Decl::ClassTemplate                      { self._define_class_template(t, llvm::cast::<clang::ClassTemplateDecl>(d), kd, ti); }
+            case clang::Decl::ClassTemplateSpecialization        { self._define_spec(t, llvm::cast::<clang::ClassTemplateSpecializationDecl>(d), kd, ti, false); }
+            case clang::Decl::ClassTemplatePartialSpecialization { self._define_spec(t, llvm::cast::<clang::ClassTemplateSpecializationDecl>(d), kd, ti, true); }
+            case clang::Decl::Enum                               { self._define_enum(t, llvm::cast::<clang::EnumDecl>(d), kd, ti); }
+            case clang::Decl::Function                           { self._define_function(t, llvm::cast::<clang::FunctionDecl>(d), kd, ti, &null); }
+            case clang::Decl::CXXMethod                          { self._define_function(t, llvm::cast::<clang::FunctionDecl>(d), kd, ti, &null); }
+            case clang::Decl::CXXConstructor                     { self._define_function(t, llvm::cast::<clang::FunctionDecl>(d), kd, ti, &null); }
+            case clang::Decl::CXXDestructor                      { self._define_function(t, llvm::cast::<clang::FunctionDecl>(d), kd, ti, &null); }
+            case clang::Decl::CXXConversion                      { self._define_function(t, llvm::cast::<clang::FunctionDecl>(d), kd, ti, &null); }
+            case clang::Decl::FunctionTemplate {
+                var ft = llvm::cast::<clang::FunctionTemplateDecl>(d);
+                self._define_function(t, ft->getTemplatedDecl(), kd, ti, ft->getTemplateParameters());
+            }
+            case clang::Decl::Typedef   { cast::<TypeAliasDecl>(kd)->aliased = ti->_import(llvm::cast::<clang::TypedefNameDecl>(d)->getUnderlyingType()); }
+            case clang::Decl::TypeAlias { cast::<TypeAliasDecl>(kd)->aliased = ti->_import(llvm::cast::<clang::TypedefNameDecl>(d)->getUnderlyingType()); }
+            case clang::Decl::TypeAliasTemplate {
+                var at_ = llvm::cast::<clang::TypeAliasTemplateDecl>(d);
+                var td  = cast::<TypeAliasDecl>(kd);
+                self._generic_params(t, static_cast::<*Decl>(td), at_->getTemplateParameters(), ti, &(td->generic_params));
+                td->aliased = ti->_import(at_->getTemplatedDecl()->getUnderlyingType());
+            }
+            case clang::Decl::Var {
+                var v = llvm::cast::<clang::VarDecl>(d);
+                var kv = cast::<VariableDecl>(kd);
+                kv->type_ = ti->_import(v->getType());
+                kv->is_thread = v->getTLSKind() != clang::VarDecl::TLS_None;
+            }
+            case clang::Decl::Field {
+                var f = llvm::cast::<clang::FieldDecl>(d);
+                cast::<FieldDecl>(kd)->type_ = ti->_import(f->getType());
+                cast::<FieldDecl>(kd)->is_mutable = f->isMutable();
+            }
+            case clang::Decl::EnumConstant { 0; }        // value: EmitIR spells the enumerator by name.
+            case clang::Decl::Concept      { 0; }        // constraint-only bound; no surface to import.
+            default { 0; }
+        }
+    }
+
+    // --- records ----------------------------------------------------------------
+
+    priv fn _define_record_c(self, t: *HeaderTarget, rd: *clang::RecordDecl, kd: *Decl, ti: *TypeImport) {
+        var def = rd->getDefinition();
+        if def == &null { return; }
+        var fields = vec::<*FieldDecl>();
+        self._collect_fields(t, def, fields, ti);
+        if isa::<StructDecl>(kd)     { cast::<StructDecl>(kd)->fields.from_vec(&fields, t->ctx); }
+        else if isa::<UnionDecl>(kd) { cast::<UnionDecl>(kd)->fields.from_vec(&fields, t->ctx); }
+        else if isa::<ClassDecl>(kd) { cast::<ClassDecl>(kd)->fields.from_vec(&fields, t->ctx); }
+        self._layout(def, kd);
+    }
+
+    priv fn _define_record(self, t: *HeaderTarget, rd: *clang::CXXRecordDecl, kd: *Decl, ti: *TypeImport) {
+        var def = rd->getDefinition();
+        if def == &null { return; }
+
+        var fields  = vec::<*FieldDecl>();
+        var methods = vec::<*FunctionDecl>();
+        self._collect_fields(t, def, fields, ti);
+        for m in def->methods() {
+            if m->isImplicit() && (!m->isUserProvided()) { continue; }
+            var km = self.reg->find(TypeImport::usr_of(m->getCanonicalDecl()));
+            if km == &null { continue; }
+            methods.push_back(cast::<FunctionDecl>(km));
+        }
+        var bases = vec::<InheritEdge>();
+        for b in def->bases() {
+            var e = InheritEdge{};
+            e.base       = ti->_import(b.getType());
+            e.is_virtual = b.isVirtual();
+            e.visibility = static_cast::<u8>(self._vis_of_access(b.getAccessSpecifier()));
+            e.range      = self.range_of(def);
+            bases.push_back(e);
+        }
+
+        if isa::<ClassDecl>(kd) {
+            var c = cast::<ClassDecl>(kd);
+            c->fields.from_vec(&fields, t->ctx);
+            c->methods.from_vec(&methods, t->ctx);
+            c->derives_list.from_vec(&bases, t->ctx);
+            c->ffi_is_final = def->hasAttr::<clang::FinalAttr>();
+        } else if isa::<StructDecl>(kd) {
+            var s = cast::<StructDecl>(kd);
+            s->fields.from_vec(&fields, t->ctx);
+            s->methods.from_vec(&methods, t->ctx);
+        } else if isa::<UnionDecl>(kd) {
+            var u = cast::<UnionDecl>(kd);
+            u->fields.from_vec(&fields, t->ctx);
+            u->methods.from_vec(&methods, t->ctx);
+        }
+        self._layout(def, kd);
+    }
+
+    priv fn _collect_fields(self, t: *HeaderTarget, def: *clang::RecordDecl, out: ref!(vec::<*FieldDecl>), ti: *TypeImport) {
+        for f in def->fields() {
+            if f->isAnonymousStructOrUnion() {
+                // Its members were declared into THIS record's scope
+                // (scope_for sees through the transparent context).
+                var inner = f->getType()->getAsRecordDecl();
+                if inner != &null { self._collect_fields(t, inner, out, ti); }
+                continue;
+            }
+            var kf = self.reg->find(TypeImport::usr_of(f->getCanonicalDecl()));
+            if kf == &null { continue; }
+            out.push_back(cast::<FieldDecl>(kf));
+        }
+    }
+
+    priv fn _vis_of_access(self, a: clang::AccessSpecifier) -> VisibilityKind {
+        if a == clang::AS_private   { return VisibilityKind::Private; }
+        if a == clang::AS_protected { return VisibilityKind::Protected; }
+        return VisibilityKind::Public;
+    }
+
+    /// clang's layout onto the mixin. Only for a complete, non-dependent
+    /// definition; a template pattern has no layout and `known` stays false.
+    priv fn _layout(self, def: *clang::RecordDecl, kd: *Decl) {
+        if def->isDependentType() || def->isInvalidDecl() { return; }
+        if !def->isCompleteDefinition() { return; }
+        var lay = ForeignLayout{};
+        var rl  = &(self.cctx->getASTRecordLayout(def));
+        lay.known       = true;
+        lay.size_bytes  = static_cast::<u64>(rl->getSize().getQuantity());
+        lay.align_bytes = static_cast::<u64>(rl->getAlignment().getQuantity());
+        var i: u32 = 0;
+        for f in def->fields() { lay.field_offsets.push_back(rl->getFieldOffset(i)); i += 1; }
+        var cxx = llvm::dyn_cast::<clang::CXXRecordDecl>(def);
+        if cxx != &null {
+            lay.has_vfptr            = rl->hasOwnVFPtr();
+            lay.polymorphic          = cxx->isPolymorphic();
+            lay.abstract_            = cxx->isAbstract();
+            lay.trivially_copyable   = cxx->isTriviallyCopyable();
+            lay.trivial_dtor         = cxx->hasTrivialDestructor();
+            lay.trivial_default_ctor = cxx->hasTrivialDefaultConstructor();
+        } else {
+            lay.trivially_copyable = true; lay.trivial_dtor = true; lay.trivial_default_ctor = true;
+        }
+        if isa::<ClassDecl>(kd)       { cast::<ClassDecl>(kd)->layout  = lay; }
+        else if isa::<StructDecl>(kd) { cast::<StructDecl>(kd)->layout = lay; }
+        else if isa::<UnionDecl>(kd)  { cast::<UnionDecl>(kd)->layout  = lay; }
+    }
+
+    // --- templates ----------------------------------------------------------------
+
+    priv fn _define_class_template(self, t: *HeaderTarget, ct: *clang::ClassTemplateDecl, kd: *Decl, ti: *TypeImport) {
+        var gps: *FrozenList::<*GenericParamDecl> = &null;
+        if isa::<ClassDecl>(kd)       { gps = &(cast::<ClassDecl>(kd)->generic_params); }
+        else if isa::<StructDecl>(kd) { gps = &(cast::<StructDecl>(kd)->generic_params); }
+        else if isa::<UnionDecl>(kd)  { gps = &(cast::<UnionDecl>(kd)->generic_params); }
+        if gps == &null { return; }
+        self._generic_params(t, kd, ct->getTemplateParameters(), ti, gps);
+        self._define_record(t, ct->getTemplatedDecl(), kd, ti);
+    }
+
+    /// Explicit (full) and partial specializations register against the
+    /// primary exactly as T registers a Kairo `class <> Box<i32>`.
+    priv fn _define_spec(self, t: *HeaderTarget, sp: *clang::ClassTemplateSpecializationDecl,
+                         kd: *Decl, ti: *TypeImport, partial: bool) {
+        var prim = self.reg->find(TypeImport::usr_of(sp->getSpecializedTemplate()->getCanonicalDecl()));
+        if prim == &null { return; }
+        var rep  = NameLookup::representative(prim);
+        var args = vec::<*Type>();
+        var ok   = true;
+        var list = sp->getTemplateArgs().asArray();
+        for var i: usize = 0; i < list.size(); ++i {
+            if list[i].getKind() != clang::TemplateArgument::Type { ok = false; break; }
+            args.push_back(ti->_import(list[i].getAsType()));
+        }
+        if !ok { return; }                 // non-type args: no registry shape.
+        self._set_spec(kd, (SpecKind::Partial) if (partial) else (SpecKind::Explicit), rep, args, t->ctx);
+        if partial {
+            var ps = llvm::cast::<clang::ClassTemplatePartialSpecializationDecl>(sp);
+            var gps = self._gps_of(kd);
+            if gps != &null { self._generic_params(t, kd, ps->getTemplateParameters(), ti, gps); }
+            self.instances->register_partial(rep, kd);
+        } else {
+            self.instances->register_explicit(rep, &args, kd, t->fid);
+        }
+        self._define_record(t, sp, kd, ti);
+    }
+
+    priv fn _gps_of(self, kd: *Decl) -> *FrozenList::<*GenericParamDecl> {
+        if isa::<ClassDecl>(kd)  { return &(cast::<ClassDecl>(kd)->generic_params); }
+        if isa::<StructDecl>(kd) { return &(cast::<StructDecl>(kd)->generic_params); }
+        if isa::<UnionDecl>(kd)  { return &(cast::<UnionDecl>(kd)->generic_params); }
+        return &null;
+    }
+
+    priv fn _set_spec(self, kd: *Decl, k: SpecKind, prim: *Decl, args: ref!(vec::<*Type>), ctx: *ASTContext) {
+        if isa::<ClassDecl>(kd) {
+            var c = cast::<ClassDecl>(kd);
+            c->spec_kind = k; c->instantiated_from = prim; c->spec_args.from_vec(&args, ctx);
+        } else if isa::<StructDecl>(kd) {
+            var s = cast::<StructDecl>(kd);
+            s->spec_kind = k; s->instantiated_from = prim; s->spec_args.from_vec(&args, ctx);
+        } else if isa::<UnionDecl>(kd) {
+            var u = cast::<UnionDecl>(kd);
+            u->spec_kind = k; u->instantiated_from = prim; u->spec_args.from_vec(&args, ctx);
+        }
+    }
+
+    /// TemplateParameterList -> GenericParamDecls, owner stamped so
+    /// `generic_param(owner, index)` in TypeImport and ChainBinding's
+    /// `_param_of` agree (the same contract T's _push_frame keeps).
+    priv fn _generic_params(self, t: *HeaderTarget, owner: *Decl, tpl: const_obs::<clang::TemplateParameterList>,
+                            ti: *TypeImport, out: *FrozenList::<*GenericParamDecl>) {
+        var gps = vec::<*GenericParamDecl>();
+        for var i: u32 = 0; i < tpl->size(); ++i {
+            var p  = tpl->getParam(i);
+            var nm = self._str(p->getName());
+            if nm.size() == 0 { nm = f"__P{i}"; }
+            var gp = GenericParamDecl::create(t->ctx, self.range_of(p), self.ident(t, nm, self.range_of(p)), i);
+            gp->owner = NameLookup::representative(owner);
+            gp->kind_bound = GenericParamKindBound::Any;      // opaque: the Rust rule. A concept bound would go in requires.
+            var tt = llvm::dyn_cast::<clang::TemplateTypeParmDecl>(p);
+            if tt != &null {
+                gp->is_pack = tt->isParameterPack();
+                if tt->hasDefaultArgument() {
+                    gp->default_type = ti->_import(tt->getDefaultArgument().getArgument().getAsType());
+                }
+            }
+            var nt = llvm::dyn_cast::<clang::NonTypeTemplateParmDecl>(p);
+            if nt != &null {
+                gp->is_const_param = true;
+                gp->is_pack        = nt->isParameterPack();
+                gp->value_type     = ti->_import(nt->getType());
+            }
+            // Template template params: recorded as an opaque type param.
+            gp->impl_bounds.from_raw(static_cast::<*InheritEdge>(&null), 0);
+            gp->derives_bounds.from_raw(static_cast::<*InheritEdge>(&null), 0);
+            gps.push_back(gp);
+        }
+        out->from_vec(&gps, t->ctx);
+    }
+
+    // --- enums -----------------------------------------------------------------------
+
+    priv fn _define_enum(self, t: *HeaderTarget, ed: *clang::EnumDecl, kd: *Decl, ti: *TypeImport) {
+        var def = ed->getDefinition();
+        var ke  = cast::<EnumDecl>(kd);
+        ke->ffi_scoped_enum = ed->isScoped();
+        if def == &null { return; }
+        ke->mark_definition();
+        ke->underlying = ti->_import(def->getIntegerType());
+        var vs = vec::<*EnumVariantDecl>();
+        for ec in def->enumerators() {
+            var kv = self.reg->find(TypeImport::usr_of(ec->getCanonicalDecl()));
+            if kv == &null { continue; }
+            vs.push_back(cast::<EnumVariantDecl>(kv));
+        }
+        ke->variants.from_vec(&vs, t->ctx);
+        ke->is_adt = false;
+    }
+
+    // --- functions ----------------------------------------------------------------
+
+    priv fn _define_function(self, t: *HeaderTarget, fd: *clang::FunctionDecl, kd: *Decl,
+                             ti: *TypeImport, tpl: const_obs::<clang::TemplateParameterList>) {
+        var kf = cast::<FunctionDecl>(kd);
+        if tpl != &null { self._generic_params(t, kd, tpl, ti, &(kf->generic_params)); }
+
+        var params = vec::<*ParamDecl>();
+        var idx: u32 = 0;
+
+        // Receiver. A non-static method gets Kairo's `self`, typed as the
+        // record (what T's _synthesize_receiver would write). Statics have
+        // no receiver and are found through `Type::m`.
+        var m = llvm::dyn_cast::<clang::CXXMethodDecl>(fd);
+        var is_ctor = llvm::isa::<clang::CXXConstructorDecl>(fd);
+        var is_dtor = llvm::isa::<clang::CXXDestructorDecl>(fd);
+        if (m != &null) && (!m->isStatic()) {
+            var at = self.name_range_of(fd);
+            var self_tok = t->ctx->make_token(at, TokenKind::KwSelf, "self");
+            var sp = ParamDecl::create_self(t->ctx, at, self_tok);
+            sp->type_    = ti->_import(m->getThisType()->getPointeeType());
+            sp->is_const = m->isConst();
+            sp->index    = 0;
+            params.push_back(sp);
+            idx = 1;
+            kf->ffi_ref_qualifier = (1) if (m->getRefQualifier() == clang::RQ_LValue)
+                                  else (2) if (m->getRefQualifier() == clang::RQ_RValue) else (0);
+            kf->ffi_virtual      = m->isVirtual();
+            kf->ffi_pure_virtual = m->isPureVirtual();
+            if m->isVirtual() { kf->abi = AbiKind::Virtual; }
+            if m->size_overridden_methods() > 0 { kf->abi = AbiKind::Override; }
+        } else if m != &null {
+            kf->ffi_static_member = true;
+            kf->abi = AbiKind::Static;
+        }
+
+        for p in fd->parameters() {
+            var pat  = self.range_of(p);
+            var pnm  = self._str(p->getName());
+            var unnamed = pnm.size() == 0;
+            if unnamed { pnm = f"__arg{idx}"; }
+            var kp = ParamDecl::create(t->ctx, pat, self.ident(t, pnm, pat), ti->_import(p->getType()), idx, unnamed);
+            kp->has_default = p->hasDefaultArg();           // spec: new field; OverloadResolution reads it.
+            kf->cxx_param_spellings.push_back(ti->spelling(p->getType()));
+            params.push_back(kp);
+            idx += 1;
+        }
+        kf->params.from_vec(&params, t->ctx);
+        kf->is_variadic    = false;                      // Kairo packs are generic; C `...` is its own flag:
+        kf->ffi_c_variadic = fd->isVariadic();
+
+        var rt = fd->getReturnType();
+        kf->cxx_return_spelling = ti->spelling(rt);
+        if rt->isVoidType() || is_ctor || is_dtor { kf->return_type = &null; }
+        else { kf->return_type = ti->_import(rt); }
+        if fd->isNoReturn() { kf->is_noreturn = true; }
+
+        if fd->isOverloadedOperator() {
+            kf->is_operator = true;
+            var k0 = TokenKind::TkUnknown;
+            var k1 = TokenKind::TkUnknown;
+            if self._op_kinds(fd->getOverloadedOperator(), &k0, &k1) {
+                var toks = vec::<Token>();
+                var at = self.name_range_of(fd);
+                toks.push_back(t->ctx->make_token(at, k0, std::nstring_to_string(libcxx::string(clang::getOperatorSpelling(fd->getOverloadedOperator())))));
+                if k1 != TokenKind::TkUnknown { toks.push_back(t->ctx->make_token(at, k1, "")); }
+                kf->op_token.from_vec(&toks, t->ctx);
+            }
+        }
+        if llvm::isa::<clang::CXXConversionDecl>(fd) {
+            kf->is_operator = true;
+            kf->ffi_conversion_op = true;
+            var toks = vec::<Token>();
+            toks.push_back(t->ctx->make_token(self.name_range_of(fd), TokenKind::KwAs, "as"));
+            kf->op_token.from_vec(&toks, t->ctx);
+        }
+
+        if is_dtor {
+            kf->is_operator = true;
+            var toks = vec::<Token>();
+            toks.push_back(t->ctx->make_token(self.name_range_of(fd), TokenKind::KwDelete, "delete"));
+            kf->op_token.from_vec(&toks, t->ctx);
+        }
+
+        var mods = FnModifier::None;
+        if (m != &null) && m->isConst() { mods = mods | FnModifier::IsConst; }
+        if fd->isConstexpr()            { kf->ffi_constexpr = true; }
+        if fd->isInlined()              { mods = mods | FnModifier::IsInline; }
+        kf->modifiers = mods;
+
+        kf->body_kind = FnBodyKind::None;
+        if fd->isDeleted()                  { kf->body_kind = FnBodyKind::Delete; kf->ffi_deleted = true; }
+        else if fd->isDefaulted()           { kf->body_kind = FnBodyKind::Default; }
+        else if (m != &null) && m->isPureVirtual() { kf->body_kind = FnBodyKind::Virtual; }
+        kf->ffi_noexcept = fd->getExceptionSpecType() == clang::EST_BasicNoexcept
+                        || fd->getExceptionSpecType() == clang::EST_NoexceptTrue;
+        if is_ctor {
+            var c = llvm::cast::<clang::CXXConstructorDecl>(fd);
+            kf->ffi_explicit = c->isExplicit();
+            if c->isCopyConstructor() { kf->transfer = TransferKind::Copy; }
+            if c->isMoveConstructor() { kf->transfer = TransferKind::Move; }
+        }
+        if llvm::isa::<clang::CXXConversionDecl>(fd) {
+            kf->ffi_explicit = llvm::cast::<clang::CXXConversionDecl>(fd)->isExplicit();
+        }
+    }
+}

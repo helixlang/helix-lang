@@ -149,21 +149,21 @@ class ConstraintExtraction {
     priv fn _extract(self, owner: *Decl, req: *Expr, is_alias: bool) {
         if req == &null { return; }
 
-        var set = ConstraintSet(owner);
-        self._collect(req, &set, is_alias);
+        var _set = ConstraintSet(owner);
+        self._collect(req, &_set, is_alias);
 
-        if !set.is_empty() {
-            self.sets.push_back(set);
+        if !_set.is_empty() {
+            self.sets.push_back(_set);
             // THE bound table. Keyed by the owner decl so a body resolving
             // `x.draw()` on an `x: T` can ask what T's declaration promised
             // without re-walking anyone's requires clause.
-            self.sc->bounds[reinterpret_cast::<u64>(owner)] = set;
+            self.sc->bounds[reinterpret_cast::<u64>(owner)] = _set;
         }
     }
 
     /// Flatten the right-nested `&&` conjunction, sorting each leaf. Any binary
     /// `&&` is split; anything else is a leaf conjunct classified by kind.
-    priv fn _collect(self, e: *Expr, set: *ConstraintSet, is_alias: bool) {
+    priv fn _collect(self, e: *Expr, _set: *ConstraintSet, is_alias: bool) {
         if e == &null { return; }
 
         // split `a && b` (and `and`) into its operands
@@ -171,8 +171,8 @@ class ConstraintExtraction {
             var b = cast::<BinaryOperatorExpr>(e);
             if (b->op_token.kind == TokenKind::OpAmpAmp)
             || (b->op_token.kind == TokenKind::KwAnd) {
-                self._collect(b->lhs, set, is_alias);
-                self._collect(b->rhs, set, is_alias);
+                self._collect(b->lhs, _set, is_alias);
+                self._collect(b->rhs, _set, is_alias);
                 return;
             }
         }
@@ -189,14 +189,14 @@ class ConstraintExtraction {
                 return; // do not record; it's an error
             }
             if c->is_derives() {
-                set->derives_constraints.push_back(c);
+                _set->derives_constraints.push_back(c);
             } else {
-                set->impl_constraints.push_back(c);
+                _set->impl_constraints.push_back(c);
             }
             return;
         }
 
         // everything else is a compile-time value predicate
-        set->value_predicates.push_back(e);
+        _set->value_predicates.push_back(e);
     }
 }
