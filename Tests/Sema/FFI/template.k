@@ -3,9 +3,11 @@
 //
 // An instance of an imported class template. `make_box()` returns the
 // concrete `Box<int>`, whose table M2 never fills -- clang owns that
-// instantiation (MemberLookup::filled_by_clang) -- so member lookup walks the
-// pattern, and `T` in the pattern's signatures is a real generic parameter
-// (not opaque) that the receiver substitutes: `.value` and `.get()` are i32.
+// instantiation (MemberLookup::filled_by_clang) -- so the first member
+// lookup has ForeignInstantiate fill it from clang: `.value` and `.get()`
+// are found in the instance's own table, already i32. (Were the fill to
+// fail, lookup would walk the pattern and substitute `T`; the answer is the
+// same, which is why this test pins the types, not the path.)
 
 ffi "c++" import "template.h"
 

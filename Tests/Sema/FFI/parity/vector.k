@@ -18,13 +18,12 @@ fn use_vector() -> usize {
 // lit.cfg.py). `<vector>` parses and indexes, `std::vector<i32>` resolves,
 // and `push_back(const T&)` deduces T through the reference.
 //
-// XFAIL on the ONE thing left: `v.size()`. Its return type is vector's
-// `size_type`, which libc++ spells through `allocator_traits<...>::size_type`
-// -- a dependent member typedef. Answering it needs clang to complete the
-// specialization (DependentResolution::member_of_foreign_instance, the
-// stubbed half of S12), so today it imports opaque and does not convert to
-// usize. When this XPASSes, remove the XFAIL.
+// `v.size()` is the case that needs clang's instantiation: vector's
+// `size_type` is spelled through `allocator_traits<...>::size_type`, a
+// dependent member typedef the pattern cannot answer. The first lookup into
+// `std::vector<i32>` fills the instance from clang (ForeignInstantiate), so
+// size() returns canonical `unsigned long` -- u64, which is Exact to usize
+// on a 64-bit target (Conversion::_ptr_int_alias).
 //
 // RUN: %parity %s
 // REQUIRES: clang
-// XFAIL: *
