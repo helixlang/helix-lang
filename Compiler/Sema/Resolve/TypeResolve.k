@@ -261,7 +261,11 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
     priv fn _resolve_cxx_lref(self, n: *CXXLValueRefType) {
         if !self._component_ok(n, n->referee) { return; }
-        n->canonical = self.sc->types->cxx_lref(n->referee->canonical);
+        // `const T&` and `T&` are two canonicals. The written const is the
+        // TypeQual qualifier, read through *Type because the node's own
+        // `is_const` FIELD (the canonical's key bit) hides that method.
+        var is_const = static_cast::<*Type>(n)->is_const();
+        n->canonical = self.sc->types->cxx_lref(n->referee->canonical, is_const);
     }
 
     priv fn _resolve_cxx_rref(self, n: *CXXRValueRefType) {
@@ -626,6 +630,14 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
         var head: *Decl = &null;
         var head_owner: *Decl = &null;   // set iff head is a generic param.
 
+        // Every scope the CURRENT segment denotes when its cell is all
+        // ModuleDecls. A namespace reopened across files -- or across the
+        // headers of one ffi closure: libc++ opens `std` in dozens -- is one
+        // namespace over N tables, and the `::` walk has to search all of
+        // them: ChainBinding's Anchor.scopes rule, in type position
+        // (IMPORTS.md §4.3). Empty whenever the segment is anything else.
+        var mods = vec::<*DeclContext>();
+
         if (tok.kind == TokenKind::KwSelf) || (tok.kind == TokenKind::BiSelf) {
             var sp = self.sc->ctx->get_spelling(tok);
             if !seg0->generic_args.is_empty() {
@@ -687,6 +699,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                     }
                     head = self._pick_type_candidate(r, seg0->name);
                     if head == &null { ct->poison(); return; }   // diagnosed inside.
+                    self._append_module_scopes(r, &mods);
                 }
             }
             seg0->resolved_decl = head;
@@ -732,6 +745,21 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             // decls happened to share this TU's index for `Aaa`.
             var sspell = self.sc->ctx->get_spelling(seg->name->name);
             var sr = self.sc->lookup.in_context(scope, DeclName::ident(simm), sspell);
+            var next_mods = vec::<*DeclContext>();
+            if mods.size() > 1 {
+                // Every reopening. The first that has the name answers: a
+                // type found in two is ONE entity, bound into each table by
+                // the ForeignRegistry (or RedeclMerge). An all-module hit
+                // carries its own reopenings on to the next segment.
+                for var m: usize = 0; m < mods.size(); ++m {
+                    var hit = self.sc->lookup.in_context(mods[m], DeclName::ident(simm), sspell);
+                    if !hit.found() { continue; }
+                    if !sr.found() { sr = hit; }
+                    self._append_module_scopes(hit, &next_mods);
+                }
+            } else {
+                self._append_module_scopes(sr, &next_mods);
+            }
             if !sr.found() {
                 var snm = self.sc->ctx->get_spelling(seg->name->name);
                 var pnm = self.sc->ctx->get_spelling(prev->name->name);
@@ -745,6 +773,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             if cur == &null { ct->poison(); return; }
             cur_owner = &null;
             seg->resolved_decl = cur;
+            mods = next_mods;
         }
 
         if went_dependent {
@@ -820,6 +849,19 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             case DeclKind::GenericParamDecl { return true; }
             case DeclKind::ModuleDecl       { return true; }   // a scope, not a type; rejected at the END.
             default                         { return false; }
+        }
+    }
+
+    /// Append the scope of every decl in \p r's cell when ALL of them are
+    /// modules (`mods` in the qualified walk); append nothing otherwise.
+    priv fn _append_module_scopes(self, r: SemaLookupResult, out: *vec::<*DeclContext>) {
+        if !r.found() { return; }
+        for var i: usize = 0; i < r.cell->size(); ++i {
+            if !isa::<ModuleDecl>(r.cell->get(i)) { return; }
+        }
+        for var i: usize = 0; i < r.cell->size(); ++i {
+            var dc = NameLookup::context_of(r.cell->get(i));
+            if dc != &null { out->push_back(dc); }
         }
     }
 
