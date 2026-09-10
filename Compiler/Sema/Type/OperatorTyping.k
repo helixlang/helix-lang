@@ -16,10 +16,13 @@
 ///     An untyped literal on one side takes the other side's type (§5), which
 ///     is why `x + 1` works for any integer x with no conversion at all.
 ///
-///     User operators: the search is the left operand's members and
-///     extensions (MemberLookup) under `DeclName::op_name(k0, k1)`. No ADL
-///     yet; a free `fn op +` at module scope is not found. That is the
-///     RESOLUTION.md §4 item (e) "operators (ADL)" and lands with it.
+///     User operators: the left operand's members and extensions
+///     (MemberLookup) under `DeclName::op_name(k0, k1)`, PLUS free operator
+///     functions found by ADL in the modules of either operand's type
+///     (MemberLookup::associated_scopes). Members take the left operand as
+///     receiver; frees take every operand as an argument. Both rank in one
+///     set (OverloadResolution::resolve_mixed), so a member and a free
+///     function at the same rank are ambiguous, as in C++.
 ///
 ///   Part of the Kairo Project, under the Apache License v2.0 with the
 ///   Kairo Runtime Library Exception.
@@ -35,6 +38,7 @@ import Sema::Type::TypeUtil::*;
 import Sema::Type::Conversion::*;
 import Sema::Type::OverloadResolution::*;
 import AST::Context::SymbolTable::*;
+import AST::Context::DeclContext::*;
 import AST::ASTSupport::*;
 import AST::Node::Base::*;
 import AST::Node::PrimaryExpressions::*;
@@ -96,19 +100,39 @@ class <T> OperatorTyping {
                    rhs: *Expr, found: *bool) -> *Type {
         (*found) = false;
         if lhs_ty == &null { return &null; }
+        var name  = DeclName::op_name(k0, k1);
         var cands = vec::<*Decl>();
-        dyn()->ml.lookup(dyn()->tu.strip_nullable(lhs_ty), DeclName::op_name(k0, k1), &cands);
-        if cands.size() == 0 { return &null; }
+        dyn()->ml.lookup(dyn()->tu.strip_nullable(lhs_ty), name, &cands);
+
+        var margs = vec::<ArgInfo>();
+        if rhs != &null { margs.push_back(dyn()->arg_info(rhs)); }
+
+        // ADL over BOTH operands: `std::cout << p` finds `std::op <<` through
+        // the left, `2 * v` finds `vecmath::op *` through the right.
+        var scopes = vec::<*DeclContext>();
+        dyn()->ml.associated_scopes(lhs_ty, &scopes);
+        if margs.size() > 0 { dyn()->ml.associated_scopes(margs[0].ty, &scopes); }
+        var frees = vec::<*Decl>();
+        dyn()->ml.adl_candidates(&scopes, name, "", &cands, &frees);
+        if (cands.size() == 0) && (frees.size() == 0) { return &null; }
         (*found) = true;
 
-        var args = vec::<ArgInfo>();
-        if rhs != &null { args.push_back(dyn()->arg_info(rhs)); }
+        var fargs = self._free_args(lhs, &margs);
         var spelled = dyn()->sc->ctx->get_spelling(cast::<BinaryOperatorExpr>(n)->op_token);
-        var r = dyn()->ovl.resolve(&cands, &args, true, n->range, f"op {spelled}");
+        var r = dyn()->ovl.resolve_mixed(&cands, &margs, true, &frees, &fargs, n->range, f"op {spelled}");
         if r.outcome == OvlOutcome::Dependent { dyn()->mark_unknown(n); return &null; }
         if r.outcome != OvlOutcome::Selected { dyn()->poison_only(n); return &null; }
-        dyn()->finish_call_args(r.decl, &args, &r);
+        dyn()->finish_call_args(r.decl, (&fargs) if (r.via_free) else (&margs), &r);
         return dyn()->call_result_type(r.decl, &r);
+    }
+
+    /// A free operator's argument list: the receiver operand first, then what
+    /// a member would have taken.
+    priv fn _free_args(self, recv: *Expr, margs: *vec::<ArgInfo>) -> vec::<ArgInfo> {
+        var out = vec::<ArgInfo>();
+        out.push_back(dyn()->arg_info(recv));
+        for var i: usize = 0; i < margs->size(); ++i { out.push_back((*margs)[i]); }
+        return out;
     }
 
     // === binary =============================================================
@@ -280,18 +304,25 @@ class <T> OperatorTyping {
         if dyn()->propagate(n, n->operand) { return &null; }
         if ot == &null { return &null; }
 
-        // user operator first for non-primitives.
+        // user operator first for non-primitives: members, plus free
+        // operators the operand's modules declare (ADL).
         if dyn()->tu.kind_of(ot) == BuiltinKind::COUNT
         && (k != TokenKind::OpAmp) && (k != TokenKind::OpStar) {
+            var name  = DeclName::op_name(k, TokenKind::TkUnknown);
             var cands = vec::<*Decl>();
-            var k1 = TokenKind::TkUnknown;
-            dyn()->ml.lookup(dyn()->tu.strip_nullable(ot), DeclName::op_name(k, k1), &cands);
-            if cands.size() > 0 {
-                var args = vec::<ArgInfo>();
-                var r = dyn()->ovl.resolve(&cands, &args, true, n->range,
-                                           f"op {dyn()->sc->ctx->get_spelling(n->op_token)}");
+            dyn()->ml.lookup(dyn()->tu.strip_nullable(ot), name, &cands);
+            var scopes = vec::<*DeclContext>();
+            dyn()->ml.associated_scopes(ot, &scopes);
+            var frees = vec::<*Decl>();
+            dyn()->ml.adl_candidates(&scopes, name, "", &cands, &frees);
+            if (cands.size() > 0) || (frees.size() > 0) {
+                var margs = vec::<ArgInfo>();
+                var fargs = self._free_args(n->operand, &margs);
+                var r = dyn()->ovl.resolve_mixed(&cands, &margs, true, &frees, &fargs, n->range,
+                                                 f"op {dyn()->sc->ctx->get_spelling(n->op_token)}");
                 if r.outcome == OvlOutcome::Dependent { dyn()->mark_unknown(n); return &null; }
                 if r.outcome != OvlOutcome::Selected { dyn()->poison_only(n); return &null; }
+                if r.via_free { dyn()->finish_call_args(r.decl, &fargs, &r); }
                 return dyn()->call_result_type(r.decl, &r);
             }
         }
@@ -415,21 +446,39 @@ class <T> OperatorTyping {
         if dyn()->propagate(n, n->rhs) { return &null; }
         if rt == &null { return &null; }
 
-        if dyn()->tu.kind_of(lt) == BuiltinKind::COUNT {
+        // Members of the left side, plus ADL over BOTH sides. A primitive left
+        // side with a record on the right still asks: `x += v` can be a free
+        // `op +=` from v's module.
+        var l_rec = dyn()->tu.kind_of(lt) == BuiltinKind::COUNT;
+        var r_rec = dyn()->tu.kind_of(rt) == BuiltinKind::COUNT;
+        if l_rec || r_rec {
+            var name  = DeclName::op_name(k, TokenKind::TkUnknown);
             var cands = vec::<*Decl>();
-            dyn()->ml.lookup(dyn()->tu.strip_nullable(lt), DeclName::op_name(k, TokenKind::TkUnknown), &cands);
-            if cands.size() == 0 {
+            dyn()->ml.lookup(dyn()->tu.strip_nullable(lt), name, &cands);
+            var margs = vec::<ArgInfo>();
+            margs.push_back(dyn()->arg_info(n->rhs));
+            var scopes = vec::<*DeclContext>();
+            dyn()->ml.associated_scopes(lt, &scopes);
+            dyn()->ml.associated_scopes(rt, &scopes);
+            var frees = vec::<*Decl>();
+            dyn()->ml.adl_candidates(&scopes, name, "", &cands, &frees);
+            var any = (cands.size() > 0) || (frees.size() > 0);
+            if l_rec && (!any) {
                 dyn()->fail(n, f"no operator '{dyn()->sc->ctx->get_spelling(n->op_token)}' on '{dyn()->tu.str(lt)}\x27");
                 return &null;
             }
-            var args = vec::<ArgInfo>();
-            args.push_back(dyn()->arg_info(n->rhs));
-            var r = dyn()->ovl.resolve(&cands, &args, true, n->range, f"op {dyn()->sc->ctx->get_spelling(n->op_token)}");
-            if r.outcome == OvlOutcome::Dependent { dyn()->mark_unknown(n); return &null; }
-            if r.outcome != OvlOutcome::Selected { dyn()->poison_only(n); return &null; }
-            dyn()->finish_call_args(r.decl, &args, &r);
-            n->value_category = Expr::ValueCategory::LValue;
-            return lt;
+            if any {
+                var fargs = self._free_args(n->lhs, &margs);
+                var r = dyn()->ovl.resolve_mixed(&cands, &margs, true, &frees, &fargs, n->range,
+                                                 f"op {dyn()->sc->ctx->get_spelling(n->op_token)}");
+                if r.outcome == OvlOutcome::Dependent { dyn()->mark_unknown(n); return &null; }
+                if r.outcome != OvlOutcome::Selected { dyn()->poison_only(n); return &null; }
+                dyn()->finish_call_args(r.decl, (&fargs) if (r.via_free) else (&margs), &r);
+                n->value_category = Expr::ValueCategory::LValue;
+                return lt;
+            }
+            // Primitive left, record right, no operator for the pair: the
+            // builtin checks below say what is wrong with it.
         }
 
         if self._is_shift(base) {

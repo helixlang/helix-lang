@@ -8,6 +8,8 @@
 ///     argument lands on exactly one parameter, and every landed argument
 ///     reaches its parameter at rank Exact or Converted. A generic candidate
 ///     is viable when deduction succeeds and binds every non-pack parameter.
+///     An imported C `...` function takes any number of trailing positional
+///     arguments, each at rank Converted with no parameter to check against.
 ///
 ///     Ranking (lattice §7): a candidate's rank is the WORST of its argument
 ///     ranks. Two ranks, no ordering inside rank 2. The single tiebreak, and
@@ -91,8 +93,12 @@ class Candidate {
     pub var viable:       bool  = true;
     pub var rank:         u8    = 0;        ///< 0 Exact, 1 Converted.
     pub var generic:      bool  = false;
+    pub var free:         bool  = false;    ///< from resolve_mixed's free list: judged with no receiver.
     pub var reason:       string = "";
-    pub var arg_to_param: vec::<usize>;     ///< per arg: param index, or usize(-1) for pack tail.
+    /// per arg: param index, usize(-1) for the Kairo pack tail, usize(-2) for
+    /// a C `...` tail (no parameter at all; finish_call_args finds none and
+    /// types a literal there with its default, which is C's promotion).
+    pub var arg_to_param: vec::<usize>;
     pub var ded:          Deduction;
     fn Candidate(self) { }
 }
@@ -101,6 +107,11 @@ class OvlResult {
     pub var outcome:      OvlOutcome = OvlOutcome::Empty;
     pub var decl:         *FunctionDecl = &null;
     pub var arg_to_param: vec::<usize>;
+    pub var via_free:     bool = false;     ///< winner came from the free list: arg_to_param indexes fargs.
+    /// The receiver was bound to the winner's `self`, which then matched no
+    /// argument: arg_to_param indexes the params AFTER `self`.
+    /// finish_call_args reads this rather than guessing.
+    pub var receiver_bound: bool = false;
     pub var ded:          Deduction;
     /// The type the call was made THROUGH, stripped of nullable and pointer:
     /// `obj.m(x)`'s `obj`. Filled by the caller after resolution, alongside
@@ -139,32 +150,32 @@ class OverloadResolution {
     ///                to offer.
     fn resolve(self, cands: *vec::<*Decl>, args: *vec::<ArgInfo>, has_receiver: bool,
                at: SourceRange, name: string, receiver: *Type = &null) -> OvlResult {
+        return self.resolve_mixed(cands, args, has_receiver, &null, &null, at, name, receiver);
+    }
+
+    /// One overload set drawn from two argument shapes. \p members are judged
+    /// against \p margs exactly as resolve() judges them; \p frees (free
+    /// functions -- an ADL-found `fn op +(a: A, b: B)`) against \p fargs,
+    /// where the receiver operand is an ordinary first argument. Everything
+    /// ranks in ONE candidate list: which list a candidate came from is not a
+    /// tiebreak, so a member and a free function at the same rank are an
+    /// ordinary ambiguity (the C++ rule for operators). The winner's
+    /// arg_to_param indexes \p fargs iff OvlResult::via_free. \p frees and
+    /// \p fargs may be null.
+    fn resolve_mixed(self, members: *vec::<*Decl>, margs: *vec::<ArgInfo>, has_receiver: bool,
+                     frees: *vec::<*Decl>, fargs: *vec::<ArgInfo>,
+                     at: SourceRange, name: string, receiver: *Type = &null) -> OvlResult {
         var out = OvlResult{};
         out.receiver = receiver;
 
-        for var i: usize = 0; i < args->size(); ++i {
-            if (*args)[i].dependent { out.outcome = OvlOutcome::Dependent; return out; }
+        if self._any_dependent(margs) || self._any_dependent(fargs) {
+            out.outcome = OvlOutcome::Dependent;
+            return out;
         }
 
         var cs = vec::<Candidate>();
-        for var i: usize = 0; i < cands->size(); ++i {
-            var f = dyn_cast::<FunctionDecl>((*cands)[i]);
-            if f == &null { continue; }
-            if f->is_poisoned() { continue; }
-            if NameLookup::is_specialization(static_cast::<*Decl>(f)) { continue; }   // OverloadResolution pairs later.
-            var seen = false;
-            for var j: usize = 0; j < cs.size(); ++j {
-                if NameLookup::representative(static_cast::<*Decl>(cs[j].f))
-                == NameLookup::representative(static_cast::<*Decl>(f)) { seen = true; break; }
-            }
-            if seen { continue; }   // fwd + def are one entity (RedeclMerge).
-            var c = Candidate{};
-            c.f       = f;
-            c.generic = f->generic_params.size() > 0;
-            c.ded     = Deduction(self.sc, self.conv);
-            self._judge(&c, args, has_receiver, receiver);
-            cs.push_back(c);
-        }
+        self._collect(&cs, members, margs, has_receiver, receiver, false);
+        if fargs != &null { self._collect(&cs, frees, fargs, false, &null, true); }
 
         if cs.size() == 0 {
             self.sc->diag->report(DiagID::SC001E, at.start,
@@ -208,8 +219,45 @@ class OverloadResolution {
         out.outcome      = OvlOutcome::Selected;
         out.decl         = w->f;
         out.arg_to_param = w->arg_to_param;
+        out.via_free     = w->free;
+        out.receiver_bound = has_receiver && (!w->free);
         out.ded          = w->ded;
         return out;
+    }
+
+    priv fn _any_dependent(self, args: *vec::<ArgInfo>) -> bool {
+        if args == &null { return false; }
+        for var i: usize = 0; i < args->size(); ++i {
+            if (*args)[i].dependent { return true; }
+        }
+        return false;
+    }
+
+    /// Judge every function in \p cands against \p args and append it to
+    /// \p cs, skipping one \p cs already holds (fwd + def are one entity,
+    /// RedeclMerge; and a decl reached as both member and ADL free is one).
+    priv fn _collect(self, cs: *vec::<Candidate>, cands: *vec::<*Decl>, args: *vec::<ArgInfo>,
+                     has_receiver: bool, receiver: *Type, free: bool) {
+        if cands == &null { return; }
+        for var i: usize = 0; i < cands->size(); ++i {
+            var f = dyn_cast::<FunctionDecl>((*cands)[i]);
+            if f == &null { continue; }
+            if f->is_poisoned() { continue; }
+            if NameLookup::is_specialization(static_cast::<*Decl>(f)) { continue; }   // OverloadResolution pairs later.
+            var seen = false;
+            for var j: usize = 0; j < cs->size(); ++j {
+                if NameLookup::representative(static_cast::<*Decl>((*cs)[j].f))
+                == NameLookup::representative(static_cast::<*Decl>(f)) { seen = true; break; }
+            }
+            if seen { continue; }
+            var c = Candidate{};
+            c.f       = f;
+            c.free    = free;
+            c.generic = f->generic_params.size() > 0;
+            c.ded     = Deduction(self.sc, self.conv);
+            self._judge(&c, args, has_receiver, receiver);
+            cs->push_back(c);
+        }
     }
 
     // === one candidate ======================================================
@@ -254,13 +302,12 @@ class OverloadResolution {
                 filled[pack_at] = true;
                 continue;
             }
-            if pos >= nparams {
-                c->viable = false;
-                c->reason = f"expects {nparams} argument(s), {args->size()} given";
-                return;
-            }
             while (pos < nparams) && filled[pos] { pos += 1; }
             if pos >= nparams {
+                // C `...`: a positional argument past the declared ones has
+                // no parameter to judge it against; C's default promotions
+                // are the callee's contract, not a Kairo conversion.
+                if f->ffi_c_variadic { c->arg_to_param[i] = usize(-2); continue; }
                 c->viable = false;
                 c->reason = f"expects {nparams} argument(s), {args->size()} given";
                 return;
@@ -285,6 +332,10 @@ class OverloadResolution {
         for var i: usize = 0; i < args->size(); ++i {
             var a  = &((*args)[i]);
             var pi = c->arg_to_param[i];
+            if pi == usize(-2) {                     // C `...` tail: Converted, unchecked.
+                if c->rank < 1 { c->rank = 1; }
+                continue;
+            }
             var p: *ParamDecl = (params[pi]) if (pi != usize(-1)) else (params[pack_at]);
             var pt: *Type = &null;
             if p->type_ != &null { pt = p->type_->canonical; }
