@@ -16,6 +16,12 @@
 ///
 /// ------------------------------------------------------------------------ ///
 
+import Driver::CompilerInstance::*;
+import Driver::TUStage::*;
+import Tooling::ParseAPI::*;
+import Tooling::ToolDiagnostics::*;
+import Support::FileIO::Path::*;
+
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
 import AST::ASTSupport::*;
@@ -370,32 +376,98 @@ class Formatter {
 /// DRIVER
 /// ----------------------------------------------------------------------
 
-fn format_one_file(path: libcxx::filesystem::path) -> bool {
-    // Wiring this up needs a frontend entry point that turns a file into a
-    // TranslationUnit. Compiler/Parser/ParseSource.k is the intended one but
-    // is itself still a stub (literal `...` placeholders, undeclared members),
-    // so there is nothing to call yet.
-    //
-    // Until that lands AND fmt_decl/fmt_stmt/fmt_expr are real, formatting a
-    // file would replace its contents with `<unimplemented-*>` markers.
+/// Parse one file and render it through the Doc IR to stdout.
+///
+/// Does NOT write back. fmt_decl/fmt_stmt/fmt_expr still emit
+/// `<unimplemented-*>` markers, so rewriting a .k file in place would destroy
+/// it. The dump exists so the type layer and the renderer can be exercised
+/// against real ASTs before the remaining layers land; flip write-back on only
+/// once the marker check below can no longer fire.
+fn format_one_file(ci: *CompilerInstance, path: libcxx::filesystem::path) -> bool {
     var name: string = path.generic_wstring();
-    std::print(f"kfmt: not implemented yet, refusing to rewrite {name}");
-    return false;
+
+    var opts     = ParseOptions{};
+    opts.stop_at = TUStage::Parsing;   // formatting is syntactic; sema is wasted work
+    opts.capture_diags = true;
+
+    var u = parse_file(ci, Path(name), opts);
+
+    finally {
+        // Per-file release: the formatter walks one TU at a time and holds
+        // nothing across files, so a directory run must not accumulate.
+        release_all(ci, TUStage::Lexing);
+        ci->diag()->clear_retained();
+    }
+
+    if u.diags.size() > 0 {
+        for var i: usize = 0; i < u.diags.size(); ++i {
+            std::print(f"  {u.diags[i].format()}");
+        }
+    }
+
+    // Formatting a file with parse errors would silently drop whatever the
+    // parser failed to build, so a broken file is a hard failure, not a
+    // best-effort reformat.
+    if u.errors > 0 {
+        std::print(f"kfmt: {name}: {u.errors} parse error(s), not formatting");
+        return false;
+    }
+
+    if u.tu == &null {
+        std::print(f"kfmt: {name}: no translation unit");
+        return false;
+    }
+
+    var prog = u.tu->program;
+    if prog == &null {
+        std::print(f"kfmt: {name}: empty program");
+        return false;
+    }
+
+    var fmt = Formatter(u.ctx);
+    var doc = fmt.fmt_program(prog);
+    var out = Renderer::render(doc, Formatter::line_width());
+
+    // Refuse write-back while any layer is still a stub. This is a check, not
+    // a comment, so it stops being a footgun the moment the layers land.
+    if out.raw_string().find("<unimplemented-") != string::npos {
+        std::print(f"kfmt: {name}: incomplete formatter, dumping instead of rewriting");
+        std::print(out);
+        return true;
+    }
+
+    std::print(out);
+    return true;
 }
 
 fn main(argc: i32, argv: *(*kairo::std::Legacy::char)) -> i32 {
-    if argc != 2 {
-        std::print("Usage: kfmt <input_folder>/<input_file>");
+    if argc < 2 {
+        std::print("Usage: kfmt <input_folder>/<input_file> [-I dir ...]");
         return 1;
     }
 
-    var target_path = argv[1];
-    var path = libcxx::filesystem::path(target_path);
+    // One instance for the entire walk. Rebuilding it per file would rebuild
+    // the preprocessor, search paths and source manager for every .k.
+    var ci = std::create::<CompilerInstance>(argc, argv);
+    finally { std::destroy(ci); }
+
+    if !ci->args_ok() { return 1; }
+
+    var inputs = ci->invocation().input_files;
+    if inputs.empty() {
+        std::print("kfmt: no input path");
+        return 1;
+    }
+
+    var target_path = inputs[0];
+    var path = libcxx::filesystem::path(std::string_to_nstring(target_path).raw());
 
     if !libcxx::filesystem::exists(path) {
         std::print(f"Error: path does not exist: {target_path}");
         return 1;
     }
+
+    ci->initialize(Path::cwd());
 
     var files_formatted: usize = 0;
 
@@ -405,7 +477,7 @@ fn main(argc: i32, argv: *(*kairo::std::Legacy::char)) -> i32 {
             // generic_wstring() is the conversion the rest of the tree uses.
             var ext: string = entry.path().extension().generic_wstring();
             if entry.is_regular_file() && (ext == ".k") {
-                if !format_one_file(entry.path()) {
+                if !format_one_file(ci, entry.path()) {
                     var name: string = entry.path().generic_wstring();
                     std::print(f"Error: failed to format {name}");
                     return 1;
@@ -419,7 +491,7 @@ fn main(argc: i32, argv: *(*kairo::std::Legacy::char)) -> i32 {
             std::print(f"Error: not a .k file: {target_path}");
             return 1;
         }
-        if !format_one_file(path) {
+        if !format_one_file(ci, path) {
             std::print(f"Error: failed to format {target_path}");
             return 1;
         }
