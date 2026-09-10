@@ -155,6 +155,10 @@ class <T> MemberTyping {
                 cur = tt->elements[static_cast::<usize>(st->index)];
                 st->resolved_type = cur;
                 cur_kind = 0;
+                // What the typer has always said (the old blanket default):
+                // `t.0 = x` is not assignable today. Making it an lvalue is a
+                // tuple-semantics decision, not this one.
+                n->value_category = Expr::ValueCategory::RValue;
                 continue;
             }
 
@@ -265,6 +269,7 @@ class <T> MemberTyping {
                 if (info->callable_cands.size() == 1) && (!info->has_receiver) {
                     var f = dyn_cast::<FunctionDecl>(info->callable_cands[0]);
                     if (f != &null) && (!f->is_method()) && (f->generic_params.size() == 0) {
+                        n->value_category = Expr::ValueCategory::RValue;
                         return dyn()->fn_pointer_type(f);
                     }
                 }
@@ -332,7 +337,9 @@ class <T> MemberTyping {
         }
         if is_range {
             dyn()->type_of(n->index, &null);
-            // a slice of a container is the container type (the runtime views it).
+            // a slice of a container is the container type (the runtime views
+            // it): a new value, not storage.
+            n->value_category = Expr::ValueCategory::RValue;
             return bt;
         }
         var it = dyn()->type_of(n->index, usize_t);

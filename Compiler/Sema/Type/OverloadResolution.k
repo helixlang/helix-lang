@@ -12,11 +12,20 @@
 ///     arguments, each at rank Converted with no parameter to check against.
 ///
 ///     Ranking (lattice §7): a candidate's rank is the WORST of its argument
-///     ranks. Two ranks, no ordering inside rank 2. The single tiebreak, and
-///     it is not a conversion ordering: among Exact winners a non-generic
-///     candidate beats a generic one, otherwise `fn f(i32)` next to
-///     `fn <T> f(T)` is ambiguous on every call. Everything else that ties is
-///     ambiguous and errors, even when one conversion looks "narrower".
+///     ranks. Two ranks, no ordering inside rank 2. Two tiebreaks among the
+///     best-ranked, in C++'s order, and neither is a conversion ordering:
+///
+///       reference kind  on an argument where both bound a C++ reference at
+///                       Exact, an rvalue prefers `T&&` to `const T&` and a
+///                       non-const lvalue prefers `T&` to `const T&`
+///                       (_ref_better). Needs the argument's VALUE CATEGORY,
+///                       which ExprTyper assigns and ArgInfo carries.
+///       generic         a non-generic candidate beats a generic one,
+///                       otherwise `fn f(i32)` next to `fn <T> f(T)` is
+///                       ambiguous on every call.
+///
+///     Everything else that ties is ambiguous and errors, even when one
+///     conversion looks "narrower".
 ///
 ///     Untyped literals rank Exact against any parameter they fit (§5: the
 ///     literal TAKES the type, it is not converted). After selection the
@@ -77,6 +86,11 @@ class ArgInfo {
     pub var lit_big:    bool = false;
     pub var lit_neg:    bool = false;
     pub var dependent:  bool = false;       ///< type unknowable here; poisons nothing.
+    /// The argument's value category (a literal is a prvalue), and for an
+    /// lvalue whether it is const. Only reference parameters read them:
+    /// they decide which of `T&` / `const T&` / `T&&` the argument binds.
+    pub var cat:        Expr::ValueCategory = Expr::ValueCategory::RValue;
+    pub var is_const:   bool = false;
     fn ArgInfo(self) { }
 }
 
@@ -99,6 +113,10 @@ class Candidate {
     /// a C `...` tail (no parameter at all; finish_call_args finds none and
     /// types a literal there with its default, which is C's promotion).
     pub var arg_to_param: vec::<usize>;
+    /// per arg: the reference kind it bound AT EXACT -- 0 none (a value
+    /// parameter, or not Exact), 1 `const T&`, 2 `T&&`, 3 `T&`. Read only by
+    /// the reference tiebreak.
+    pub var binds:        vec::<u8>;
     pub var ded:          Deduction;
     fn Candidate(self) { }
 }
@@ -200,7 +218,11 @@ class OverloadResolution {
         for var i: usize = 0; i < cs.size(); ++i {
             if cs[i].viable && (cs[i].rank == best) { winners.push_back(i); }
         }
-        // the one tiebreak: non-generic beats generic.
+        // Reference kind, BEFORE the generic tiebreak for the reason C++
+        // orders them so ([over.match.best]: better conversion sequences
+        // first, templates after): see _ref_better.
+        if winners.size() > 1 { winners = self._ref_tiebreak(&cs, &winners, margs, fargs); }
+        // non-generic beats generic.
         if winners.size() > 1 {
             var nongen = vec::<usize>();
             for var i: usize = 0; i < winners.size(); ++i {
@@ -223,6 +245,63 @@ class OverloadResolution {
         out.receiver_bound = has_receiver && (!w->free);
         out.ded          = w->ded;
         return out;
+    }
+
+    /// The winners no other winner beats on reference kind.
+    priv fn _ref_tiebreak(self, cs: *vec::<Candidate>, winners: *vec::<usize>,
+                          margs: *vec::<ArgInfo>, fargs: *vec::<ArgInfo>) -> vec::<usize> {
+        var keep = vec::<usize>();
+        for var i: usize = 0; i < winners->size(); ++i {
+            var ci = &((*cs)[(*winners)[i]]);
+            var beaten = false;
+            for var j: usize = 0; j < winners->size(); ++j {
+                if i == j { continue; }
+                var cj = &((*cs)[(*winners)[j]]);
+                var args = (fargs) if (cj->free) else (margs);
+                if self._ref_better(cj, ci, args) { beaten = true; break; }
+            }
+            if !beaten { keep.push_back((*winners)[i]); }
+        }
+        if keep.size() == 0 { return *winners; }       // a strict order never beats everyone; defensive.
+        return keep;
+    }
+
+    /// \p x beats \p y on reference kind: on no argument does \p y bind
+    /// better, on at least one \p x does. The only "better" there is, and it
+    /// applies only where BOTH bound at Exact ([over.ics.rank]/3.2.3, 3.2.6
+    /// reduced): an rvalue argument prefers `T&&` to `const T&`, a non-const
+    /// lvalue prefers `T&` to `const T&`. Nothing else is ordered: every
+    /// other tie stays a tie, and ambiguity is still reported for it.
+    ///
+    /// Candidates from different argument lists (a member judged against the
+    /// operands minus the receiver, a free function against all of them)
+    /// are not position-aligned, so they never beat each other here.
+    priv fn _ref_better(self, x: *Candidate, y: *Candidate, args: *vec::<ArgInfo>) -> bool {
+        if x->free != y->free { return false; }
+        if (args == &null) || (x->binds.size() != args->size()) || (y->binds.size() != args->size()) { return false; }
+        var better = false;
+        for var k: usize = 0; k < args->size(); ++k {
+            var a = &((*args)[k]);
+            if self._ref_prefers(a, x->binds[k], y->binds[k]) { better = true; continue; }
+            if self._ref_prefers(a, y->binds[k], x->binds[k]) { return false; }
+        }
+        return better;
+    }
+
+    priv fn _ref_prefers(self, a: *ArgInfo, bx: u8, by: u8) -> bool {
+        if by != 1 { return false; }                      // only ever over `const T&`.
+        var rvalue = (a->cat == Expr::ValueCategory::RValue) || (a->cat == Expr::ValueCategory::XValue);
+        if (bx == 2) && rvalue { return true; }
+        if (bx == 3) && (a->cat == Expr::ValueCategory::LValue) && (!a->is_const) { return true; }
+        return false;
+    }
+
+    /// The Candidate::binds code for a parameter of type \p pt.
+    priv fn _bind_kind(self, pt: *Type) -> u8 {
+        if pt == &null { return 0; }
+        if isa::<CXXRValueRefType>(pt) { return 2; }
+        if isa::<CXXLValueRefType>(pt) { return (1) if (cast::<CXXLValueRefType>(pt)->is_const) else (3); }
+        return 0;
     }
 
     priv fn _any_dependent(self, args: *vec::<ArgInfo>) -> bool {
@@ -280,7 +359,7 @@ class OverloadResolution {
 
         var filled = vec::<bool>();
         for var i: usize = 0; i < nparams; ++i { filled.push_back(false); }
-        for var i: usize = 0; i < args->size(); ++i { c->arg_to_param.push_back(usize(-1)); }
+        for var i: usize = 0; i < args->size(); ++i { c->arg_to_param.push_back(usize(-1)); c->binds.push_back(0); }
 
         // 1. place every argument.
         var pos: usize = 0;
@@ -361,6 +440,7 @@ class OverloadResolution {
                 return;
             }
             if (r == ImplicitRank::Converted) && (c->rank < 1) { c->rank = 1; }
+            if r == ImplicitRank::Exact { c->binds[i] = self._bind_kind(pt); }
         }
 
         // 4. a generic candidate must have deduced every param.
@@ -377,8 +457,8 @@ class OverloadResolution {
         // with many types, and the registry does not model that yet -- accept.
         if is_pack {
             if pt->is_dependent() { return ImplicitRank::Converted; }
-            if a->lit != LitKind::None { return self._rank_literal(a, pt); }
-            return self.conv->implicit(a->ty, pt);
+            if a->lit != LitKind::None { return self._rank_literal_arg(a, pt); }
+            return self.conv->implicit_arg(a->ty, pt, a->cat, a->is_const);
         }
 
         if a->lit != LitKind::None {
@@ -388,31 +468,31 @@ class OverloadResolution {
                 if def == &null { return ImplicitRank::None; }
                 return c->ded.unify(pt, def, true);
             }
-            return self._rank_literal(a, pt);
+            return self._rank_literal_arg(a, pt);
         }
 
         if a->ty == &null { return ImplicitRank::None; }
         if pt->is_dependent() { return c->ded.unify(pt, a->ty, true); }
-        return self.conv->implicit(a->ty, pt);
+        return self.conv->implicit_arg(a->ty, pt, a->cat, a->is_const);
+    }
+
+    /// A literal is a PRVALUE of whatever type it takes. Against a reference
+    /// parameter that makes it the referee exactly (Same) when it takes that
+    /// type (§5), a temporary (Converts) when it only fits by conversion, and
+    /// Conversion::ref_binding decides from there -- the literal has no
+    /// reference rule of its own.
+    priv fn _rank_literal_arg(self, a: *ArgInfo, pt: *Type) -> ImplicitRank {
+        var referee: *Type = &null;
+        if isa::<CXXLValueRefType>(pt) { referee = cast::<CXXLValueRefType>(pt)->referee; }
+        if isa::<CXXRValueRefType>(pt) { referee = cast::<CXXRValueRefType>(pt)->referee; }
+        if referee == &null { return self._rank_literal(a, pt); }
+        var vr  = self._rank_literal(a, referee);
+        var rel = (RefRel::Same) if (vr == ImplicitRank::Exact)
+                  else (RefRel::Converts) if (vr == ImplicitRank::Converted) else (RefRel::None);
+        return self.conv->ref_binding(pt, Expr::ValueCategory::RValue, false, rel);
     }
 
     priv fn _rank_literal(self, a: *ArgInfo, pt: *Type) -> ImplicitRank {
-        // A C++ reference parameter, which only imported signatures carry.
-        // A literal is a temporary: it binds `const T&` as a T would (an
-        // identity, Conversion::_bind_ref's rule), never a plain `T&`, and
-        // `T&&` at Converted like every rvalue-ref binding. A deduced `const
-        // T&` never got here -- deduction strips the reference -- which is
-        // why this was invisible until clang-filled instances made
-        // `push(const int&)` concrete.
-        if isa::<CXXLValueRefType>(pt) {
-            var lr = cast::<CXXLValueRefType>(pt);
-            if !lr->is_const { return ImplicitRank::None; }
-            return self._rank_literal(a, lr->referee);
-        }
-        if isa::<CXXRValueRefType>(pt) {
-            var r = self._rank_literal(a, cast::<CXXRValueRefType>(pt)->referee);
-            return (ImplicitRank::Converted) if (r != ImplicitRank::None) else (ImplicitRank::None);
-        }
         var target = self.tu.strip_nullable(pt);
         switch a->lit {
             case LitKind::Int {
