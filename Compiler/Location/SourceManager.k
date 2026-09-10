@@ -530,6 +530,19 @@ class SourceManager {
     }
 
     ///
+    /// \brief fid of an ALREADY-LOADED \p path, or u32(-1). Never loads.
+    ///
+    /// \details For a caller that meets a file by path from outside Kairo (a
+    ///          clang FileID behind a PCH) and must not mint a fid for a file
+    ///          Kairo never loaded. load_file answers a known path the same
+    ///          way, but loads an unknown one.
+    ///
+    fn find_fid(self, path: Path) -> FileID {
+        var lock = std::LockGuard(self._load_mu);
+        return self._vfile_mgr->fid_for_path(path);
+    }
+
+    ///
     /// \brief returns logical path for SourceLocation
     ///
     fn get_filename(self, loc: SourceLocation) -> string {

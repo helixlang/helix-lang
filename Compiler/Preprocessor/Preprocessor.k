@@ -43,6 +43,7 @@ import AST::Node::Declarations::*;
 import Diagnostic::Engine::*;
 import Diagnostic::Registry::*;
 import Diagnostic::BufferedDiagSink::*;
+import Interop::Clang::HeaderSet::*;
 
 struct PPResult {
     var ok:   bool = false;
@@ -78,6 +79,14 @@ class PPWalker
     priv var _expansion_count:   i32 = 0;
     priv var _unique_counter:    u32 = 0;
 
+    /// ffi headers this file imports, spelled as HeaderSet::unquote does,
+    /// deduped, in SOURCE ORDER: the key of the one HeaderSet _finalize
+    /// requests. Order is part of the key because it is part of the meaning:
+    /// a header may depend on what an earlier one declared or defined.
+    priv var _ffi_headers: vec::<string>;
+    /// Null in tooling runs with no clang: ffi imports then resolve to nothing.
+    priv var _headers:     obs::<HeaderSetCache> = &null;
+
     // --- Pass timing (--time-passes) --------------------------------------
     //
     //   Handles resolved once in run(), null when timing is off   which is
@@ -103,9 +112,11 @@ class PPWalker
         tcm:        *TokenCacheManager,
         diag:       *DiagEngine,
         opts:        PreprocessorOptions,
-        module_base: ModulePath
+        module_base: ModulePath,
+        headers:    *HeaderSetCache = &null
     ) {
         self._fid     = fid;
+        self._headers = headers;
         self._lexer   = lexer;
         self._ctx     = ctx;
         self._tu      = tu;
@@ -342,27 +353,17 @@ class PPWalker
         var p2 = self._src->peek(2).kind;
 
         if p2 == TokenKind::KwImport {
-            // ffi "lang" import "hdr" (as name)? ;  -> consume + drop entirely
+            // ffi "lang" import "hdr" (as name)? ;  -> consume + drop the tokens
             //
-            // DEFERRED (next task: clang header-parse integration). The real
-            // design routes ffi imports through a SINGLE clang parse at INDEX
-            // time whose ASTUnit is cached per header and reused three ways:
-            //   (1) index/PP: cheap name+scope walk -> GlobalDisambigTable, so
-            //       `<`-disambiguation sees header symbols during full parse;
-            //   (2) symbol build: translate clang decls -> Kairo FunctionDecl/
-            //       etc. nodes into the ffi anchor's table (the post-I
-            //       clang-extraction pass in RESOLUTION.md);
-            //   (3) backend: hand clang the cached ASTUnit instead of a cc1
-            //       `-include`, avoiding a reparse.
-            // The parser CANNOT own this: it runs after disambig decisions are
-            // made, too late for (1).
-            //
-            // Until that lands the header's DECLS do not exist, but the import
-            // itself does: phase I binds `as z` to an anchor and ChainBinding
-            // treats every step off it as Foreign (IMPORTS.md §5), and codegen
-            // needs the header list for its #includes. So the node is built
-            // and recorded here -- no path resolution, no fid, no import edge
-            // -- and the tokens are still dropped from the output buffer.
+            // The header is clang's to parse (Interop/Clang/HeaderSet). Every
+            // ffi header this file imports joins ONE ordered list, requested
+            // as a set in _finalize so the parse runs on the pool while this
+            // file is still being walked and parsed. Sema/Foreign indexes the
+            // set into one Kairo TU per header before sema, and the driver
+            // then stamps resolved_fid and the include closure onto the node
+            // built here (FrontendAction::_attach_ffi_edges). Nothing about
+            // the header resolves HERE: its fids do not exist until the set
+            // is indexed.
             var ffi_kw   = self._src->next(); // ffi
             var lang_tok = self._src->next(); // "lang"
             self._src->next();                // import
@@ -403,6 +404,15 @@ class PPWalker
             fid_node->range     = fr;
             fid_node->set_ffi_linkage(self._ffi_lang_kind(lang_tok), lang_tok, fr);
             self._tu->imports.push(static_cast::<*Decl>(fid_node));
+
+            if saw_header {
+                var h = HeaderSet::unquote(self._ctx->get_spelling(header_tok));
+                var dup = false;
+                for var i: usize = 0; i < self._ffi_headers.size(); ++i {
+                    if self._ffi_headers[i] == h { dup = true; break; }
+                }
+                if (!dup) && (h.size() > 0) { self._ffi_headers.push_back(h); }
+            }
             return;
         }
 
@@ -2275,6 +2285,14 @@ class PPWalker
         self._out = &null; // ownership transferred to the slot
         // splice buffers stay owned here until op delete their tokens were
         // COPIED into _out via wrap/append, so freeing them post-handoff is safe.
+
+        // One clang parse per distinct ordered header list; another file
+        // importing the same headers in the same order shares the set. The
+        // quoted-include directory is THIS file's, as for a .cpp beside it.
+        if (self._headers != &null) && (self._ffi_headers.size() > 0) {
+            var hs = self._headers->request(self._ffi_headers, self._sm->get_file_dir(self._fid).full_path());
+            self._tu->header_set = reinterpret_cast::<*void>(hs);
+        }
     }
 }
 
@@ -2290,6 +2308,7 @@ class PreProcessor {
     priv var _resolver: *ImportResolver;
     priv var _gscope:   *GlobalDisambigTable;  ///< owns per-fid ASTContext/TU now
     priv var _inv:      *CompilerInvocation;
+    priv var _headers:  *HeaderSetCache = &null;  ///< borrowed from CompilerInstance; handed to every walker.
     priv var _opts:      PreprocessorOptions;
     priv var _walked:    set::<u32>;
     priv var _walked_mu: std::SharedMutex;     // wave tasks are parallel
@@ -2302,7 +2321,9 @@ class PreProcessor {
     fn PreProcessor(self, sm: *SourceManager,       tcm:  *TokenCacheManager,
                     resolver: *ImportResolver,      pool: *ThreadPool, diag: *DiagEngine,
                     gscope:   *GlobalDisambigTable, inv:  *CompilerInvocation,
-                    opts:      PreprocessorOptions = PreprocessorOptions()) {
+                    opts:      PreprocessorOptions = PreprocessorOptions(),
+                    headers:  *HeaderSetCache = &null) {
+        self._headers  = headers;
         self._sym      = std::create::<PreprocessorSymbolTable>();
         self._macros   = std::create::<MacroTable>();
         self._sm       = sm;
@@ -2531,7 +2552,7 @@ class PreProcessor {
 
         var walker = std::create::<PPWalker>(
             fid, lexer, ctx, tu, self._macros, self._resolver,
-            self._sym, self._sm, self._tcm, self._diag, self._opts, mod_path);
+            self._sym, self._sm, self._tcm, self._diag, self._opts, mod_path, self._headers);
         finally { std::destroy(walker); }
 
         walker->run();
