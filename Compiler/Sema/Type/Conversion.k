@@ -176,6 +176,15 @@ class Conversion {
         if from == to { return ImplicitRank::Exact; }
         if self.tu.is_never(from) { return ImplicitRank::Converted; }
 
+        // C++ references. Only imported signatures carry them (Kairo has no
+        // spelling), so this is the rule every `const T&` parameter in a
+        // header is judged by.
+        if isa::<CXXLValueRefType>(to) || isa::<CXXRValueRefType>(to) { return self._bind_ref(from, to); }
+        // A reference READ as a value is its referee (lvalue-to-rvalue): a
+        // `const T&` return converts wherever a T would.
+        if isa::<CXXLValueRefType>(from) { return self.implicit(cast::<CXXLValueRefType>(from)->referee, to); }
+        if isa::<CXXRValueRefType>(from) { return self.implicit(cast::<CXXRValueRefType>(from)->referee, to); }
+
         // primitives
         var fk = self.tu.kind_of(from);
         var tk = self.tu.kind_of(to);
@@ -212,6 +221,52 @@ class Conversion {
             return ImplicitRank::None;
         }
 
+        return ImplicitRank::None;
+    }
+
+    /// Reference binding, C++'s ranking where Kairo can see it:
+    ///
+    ///   `T&` / `const T&` <- T         Exact (binding is an identity, not a conversion)
+    ///   `T&`              <- const T&  None  (drops const)
+    ///   `const T&`        <- U, U->T   Converted (binds a temporary)
+    ///   `B&` / `const B&` <- D, D:B    Converted (derived-to-base)
+    ///   `T&&`             <- T / U->T  Converted
+    ///
+    /// Rvalue references rank Converted, never Exact: Conversion sees types,
+    /// not value categories, so the C++ tiebreak that sends an lvalue to
+    /// `const T&` and a temporary to `T&&` cannot be expressed here. Ranking
+    /// `&&` lower makes a `(const T&, T&&)` overload pair resolve to the
+    /// const& one for every argument -- a copy where C++ would move, but
+    /// never an ambiguity.
+    priv fn _bind_ref(self, from: *Type, to: *Type) -> ImplicitRank {
+        var src = from;
+        var from_const = false;
+        if isa::<CXXLValueRefType>(from) {
+            from_const = cast::<CXXLValueRefType>(from)->is_const;
+            src = cast::<CXXLValueRefType>(from)->referee;
+        } else if isa::<CXXRValueRefType>(from) {
+            src = cast::<CXXRValueRefType>(from)->referee;
+        }
+
+        if isa::<CXXRValueRefType>(to) {
+            var rr = cast::<CXXRValueRefType>(to)->referee;
+            if (src == rr) || (self.implicit(src, rr) != ImplicitRank::None) { return ImplicitRank::Converted; }
+            return ImplicitRank::None;
+        }
+
+        var lr       = cast::<CXXLValueRefType>(to);
+        var referee  = lr->referee;
+        if src == referee {
+            if from_const && (!lr->is_const) { return ImplicitRank::None; }
+            return ImplicitRank::Exact;
+        }
+        var fd = self.tu.record_decl(src);
+        var td = self.tu.record_decl(referee);
+        if (fd != &null) && (td != &null) && (fd != td) && self.tu.derives_from(fd, td) {
+            if from_const && (!lr->is_const) { return ImplicitRank::None; }
+            return ImplicitRank::Converted;
+        }
+        if lr->is_const && (self.implicit(src, referee) != ImplicitRank::None) { return ImplicitRank::Converted; }
         return ImplicitRank::None;
     }
 

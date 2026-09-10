@@ -268,12 +268,15 @@ class <T> CastTyping {
                     for var i: usize = 0; i < cell.cell->size(); ++i {
                         var f = dyn_cast::<FunctionDecl>(cell.cell->get(i));
                         if f == &null { continue; }
-                        // exactly one non-self parameter
+                        // exactly one non-self parameter, and not C++ `explicit`:
+                        // this rung IS the converting-constructor rule, and
+                        // `explicit` is a header's own statement that a ctor
+                        // is not a conversion.
                         var nreal: usize = 0;
                         for var j: usize = 0; j < f->params.size(); ++j {
                             if (f->params[j] != &null) && (!f->params[j]->is_self) { nreal += 1; }
                         }
-                        if nreal == 1 { ctors.push_back(cell.cell->get(i)); }
+                        if (nreal == 1) && (!f->ffi_explicit) { ctors.push_back(cell.cell->get(i)); }
                     }
                     if ctors.size() > 0 {
                         var args = vec::<ArgInfo>();

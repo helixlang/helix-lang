@@ -111,16 +111,15 @@ class <T> CallTyping {
             if p == &null { continue; }
             params.push_back(p);
         }
-        // the resolver's param indices exclude a bound receiver; rebuild that view.
+        // The resolver's param indices exclude a bound receiver; rebuild that
+        // view. TOLD, not inferred: the old guess ("self was skipped unless
+        // some argument maps to 0") was wrong for every receiver call WITH an
+        // argument -- once self is skipped the first real param IS index 0 --
+        // and matched that argument against `self`: `x as Wrap` through a
+        // converting ctor checked the operand against Wrap itself.
         var view = vec::<*ParamDecl>();
-        var has_self_skipped = false;
-        // Determine whether self was skipped: the resolver never maps an arg
-        // onto a self param, so if params[0] is self and any arg maps to 0,
-        // self was NOT skipped.
-        var mapped_zero = false;
-        for var i: usize = 0; i < r->arg_to_param.size(); ++i { if r->arg_to_param[i] == 0 { mapped_zero = true; } }
         for var i: usize = 0; i < params.size(); ++i {
-            if (i == 0) && params[0]->is_self && (!mapped_zero) { has_self_skipped = true; continue; }
+            if (i == 0) && params[0]->is_self && r->receiver_bound { continue; }
             view.push_back(params[i]);
         }
 
@@ -204,13 +203,12 @@ class <T> CallTyping {
         if isa::<NamedIdentExpr>(callee) {
             var id = cast::<NamedIdentExpr>(callee);
             if id->is_poisoned() { dyn()->poison_only(n); return &null; }
-            if id->foreign { dyn()->mark_unknown(n); self._type_args_blind(n); return &null; }
 
             if id->is_deferred() {
                 var cands = vec::<*Decl>();
                 for var i: usize = 0; i < id->candidate_cell->size(); ++i { cands.push_back(id->candidate_cell->get(i)); }
                 return self._call_candidates(n, &cands, false, &null, dyn()->sc->ctx->get_spelling(id->name),
-                                             id, &null);
+                                             id, &null, true);
             }
             if !id->is_bound() { dyn()->mark_unknown(n); return &null; }
 
@@ -218,7 +216,7 @@ class <T> CallTyping {
             if isa::<FunctionDecl>(d) {
                 var cands = vec::<*Decl>();
                 cands.push_back(d);
-                return self._call_candidates(n, &cands, false, &null, dyn()->sc->ctx->get_spelling(id->name), &null, &null);
+                return self._call_candidates(n, &cands, false, &null, dyn()->sc->ctx->get_spelling(id->name), &null, &null, true);
             }
             if dyn()->tu.is_type_decl(d) {
                 var rec = dyn()->denoted_type(callee);
@@ -262,16 +260,43 @@ class <T> CallTyping {
         return self._call_through(n, t);
     }
 
+    priv fn _any_method(self, cands: *vec::<*Decl>) -> bool {
+        for var i: usize = 0; i < cands->size(); ++i {
+            var f = dyn_cast::<FunctionDecl>((*cands)[i]);
+            if (f != &null) && f->is_method() { return true; }
+        }
+        return false;
+    }
+
     priv fn _type_args_blind(self, n: *CallExpr) {
         for var i: usize = 0; i < n->args.size(); ++i { dyn()->type_of(n->args[i], &null); }
     }
 
     /// Resolve against \p cands, promote the winner onto \p ident or \p step.
+    /// \param adl  the callee was an unqualified name: widen \p cands with
+    ///             argument-dependent lookup before resolving.
     priv fn _call_candidates(self, n: *CallExpr, cands: *vec::<*Decl>, has_receiver: bool,
                              receiver: *Type, name: string, ident: *NamedIdentExpr,
-                             step: *ChainExpr::Step) -> *Type {
+                             step: *ChainExpr::Step, adl: bool = false) -> *Type {
         var args = vec::<ArgInfo>();
         var ok = self.build_args(n->args, &args);
+
+        // ADL ([basic.lookup.argdep]): an unqualified call also sees functions
+        // of the same name in the modules of its arguments' types -- how
+        // `swap(a, b)` on two `std::` values finds `std::swap` unqualified.
+        // AFTER build_args, because it needs the argument types; an untyped
+        // literal has none and associates nothing. Suppressed, as in C++,
+        // when ordinary lookup found a method.
+        var all = vec::<*Decl>();
+        for var i: usize = 0; i < cands->size(); ++i { all.push_back((*cands)[i]); }
+        if adl && (!self._any_method(cands)) {
+            var scopes = vec::<*DeclContext>();
+            for var i: usize = 0; i < args.size(); ++i { dyn()->ml.associated_scopes(args[i].ty, &scopes); }
+            var imm = dyn()->sc->imm_table()->find_ident(name);
+            if (scopes.size() > 0) && (imm != u32(-1)) {
+                dyn()->ml.adl_candidates(&scopes, DeclName::ident(imm), name, cands, &all);
+            }
+        }
 
         // The receiver goes IN, not on afterwards: an interface member's
         // `Self` is the receiver, and viability is judged against it.
@@ -282,7 +307,7 @@ class <T> CallTyping {
             if pt != &null { recv = pt; }
         }
 
-        var r = dyn()->ovl.resolve(cands, &args, has_receiver, n->range, name, recv);
+        var r = dyn()->ovl.resolve(&all, &args, has_receiver, n->range, name, recv);
         if r.outcome == OvlOutcome::Dependent { dyn()->mark_unknown(n); return &null; }
         if r.outcome != OvlOutcome::Selected { dyn()->poison_only(n); return &null; }
         if !ok { dyn()->poison_only(n); return &null; }
