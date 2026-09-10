@@ -39,6 +39,7 @@ import Diagnostic::BufferedDiagSink::*;
 import Lexer::Immediate::*;
 import Config::Invocation::*;
 import AST::Context::InstantiationRegistry::*;
+import Sema::Foreign::ForeignInstantiate::*;
 
 /// \enum SemaPhase
 /// \brief Where the TU is in the RESOLUTION.md pipeline. Monotonically
@@ -211,6 +212,11 @@ class SemaContext {
     pub var opts:      SemaOptions;
     pub var phase:     SemaPhase = SemaPhase::Parsed;
     pub var instances: obs::<InstantiationRegistry> = &null;
+    /// Fills instances of IMPORTED class templates from clang (MemberLookup's
+    /// trigger). Build-wide, owned by CompilerInstance and wired by the driver
+    /// after construction; null when nothing imports C++ -- every reader
+    /// treats null as "cannot fill", which leaves lookup on the pattern.
+    pub var foreign:   obs::<ForeignInstantiate> = &null;
 
     pub var well_known: WellKnownDecls;
 

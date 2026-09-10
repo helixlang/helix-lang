@@ -62,7 +62,9 @@
 
 import Sema::SemaContext::*;
 import Sema::Resolve::NameLookup::*;
+import Sema::Resolve::MemberLookup::*;
 import Sema::Resolve::ResolutionTrace::*;
+import AST::Mixin::FFILinkage::*;
 import Sema::Type::TypeUtil::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
@@ -757,6 +759,33 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
     /// A chain step. N recorded it as deferred; ChainBinding (after T) may
     /// have decided it. Join the outcome by location so the row stays where
     /// N put it, in source order.
+    /// `  [filled by clang, N bytes, align M]` when the answering decl is an
+    /// instance of an imported template that ForeignInstantiate filled. An
+    /// unfilled one (never demanded, or a failed fill) answered from its
+    /// pattern and says nothing -- which is exactly the difference a test of
+    /// the fill needs to see.
+    priv fn _clang_fill_note(self, d: *Decl) -> string {
+        if !MemberLookup::filled_by_clang(d) { return ""; }
+        var lay: *ForeignLayout = &null;
+        if isa::<ClassDecl>(d) {
+            var n = cast::<ClassDecl>(d);
+            if !n->instantiated { return ""; }
+            lay = &(n->layout);
+        } else if isa::<StructDecl>(d) {
+            var n = cast::<StructDecl>(d);
+            if !n->instantiated { return ""; }
+            lay = &(n->layout);
+        } else if isa::<UnionDecl>(d) {
+            var n = cast::<UnionDecl>(d);
+            if !n->instantiated { return ""; }
+            lay = &(n->layout);
+        } else {
+            return "";
+        }
+        if !lay->known { return "  [filled by clang]"; }
+        return f"  [filled by clang, {lay->size_bytes} bytes, align {lay->align_bytes}]";
+    }
+
     priv fn _trace_member(self, r: *TraceRow) {
         self._trace_indent(r->depth);
         self._p.paint(Color::Operator, "member  ");
@@ -786,7 +815,9 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
         }
 
         var _where = "";
-        if mr->found_in != &null { _where = f"  [member of {sema_dump_decl_name(self.ctx, mr->found_in)}]"; }
+        if mr->found_in != &null {
+            _where = f"  [member of {sema_dump_decl_name(self.ctx, mr->found_in)}]" + self._clang_fill_note(mr->found_in);
+        }
 
         switch mr->outcome {
             case MemberOutcome::Bound {

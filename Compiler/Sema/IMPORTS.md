@@ -389,10 +389,29 @@ is a typo again.
 sets loads the main file's set as the PCH and `#include`s every other
 set's headers textually by resolved path. Correct, just re-parsed.
 
+**Instances of imported templates.** `cont<i32>` for an imported `cont` is a
+registry shell like any instance (#12), but clang fills it, never M2
+(`MemberLookup::filled_by_clang`). The first member lookup into the shell
+calls `ForeignInstantiate::fill`: the registry entry's args are spelled back
+as clang types in the primary's set (`TypeExport`), clang declares and
+completes the specialization (`CheckTemplateIdType` + `RequireCompleteType`,
+under the set's `sema_lock`), and DeclImport in fill mode imports the
+ClassTemplateSpecializationDecl's members into the shell, which is then
+`instantiated`. So `size()` returns clang's answer for `size_type`, not the
+pattern's dependent spelling. A fill that cannot run -- an arg with no clang
+spelling (a Kairo-native record, a decl from another set), or a
+specialization clang rejects -- is sticky (`foreign_fill_failed`) and lookup
+walks the pattern, as it did before fills existed. [MISSING] a Kairo
+diagnostic for a failed fill (it logs at Driver stage); a C++ forward shape
+for Kairo-native args (`std::vector<KairoStruct>`); and a fill trigger on
+TypeResolve's `Inst::member` path, which still reads an unfilled shell's
+pattern.
+
 **Lifetime.** Header TUs live for the build (CompilerInstance::release
 refuses one). A set's clang instance lives until HeaderSetCache::release_all
 at the end of execute(); per-set release once its last importer passes
-Checked is the refinement.
+Checked is the refinement. Fills need it alive: ForeignInstantiate ICEs on
+a released set rather than read a dangling `clang_decl`.
 
 ---
 

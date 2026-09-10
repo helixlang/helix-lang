@@ -469,7 +469,11 @@ extensions on structural types keyed by shape (goes away with the
 container migration); exact non-generic targets by canonical pointer.
 
 **Instances** [DONE]: an explicit spec walks its own body. An unfilled
-implicit instance walks its pattern (`instantiated_from`).
+implicit instance walks its pattern (`instantiated_from`). An instance of an
+IMPORTED template is filled by clang, not M2: the first lookup into it
+calls `ForeignInstantiate::fill` (IMPORTS.md §5), after which it is
+`instantiated` and walks its own table like any filled instance. A failed
+fill is sticky and leaves it on the pattern.
 
 **Extension visibility is import-scoped** [DECIDED, MISSING]. Today the
 index is build-global: `import std::Vec` does nothing except get the file
