@@ -1215,3 +1215,36 @@ group = "member-lookup"
 
     [R051.N]
     explain = "Points at the generic parameter's declaration, which is where a bound would go."
+
+[R052]
+brief = "overloads distinct in kairo lower to the same c++ signature"
+group = "redeclaration"
+
+    [R052.E]
+    explain = """
+    # two overloads, one c++ signature
+
+    kairo keeps `usize` and `isize` as types of their own, distinct from every fixed-width
+    integer, so `f(u64)` and `f(usize)` are two overloads in kairo. but kairo is emitted as c++,
+    and there `usize` is `size_t` - on a 64-bit target the same type as `u64`'s `uint64_t`. both
+    overloads would lower to one c++ function declared twice, which the c++ compiler rejects in
+    generated code nobody wrote. kairo reports it here instead, at the source.
+
+    whether a pair collides depends on the target: `u64`/`usize` and `i64`/`isize` collide where
+    pointers are 64 bits, `u32`/`usize` and `i32`/`isize` where they are 32.
+
+    ## example
+
+    ```kairo
+    fn f(x: u64) { }
+    fn f(x: usize) { }            // same c++ signature as the first on a 64-bit target
+    ```
+
+    ## how to fix
+
+    keep one of the overloads and convert at the call site with `as`, or rename one of them. two
+    overloads that differ in any other parameter do not collide.
+    """
+
+    [R052.N]
+    explain = "Points at the earlier overload the flagged one collides with."
