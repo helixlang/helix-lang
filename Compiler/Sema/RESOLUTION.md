@@ -1,8 +1,15 @@
-
 **Ordering is DAG order, not just parallel.** `CompilerInstance::_sema`
 runs each fid's pipeline in reverse import-tree order. I needs it (source
 overlay complete before re-export folds). T needs it (an imported file's
-nodes are settled before the importer READS them). Do not change the loop.
+nodes are settled before the importer READS them). X needs it (an imported
+expression-bodied function's return slot is filled by its own TU). Do not
+change the loop.
+
+Pipeline, as scheduled by `Sema.k`:
+
+    P -> I -> E -> V -> N -> T (TypeResolve, RedeclMerge, ChainBinding)
+      -> C (ConstraintExtraction, TypeCycleCheck, ExprTyper, ShadowCheck, ...)
+      -> L -> M1 -> M2
 
 ### 2.1 P parse [DONE]
 
@@ -16,6 +23,14 @@ indexes their BODIES through `_index_local_scopes` so members have tables;
 their NAMES go in no table (N's lexical stack / T's `ltypes` own them).
 `Self` in expression and pattern position lexes as `BiSelf` and parses as
 an ordinary `NamedIdentExpr` head; `Self<...>` never takes generic args.
+
+    [MISSING] `TypeCastExpr::cast_mode` (Default / Static / Const /
+    Unsafe). Only `is_unsafe` is recorded today; `as static` / `as const`
+    parse but are not distinguishable by sema.                        (spec 3)
+    [MISSING] Named call arguments have no node; every argument is
+    positional until one exists.                                      (spec 8)
+    [MISSING] `<T: type>` -> `GenericParamKindBound::Duck`.
+    [MISSING] `PointerType::is_unsafe` stamped from the `unsafe` qual. (spec 2)
 
 ### 2.2 I ImportResolution [DONE, IMPORTS.md §4]
 
@@ -44,9 +59,7 @@ Six independent structural checks. Errors hard-stop before N.
 five type kinds + modules, retarget canonical at the definition, diagnose
 redefinition and conflicting kinds, attach `out_of_line` defs, populate
 `sc.well_known`. **Specializations are skipped**: their own chains link in
-T on canonical spec args (#12).
-
-    [MISSING] FUNCTION redecl chains: need signatures. OverloadResolution.
+T on canonical spec args (#12). Function chains are R's (§2.6a).
 
 (b) Binding: every `NamedIdentExpr` head gets `resolved_decl` or
 `candidate_cell`. Order: lexical locals stack (innermost first) ->
@@ -62,12 +75,10 @@ overload set goes through whole.
     C-style `for var i = ...` scopes `i` to the loop.
     [DONE] `Self` (BiSelf) in expression position binds to the enclosing
     type body's decl -- the class/struct/... or the ExtensionDecl.
-    "Outside a type body" is N's error in expression position. (parser: BiSelf
-    is in EXPR_IDENT_TBL)
     [DONE] Bare-ffi miss gate (TEMPORARY, IMPORTS.md §5).
     [DONE, by design] N does NOT bind: chain steps (ChainBinding);
     ConstructorPattern heads and bare `case n` (pattern checking);
-    named-initializer field names (inference); attribute ARGUMENTS.
+    named-initializer field names (X); attribute ARGUMENTS.
     [DONE] The explicit-qualifier rule (R049), below.
 
 **The explicit-qualifier rule.** Kairo has no implicit `this->`. A name that a
@@ -78,32 +89,17 @@ exception is a name that denotes a SCOPE -- a nested type, a type alias, a
 nested module -- because naming a type is not an access through an object;
 `Nested { .. }` inside a method means `Self::Nested` and stays legal.
 
-The rule is a CONSISTENCY rule before it is a strictness one. `x` in a `class`
-body, in an `extend` body, in an out-of-line `fn Type::m`, and in a closure
-inside any of those is one construct written four ways, and all four now report
-identically. They did not before: the class body and the out-of-line
-definition bound `x` to the field, the `extend` body reported "use of
-undeclared identifier" -- and the nested-type exception did not hold in an
-`extend` body at all, because that body's DeclContext parents to the TU rather
-than to the type it extends.
+Two mechanisms: N's `_fn_depth` counter plus `_ext_target` (probed AFTER the
+DC chain); T's `_lookup_in_selfs` for type position. Field defaults and enum
+variant values keep the type body's scope (`_fn_depth` resets to 0 on entry
+to every type scope).
 
-Two mechanisms, because the two lookups are in different passes:
-
-  - N: `_fn_depth` (a counter, not a `cur_dc` walk -- an out-of-line def sets
-    `cur_dc` straight to the owning type, so there is no function scope
-    between the use and the member to find) plus `_ext_target`, the extended
-    type's scope, probed AFTER the DC chain so a real enclosing binding still
-    wins. `_ext_target` is resolved BY NAME (N runs before T, so
-    `target->canonical` is null here); a target N cannot name costs nothing
-    and T reports whatever is wrong with it.
-  - T: `_lookup_in_selfs`, the same fallback for TYPE position, walking
-    `_selfs` innermost-first. For a class body it never fires -- the DC chain
-    answered first.
-
-Field defaults and enum variant values are written IN the type body, keep the
-type body's scope, and are outside the rule: `_fn_depth` is reset to 0 on
-entry to every type scope, so a type declared inside a function body does not
-inherit the enclosing function's depth.
+**Lang items are bound by fid + path, not by unqualified name** [DECIDED,
+MISSING]. `_bind_well_known` walks the TU root by name today, so a user
+`class Vector` or a missing prelude changes what `[i32]` MEANS. A desugar
+target is not a name: the driver knows the builtin module's fid, and
+`WellKnownDecls` is filled once per build from it. Same for `Null`, `Range`,
+`Future`, `Yield`, `Ordering`, `Panic`, `string`.
 
 `NameBindingVerifier` is N's exit test: no reachable `NamedIdentExpr`
 survives with both slots null unless poisoned or foreign.
@@ -120,107 +116,81 @@ Aliases expand on demand (`_expand_alias`), memoized on ResolutionState;
 `type A = B; type B = A` is one error with every link as a note.
 
 **Alias chain depth is its own budget** (`--cmax-type-alias-depth`, default
-64, `sc->opts.max_type_alias_depth`), counted by `_alias_depth` across the
-nested `_expand_alias` calls -- NOT by the resolution stack, which counts
-every decl T descends into and would charge a two-link chain for the depth
-of the generic body it was reached from. The stack's own cap stays as the
-backstop for the converse case and reports a different message, naming
-`--cmax-scope-depth`, because lengthening the alias budget would not help
-there. Both are `R036`.
+64). The resolution stack's cap stays as the backstop and reports a
+different message naming `--cmax-scope-depth`. Both are `R036`.
 
-**An alias may not be more visible than what it names** (`R050`,
-`_check_alias_visibility`, at the alias DECLARATION so the error lands once
-and on the line that made it, not once per importer). It walks the SYNTACTIC
-target, not the canonical: canonicalization erases the intermediate aliases
-and the module path segments, and `pub type C = B` over a `priv type B`, or
-`pub type D = M::T` over a `priv module M`, launders exactly as well as the
-outermost name does. Every component counts -- pointer, nullable, vector,
-set, tuple, fixed array, map, fn-pointer param and return, generic argument.
-A visibility that was never written ranks as the WIDEST it could be, so the
-check fires only on an explicitly narrowed target; the member defaults (pub
-at top level, priv for a class member, pub for a struct member) belong to
-AccessCheck, and a false positive here would reject a legal program.
+**An alias may not be more visible than what it names** (`R050`, at the
+alias DECLARATION, walking the SYNTACTIC target).
 
-**T never dispatches a node it does not own.** An imported alias body or a
-default on an imported primary is READ through its slots (`_foreign`);
-DAG order guarantees they are filled. Re-dispatching would consult a
-per-TU memo that says "unresolved", re-run lookups from the wrong TU, and
-report foreign errors into this sink.
+**T never dispatches a node it does not own.** Foreign slots are READ
+(`_foreign`); DAG order guarantees they are filled.
 
-**Unqualified lookup uses the overlay of the TU the walk started in**
-(`NameLookup::unqualified`), never the pass's TU. Same key-space rule as
-#2, applied to overlays.
+**Unqualified lookup uses the overlay of the TU the walk started in.**
 
 What T decides:
 - **Builtins** by token kind, before any lookup. `i32::x`: error.
-- **`self`/`Self` in type position** (KwSelf, BiSelf): the innermost type
-  scope's record with its own params as args.
-  `Self::Inner` is a HEAD like any other type decl and walks the enclosing
-  body's table; inside `extend Box<i32>` it walks the pattern, not the
-  unfilled instance. `Self<T>` in type position is an error.
-- **Heads**: generic frames (innermost first) -> local-type stack
-  (`ltypes`: statement-scope type decls, one frame per block) ->
-  `unqualified(cur_dc)`. Redecl chains collapse to the representative;
-  `_pick_type_candidate` picks the primary and never a specialization; a
-  name that has only specializations and no primary is an error here.
+- **`self`/`Self` in type position**: the innermost type scope's record with
+  its own params as args. `Self::Inner` is a HEAD. `Self<T>` is an error.
+- **Heads**: generic frames -> `ltypes` -> `unqualified(cur_dc)`.
 - **`::` segments** step through `context_of(decl)`, alias expanded first,
   spelled for cross-TU probes. `T::Item` and `Foo<T>::Inner` are marked
   dependent and stopped (#5); M2 owns member-of-instantiation.
 - **Final decl -> canonical**: GenericParamDecl -> `generic_param(owner,
-  index)` where owner is the REPRESENTATIVE of the declaring decl (frames
-  are pushed with the representative, so a fwd decl's `T` and the
-  definition's `T` are one identity). Alias -> expand. Nominal -> arity ->
-  args by position and name -> defaults resolved in the PRIMARY's scope
-  with the primary's params in frame (`_demand_default`) -> #12: dependent
-  args -> `record(primary, args)`; concrete args -> `record(instance,
-  args)` via the registry.
-- **Specialization registration** (#12): a pre-pass over the TU's decl
-  tree registers every Explicit/Partial type spec BEFORE any use resolves
-  (`_register_specs_in`): find the primary (same name, same kind, not a
-  spec, visible from the spec's scope -- "no primary" error home), resolve
-  `spec_args` in the spec's own scope, register Explicit with concrete
-  args in the instance table and everything else as a partial. A Primary
-  the parser could not classify (#68) registers late, after
-  `_refine_spec_kind`. Second explicit spec for the same args in the same
-  file: fwd+def chain (`_link_spec`), or "redefinition of specialization".
-  Different file: error. Already-instantiated: error.
+  index)` on the REPRESENTATIVE; alias -> expand; nominal -> arity -> args
+  by position and name -> defaults in the PRIMARY's scope -> #12.
+- **Specialization registration** (#12) via `_register_specs_in`.
 - **Structural kinds** ask the store. `[T; N]` canonicalizes only for a
-  literal N. Unprototyped `fn()` is zero-param.
-  Dependence always flows up (`_component_ok`): `[T]`, `*T`, `(T, i32)`
-  are dependent because a component is, canonical or not.
+  literal N. Dependence always flows up (`_component_ok`).
 - **Receiver synthesis.** `ParamDecl::create_self` leaves `type_` null; T
   writes a `SelfType` with the enclosing record as canonical.
 - **#68 refinement**; **enum underlying** must be a builtin integer;
-  **`extend` target** resolved first; a record target becomes Self for the
-  body. Non-record targets (`extend i32`, `extend <T> [T]`) are accepted --
-  extendability is ExtensionLowering's question, not T's -- but `Self`
-  inside such a body is "outside a type body" until `selfs` can hold a
-  non-decl.
+  **`extend` target** resolved first; a record target becomes Self.
 
-Error homes carry real diag-table codes. The name/type domain owns
-`R020`-`R050` (`Resolution.diag.toml`); the Verify passes own `SC003`-`SC016`
-(`Semantic.diag.toml`); an invariant violation reports `I003E`. That sweep is
-complete for `Sema/` as of this writing, with one exception: `ImportResolution`
-still shares `R015E` across three distinct errors.
+**Containers are records, not structural kinds** [DECIDED, MISSING].
+`[T]`, `{K:V}`, `{T}`, `string` desugar to `builtin::Vector<T>` /
+`builtin::Map<K,V>` / `builtin::Set<T>` / `builtin::String`, records found
+by fid+path (above). `_resolve_vector/_set/_map` then produce
+`record(Vector, [elem])`; the store's `vector()/set_of()/map_of()` and
+MemberLookup's `_ext_by_shape` are deleted. `*T`, tuples, fn pointers and
+`[T;]` stay structural. `[T; N]` is a C array (structural, FFI-shaped).
+Until the migration lands both forms are live and `TypeUtil::vector_of`
+etc. follow whichever the lang item says, so identity stays one domain.
 
-`R001`/`SC001`/`U001` remain the per-category placeholder codes. Keep using them
-for a new diagnostic rather than inventing a number inline -- a placeholder is
-greppable and a wrong number is not. A later manual sweep triages the batch into
-real codes, the same way this one did. Anything still on a placeholder must not
-ship in a stable release.
+**`unsafe *T` is a distinct canonical from `*T`** [DECIDED, MISSING, spec 2].
+`PointerType::is_unsafe` enters the store's key. Without it the `unsafe *`
+cast family is undecidable.
+
+**`_selfs` holds a `*Type`, not a `*Decl`** [DECIDED, MISSING]. A record's
+self is `record(canon, args)`; a structural target's self is its canonical.
+Closes residue (f): `Self` inside `extend i32` stops being "outside a type
+body".
+
+Error homes carry real diag-table codes. `R020`-`R050` are the name/type
+domain; `SC003`-`SC016` the Verify passes; `I003E` invariant violations.
+`ImportResolution` still shares `R015E` across three errors.
+
+`R001`/`SC001`/`U001` remain the per-category placeholder codes. The whole
+of `Sema/Type/` is on `SC001E`/`SC001W`; a later sweep triages it. Anything
+still on a placeholder must not ship in a stable release.
 
     [PARTIAL] `Foo<i32>::Inner` (concrete args) is marked IsDependent, not
     merely instantiation-dependent; ChainBinding then refuses
-    `Foo<i32>::Inner::make()`. Mark inst-dependent only when the previous
-    segment's args are all concrete.
+    `Foo<i32>::Inner::make()`.
+    [PARTIAL] `_register_specs_in` descends type and module scopes only.
 
-    [PARTIAL] `_register_specs_in` descends type and module scopes only;
-    an explicit specialization written inside a function body is not
-    registered.
+### 2.6a R RedeclMerge [DONE]
+
+`Sema/Resolve/RedeclMerge.k`, inside the T stage after TypeResolution.
+Merges FUNCTION redeclarations by signature (arity, canonical param types
+in order, generic arity; return type EXCLUDED so a mismatch is a conflict;
+const excluded for Kairo-authored decls, included for foreign). R(a) walks
+frozen cells; R(b) matches `fn Class::method` against the in-class set.
+Return-type / default / linkage / modifier agreement checked across the
+chain. File scope permits repeats, a type body does not ([class.mem]).
 
 ### 2.7 ChainBinding [DONE]
 
-`Sema/Resolve/ChainBinding.k`, after TypeResolution in the T stage. Walks
+`Sema/Resolve/ChainBinding.k`, after RedeclMerge in the T stage. Walks
 every `ChainExpr` left to right from an ANCHOR and binds each step:
 
     Module   -> `::` does table lookup (every reopened scope, unioned;
@@ -228,21 +198,42 @@ every `ChainExpr` left to right from an ANCHOR and binds each step:
     Type     -> `::` does member lookup; `.` is an error
     Value    -> `.`/`->`/`?.`/`?->` peel the wrapper then member lookup on
                 the canonical; `::` is an error
-    NeedsInference / Dependent / Foreign / Errored -> record why, stop
+    NeedsInference / Foreign / Errored -> record why, stop
+    Dependent -> the three-regime rule below
 
 Anchors: param/field/typed var -> Value; class/struct/enum/interface/
 alias -> Type; `Self` bound to an ExtensionDecl -> Type (its target);
-module -> Module; generic param -> Dependent; call / inferred var /
-overload set / operator or tuple-index step -> NeedsInference; ffi
-anchor -> Foreign.
+module -> Module; generic param -> Dependent (carrying its canonical);
+call / inferred var / overload set / operator or tuple-index step ->
+NeedsInference; ffi anchor -> Foreign.
+
+**Two callers, one binder** [DECIDED, MISSING, spec 4]. `bind_step(chain,
+st, anchor)` is public. ChainBinding calls it from its own walk with the
+anchors it can compute from DECLARED types; the expression typer calls it
+for every NeedsInference step once it knows the base's type, with
+`anchor_for_value(decl, canonical)` / `anchor_for_type(t)`.
+
+**The three regimes** [DECIDED, MISSING]. A step on a value whose canonical
+is a bare `generic_param(owner, i)` reads `owner`'s `GenericParamDecl[i]`
+and its bounds (inline `impl`/`derives` plus the owner's requires
+conjuncts, read from `sc->bounds`):
+
+    <T>            opaque. No members, no `::`. ERROR at the definition:
+                   "'T' has no known members; add 'impl I' or ': type'".
+    <T impl I>     member lookup over I (and I's derives), unioned across
+                   bounds. Binds to I's REQUIREMENT decl. `derives B`
+                   bounds expose B's members likewise. Definition-side
+                   checking: the error lands on the template, not on the
+                   40th instantiation.
+    <T: type>      duck. Every step Dependent; M2 checks per instance.
+
+A dependent COMPOSITE (`*T`, `[T]`, an unfilled `Foo<T>::Inner`) is still
+Dependent under every regime; it has no scope to look into.
 
     [DONE] A dependent RECORD is still looked up by name (`self.x` in
-    `class <T> Foo` binds to the field); only a dependent NON-record
-    (`T`, `*T`, `[T]`) stops as Dependent.
-    [DONE] `Box<i32>::make()`: a type head with explicit args in
-    expression position anchors as the registry instance -- positional,
-    every param supplied, no packs, no names. Anything else is
-    NeedsInference (inference owns defaults and named args, as for calls).
+    `class <T> Foo` binds to the field).
+    [DONE] `Box<i32>::make()`: a type head with explicit args anchors as
+    the registry instance -- positional, complete, no packs, no names.
     [DONE] Cross-TU probes are spelled, not imm-keyed.
 
 Commit rule: one decl -> `resolved_decl`; all functions ->
@@ -251,41 +242,314 @@ ambiguity error. Outcomes recorded per step in `ResolutionTrace`.
 
 ### 2.8 C checks [PARTIAL]
 
-`ConstraintExtraction` and `TypeCycleCheck` run. `OperatorSignatureCheck`,
-`ConformanceChecking`, `ConstChecking`, `AccessCheck` are stubs.
+In order: `ConstraintExtraction`, `TypeCycleCheck`, `ExprTyper` (§2.9),
+`ShadowCheck`. `OperatorSignatureCheck`, `ConformanceChecking`,
+`ConstChecking`, `AccessCheck`, `ExtensionOrphanCheck` are stubs / missing.
+
+`ConstraintExtraction` partitions each decl's canonical `requires` into
+conformance constraints vs value predicates and writes the result to
+`sc->bounds` keyed by owner decl [DECIDED, MISSING] -- the bound table
+ChainBinding's dependent path and ConformanceChecking read.
 
     [DECIDED] TypeCycleCheck / LayoutPass treat a `RecordType::decl` that
     is `is_instance() && !instantiated` as "size unknown until M2", never
     as empty.
+    [DECIDED] `ShadowCheck` runs after X; it is silent for a binding whose
+    type is still null.
 
-### 2.9 L, M1, M2 [MISSING]
+### 2.9 X ExprTyper [DONE, one-shot; bug list open]
+
+`Sema/Type/`. THE expression typer: overload resolution, inference and
+checking are ONE demand-driven system, not three passes -- picking an
+overload needs the argument types, typing the call needs the overload, and
+a "type mismatch" is what falls out when no conversion exists. Built like
+ASTParse: `ExprTyper` derives the RAV and one mixin per concern; the
+mechanisms with no traversal are components held by value.
+
+    ExprTyper.k          driver, memo, `type_of(e, expected)`, side tables
+    TypeUtil.k           component: read-only type/decl queries, rendering
+    Conversion.k         component: the lattice + the implicit relation
+    OverloadResolution.k component: candidates + args -> one decl
+    ArgumentDeduction.k  component: unify / substitute / member_through /
+                         replace_self
+    LiteralTyping.k      mixin: §5 of the lattice
+    OperatorTyping.k     mixin: §6 of the lattice + user operators
+    CallTyping.k         mixin: callee shapes, ctor calls, promotion
+    MemberTyping.k       mixin: chains (NeedsInference re-entry), subscripts
+    CastTyping.k         mixin: the `as` family
+    ControlTyping.k      mixin: if/match/try joins, closures, initializers,
+                         lang-item desugars, binder-typing half of patterns
+    StmtTyping.k         mixin: frames, `return`, decls that infer,
+                         conditions, binders (what "TypeChecking" was)
+
+**What X writes, and nothing else** (hard invariant #7 extended):
+`Expr::type_`, `value_category`, `expr_flags`, `poisoned`; the inferred
+type of a `VariableDecl` / `ClosureExpr` / expr-bodied `FunctionDecl` /
+binder decl -- as the CANONICAL NODE ITSELF, which is self-canonical, so
+every consumer reading `->canonical` is unchanged and no node is
+allocated; and the promotion `candidate_cell -> resolved_decl` on a callee
+(`NamedIdentExpr` or `ChainExpr::Step`). Never a new AST node.
+
+**Four terminal states per expression.** typed (`type_` set); poisoned
+(diagnosed, `type_` null); unknown (`IsInstantiationDependent` set,
+`type_` null, not poisoned: dependent, foreign, or a hole a later pass
+owns -- consumers skip checks on it); type/module-denoting (recorded in the
+typer's side tables; only a callee or initializer head may read it).
+
+**Memoized on the node.** `expected` is bidirectional only where a node
+consumes it: literals, `null`, aggregate/named/anonymous initializers,
+closures. A node has one parent, so one expected type, so the memo is
+sound. Statement overrides call `type_of` with the expected type BEFORE
+the RAV's own pre-order visit, which is then a memo hit.
+
+**Conversion relation** (`Conversion.k`, normative source: the Primitive
+Conversion Lattice). Two ranks: Exact = I; Converted = W, `T -> T?`,
+`*Derived -> *Base` (same safety), `! -> anything`. No ordering inside
+rank 2. `-fno-implicit-conv` demotes W to Converted->None here and nowhere
+else. The primitive relation is rule-based (R1-R5, §4); the table-generated
+`classify` with property tests is a tooling follow-up and these rules are
+its oracle. bf16 -> f32/f64 is W (exact by construction; the doc table
+omits bf16).
+
+**Literals** (§5). Untyped until assigned. Expected type first, fit checked
+AT the literal; default i32 -> i64 -> i128, then "too large without a
+suffix". `-lit` folds the sign into the fit. Suffixed literals are typed
+at the literal. Against a parameter, an untyped literal ranks Exact for
+any type it fits (it TAKES the type; it is not converted) and is typed
+with the parameter type after selection. The lexer's min-width guess is
+not read for unsuffixed literals.
+
+**Overload resolution** (`OverloadResolution.k`). Viability: placement
+(positional, named, pack tail), defaults, every placed arg at rank <=
+Converted, generic candidates deduce every non-pack param. Rank = worst
+argument rank. Ties inside a rank are ambiguous, with ONE tiebreak that is
+not a conversion ordering: among Exact winners a non-generic candidate
+beats a generic one (otherwise `fn f(i32)` beside `fn <T> f(T)` is
+ambiguous on every call). A fwd/def pair is one candidate (representative).
+Specializations are skipped (paired later). Packs are accepted at
+Converted and not deduced. Diagnostics: no viable (capped candidate notes),
+ambiguous, not callable.
+
+**Deduction** (`ArgumentDeduction.k`). Structural unify of the param's
+canonical against the arg's, binding `(owner, index)`; conflicts fail,
+there is no common-type search. Top level may succeed through the implicit
+relation (Converted); inside a structure exact or nothing. `substitute`
+rebuilds through the store and goes through the registry for a concrete
+record. `member_through(recv, mt)` reads a member type through the
+receiver's args. `replace_self(t, I, T)` reads an interface member through
+a bound (`-> Self` is `T`).
+
+**Calls** (`CallTyping.k`). Callee shapes: name (function / set / type ->
+ctor / fn-pointer value), chain (method or set with the chain's receiver /
+type -> ctor / fn-pointer value), anything else must be a fn pointer.
+Constructors live in the type's own table under `DeclName::ctor()`; no
+ctor + no args is the default ctor. Args are typed before resolution
+except untyped literals (ranked by shape, typed after). Generic function
+instances are registered in `InstantiationRegistry` (needs the function
+arm, spec 7). Return type: declared -> canonical; `-> !` -> `Never`;
+expr-bodied unannotated -> demanded under a rstate cycle guard.
+
+**Chains** (`MemberTyping.k`). Per step: field/var/param -> declared type
+through the receiver (LValue); variant -> the enum; method/set -> callable
+(no type; legal only as a callee); nested type/alias -> type-denoting;
+module -> nothing; `.0` -> the element; operator step -> callable via
+`op_name`. `?.` peels and re-wraps. Callable expressions have no type: a
+unique non-method function named as a value is its fn pointer; an overload
+set as a value is an error at the use.
+
+**Operators** (`OperatorTyping.k`). Builtins follow §6 exactly (`u32 + i32`
+is an error; shifts unify the right operand alone; compound assignment
+converts the right operand only). Comparison -> bool; `<=>` -> `Ordering`;
+`??` on `T?` joins the inner with the right; `===` requires unifiable
+operands. Non-primitives search the LEFT operand's members and extensions
+under `op_name`; no ADL and no free operator functions yet (§4 item e).
+Literal-on-one-side takes the other side's type. `&x` needs an lvalue and
+yields `*T`; `*p` yields the pointee as an lvalue.
+
+**Casts** (`CastTyping.k`). The written target is the result type, always.
+Dispatch on (source, target), first match, no fallthrough:
+
+    1. target = source + const           const cast, one-way
+    2. target is `unsafe *X`             reinterpret; needs an unsafe ctx;
+                                         source any pointer or an integer
+    3. target `*X`, source `*S`, related upcast: static, redundant lint;
+                                         downcast: ASSERTING (panic site,
+                                         S must be polymorphic)
+    4. target `*X?`, related             checked downcast, null on miss
+    5. static ladder: lattice I/W (lint) / E / U (unsafe ctx) / X (error)
+       -> plain enum <-> exact underlying -> `op as` on the source ->
+       one-param ctor on the target -> error. `op as` beats ctor.
+
+`as static` disables 3-4 and errors on a dynamic answer; a static downcast
+is forbidden outright. `as const` asserts 1. `T? as T` is an error naming
+`??` / `unwrap!()`; there is no collapsing cast. Pointer <-> integer: `ptr
+as usize` needs no unsafe; `ptr as u8` is an error; `int as unsafe *T`
+needs unsafe; `int as *T` is an error; `*T as unsafe *T` needs unsafe.
+Asserting downcasts are recorded in `panic_sites()` for
+PanicEffectChecking.
+
+**Control** (`ControlTyping.k`). if/match/try as expressions join their
+arms (`Conversion::join`: identical, one-way W, or Never on one side);
+every arm must then convert to the join. Closures type as their fn-pointer
+canonical; params must be annotated; return declared or inferred through
+a frame. `a..b` -> `Range<elem>`; `await` on `Future<T>` -> `T`; `spawn`/
+`thread` -> `Future<T>`; `sizeof`/`alignof` -> usize; `typeof x` is
+type-denoting; `unsafe e` bumps the unsafe depth; `delete p` needs a
+pointer. Named initializer: fields by name in the record's table, values
+against the field type through the receiver. Anonymous initializer needs
+an expected record type. Patterns: binders take the scrutinee's type,
+literal/range patterns are checked against it, tuple patterns split;
+constructor heads and exhaustiveness are PatternChecking's.
+
+**Statements** (`StmtTyping.k`). One frame per function/closure body:
+declared return type (null = infer) and the join of returns seen.
+`return` without a value in a non-void function, with a value in a void
+one, or at all in a `!` function: errors. `var x = e` writes the canonical
+into `type_`; `var x` with neither type nor init is an error; `void`
+initializers are errors. Conditions and guards must be `bool`. `for x in
+xs`: element from the container / map (K,V) tuple / string char / Range
+arg / `op in` (through `Yield<T>`); binders get it through their
+shorthands. Destructuring by position or field name. Context bindings take
+the value's type until ContextLowering. `yield`'s check against `yield T`
+is YieldLowering's.
+
+**What X does NOT do**: ADL / free operator functions; pack deduction and
+ranking; pattern head resolution and exhaustiveness (PatternChecking);
+const-correctness, including assignment to const and const-cast validity
+beyond "adds const" (ConstChecking); effect propagation (reads
+`panic_sites()`); access control (AccessCheck); `yield` vs `yield T`;
+the context-binding protocol; the `: type` regime (M2 re-check).
+
+**Depends on** (blocking, spec items 1-7): `BuiltinKind::Never`;
+`PointerType::is_unsafe` in the store key; `TypeCastExpr::cast_mode`;
+`ChainBinding::{prepare, bind_step, anchor_for_value, anchor_for_type}`;
+`SC001E`/`SC001W`; the schedule line in `Sema.k`; the registry's function
+arm. Non-blocking: named-argument node; SemaDump `-- expression types --`
+section; TypeQual enum path in `TypeUtil::syntax_is_const`.
+
+**Tests** (`Tests/Sema/ExprTyper/`, golden `--print-sema` dumps):
+`literals.k`, `operators.k` (the §6 table verbatim), `overloads.k`,
+`chains.k`, `casts.k` (one line per ladder branch), `control.k`,
+`bounds.k` (the three regimes), `nomono.k` (a generic body: every row
+`<unknown>`, zero diagnostics -- if this one fails, something treats
+dependent as failed, and that is the first bug to fix).
+
+### 2.10 L, M1, M2 [MISSING]
 
 Mono model: "Kairo enumerates and checks; C++ instantiates explicitly".
-M1 walks `InstantiationRegistry::collect`; it creates nothing (T did). M2
-is the sync point: fills `Instantiated` nodes from their pattern, selects
-partials, runs dependent conformance, resolves `T::Item`.
+M1 walks `InstantiationRegistry::collect`; it creates nothing (T and X
+did). M2 is the sync point: fills `Instantiated` nodes from their pattern,
+selects partials, runs dependent conformance, resolves `T::Item`, and
+**re-checks every `: type` body per instance** by re-running X over the
+body with a `Deduction` seeded from the instance's args
+(`ExprTyper::retype_instance`, a second entry point, not a pass). A duck
+body whose member resolves to an EXTENSION member is an error there (see
+§2b, the `: type` rule).
 
 ---
 
-## 2b. Member lookup & OOP
+## 2b. Member lookup, extensions & OOP
 
 **MERGE, not hide** [DONE]. `MemberLookup::lookup(canonical, name, out)`
 walks own table -> extensions -> bases breadth-first, deduped, UNION.
 
-**Extensions** [DONE]: indexed once per run over every parsed TU.
-Records keyed by `RecordType::decl` (the primary for `extend <T> Vec<T>`);
-an instance decl also consults its `instantiated_from`'s extensions, so
-the primary's extensions apply to `Vec<i32>` whether implicit or an
-explicit spec. Generic extensions on STRUCTURAL types (`extend <T> [T]`)
-are keyed by TypeKind (shape); exact non-generic targets (`extend i32`) by
-canonical pointer.
+**Extensions** [DONE]: indexed once per run over every parsed TU. Records
+keyed by `RecordType::decl` (the primary for `extend <T> Vec<T>`); an
+instance decl also consults its `instantiated_from`'s extensions. Generic
+extensions on structural types keyed by shape (goes away with the
+container migration); exact non-generic targets by canonical pointer.
 
 **Instances** [DONE]: an explicit spec walks its own body. An unfilled
 implicit instance walks its pattern (`instantiated_from`).
 
-    [OPEN] Where do `[T]` / `{K:V}` / `string` members live? Today: only
-    extensions. If `push` is a corelib record method, lang items must map
-    the structural canonical to that record's decl before ChainBinding.
+**Extension visibility is import-scoped** [DECIDED, MISSING]. Today the
+index is build-global: `import std::Vec` does nothing except get the file
+into the build, and two libraries in the build both adding `push` make
+every `v.push` ambiguous. An extension contributes to a TU's lookup iff
+its fid is in that TU's transitive import set. One filter on `_index_decl`.
+
+**The orphan rule** [DECIDED, MISSING -> `ExtensionOrphanCheck`, Checks
+stage, after T]. A plain `extend X` must be in X's file. `extend X impl
+I` may be in X's file or I's file. Keyed on `RecordType::decl` of the
+target (an explicit spec's extend lives in the spec's file; an implicit
+instance's in the primary's). A rejected extend is poisoned so the index
+skips it. Consequences: reopened modules do not relax it (file, not
+module); an FFI-extracted C++ type can never be plain-extended.
+
+**An `impl` extend may contain only the interface's members** [DECIDED,
+MISSING -> ConformanceChecking]. Without this `interface Dummy {}` in any
+file re-opens every cross-file conflict the orphan rule exists to prevent.
+
+**Interface-conformance methods are ordinary members at lookup**
+[DECIDED]. `v.push(x)` resolves the `VectorI` method bare. Two interfaces
+both declaring `push` on one type collide at the use; the qualified call
+form (`VectorI::push(v, x)` / `v.VectorI::push(x)`, spelling TBD) is the
+tiebreak and is required before the ambiguity diagnostic can suggest it.
+
+**Every extension member lowers to a free function with an explicit
+receiver** [DECIDED]. `extend Foo { fn m(self) }` is `m(Foo*)` in the
+extension's module namespace; `a.push(19)` -> `std::Vec::push(&a, 19)`,
+qualified from `resolved_decl` (IMPORTS.md §6.5). Receiver `Self*` /
+`const Self*` from `fn f(self)` / `fn f(self) const`; a prvalue receiver
+(`f().push(1)`) is materialized into a temporary by ExtensionLowering.
+Extension methods are never virtual, never `override`, never a ctor.
+Record extends follow the same rule; there are not two.
+
+**Friend iff the extend is in the type's file** [DECIDED]. The type's
+emitted definition carries `friend` declarations for exactly its
+same-file extension members, so they see `priv`; an `impl` extend in the
+interface's file is pub-only. The friend list is therefore closed at the
+file, so a class definition is byte-identical in every TU (IMPORTS.md
+invariant 12), library builds cache, and adding an extend downstream
+rebuilds nothing upstream. EmitPlan: a class at Complete admits its
+same-file extension members at Fwd, placed BEFORE the class definition
+(tier 0), since a namespaced friend needs a prior declaration. Generic:
+`template<class T> struct Box { template<class U> friend void m(Box<U>*); }`.
+
+**Builtins are a compiler-shipped module** [DECIDED]. `builtins/Vector.k`
+declares `struct <T> Vector { data, len, cap }` -- an FFI-backed record
+spelled `kairo::builtins::vec` in C++ -- and std adds every method via
+`extend <T> Vector<T> impl VectorI<T>` in std's own file, which the orphan
+rule permits because `VectorI` is declared there. `VectorI` therefore
+lists EVERY method (the impl-only rule above). A no-std user may still
+`extend Vector impl MyInterface` from their own file. Consequence to
+accept knowingly: Vector's representation is public API (struct fields
+default pub; std's extend is not a friend), unless `prot` with
+same-library provenance lands (AccessCheck).
+
+**Generic bodies and extension members: witness structs** [DECIDED,
+MISSING]. A generic body emits ONCE as a C++ template. Inside
+`fn <T impl VectorI> f(x: T) { x.push(1) }` no single C++ spelling reaches
+a different free function per `T` (ADL searches the type's namespace, not
+the extension's). So every interface gets a witness template, every
+conformance a specialization, and bound-member calls go through it:
+
+    template <class Self, class... IfaceArgs> struct VectorI_witness;   // interface's TU
+    template <class T> struct VectorI_witness<builtins::Vector<T>, T> {  // conformance's TU
+        static void push(builtins::Vector<T>* self, T x) { std::Vec::push(self, x); }
+    };
+    template <class T> void f(T x) { VectorI_witness<T, ...>::push(&x, 1); }
+
+Uniform for own-method and extension conformances (the former forwards
+to `self->m(...)`); covers methods, operators, constructors, statics.
+Keyed on `(Self, interface args)`, so `impl VectorI<i32>` and
+`impl VectorI<string>` on one type coexist -- and therefore an interface
+bound MUST name every interface argument (`T impl VectorI<U>`); an
+unparameterized bound on a generic interface is an error, never inferred.
+Non-generic code never touches a witness. Homes: ConformanceChecking
+builds the table `(type, interface instance) -> requirement -> witness
+decl`; `Codegen/Emit/EmitWitness.k` emits primary + specializations;
+EmitPlan adds the edge instance -> witnesses Complete in the instance's
+HOME TU (§7: one instantiation site); EmitIR routes a call whose callee
+bound to an interface requirement (`semantic_dc` owner is an
+`InterfaceDecl`) through the witness. A conformance must be in the
+instantiating TU's import set (same rule as extension visibility).
+
+**The `: type` rule** [DECIDED]. Duck typing is C++ duck typing: a `: type`
+body sees own members only. Extension members are unreachable under
+`: type` (M2's re-check reports it, naming the interface to bound with).
+One dispatch system, and a precise meaning: "T is a C++ type; clang checks
+the body".
 
 **`needs_using`** [MISSING]. **Virtual dispatch** [MISSING]. **Access
 control** is a late filter [MISSING].
@@ -298,71 +562,103 @@ control** is a late filter [MISSING].
 2. **One key space per TU.** Cross-TU goes through the spelling shim; the
    overlay consulted is the one of the TU the walk started in.
 3. **One error, one home.** Import existence/ambiguity: I. Import access:
-   N(b). Redefinition / conflicting kinds: N(a). Unresolved head, `Self`
-   outside a type body (expression): N(b). Unknown type / arity / alias
-   cycle / primitive misuse / no primary for a spec / spec redefinition /
-   spec after instantiation: T. No member / wrong separator / member
-   ambiguity: ChainBinding. Dependent conformance: M2. Access: AccessCheck.
-4. **Parallelism boundary.** P parallel. I, T DAG-ordered. N, M1 per-TU
+   N(b). Redefinition / conflicting kinds: N(a). Function redefinition /
+   signature disagreement: R. Unresolved head, `Self` outside a type body
+   (expression): N(b). Unknown type / arity / alias cycle / primitive
+   misuse / no primary for a spec / spec redefinition / spec after
+   instantiation: T. No member / wrong separator / member ambiguity /
+   member of an unconstrained param: ChainBinding. Literal fit, operand
+   unification, no viable overload, ambiguous call, bad cast, branch
+   join, return-vs-signature, uninferrable decl: X. Dependent conformance:
+   M2. Orphan violation: ExtensionOrphanCheck. Access: AccessCheck.
+4. **Parallelism boundary.** P parallel. I, T, X DAG-ordered. N, M1 per-TU
    parallel. M2 sync. Store and registry are the shared mutable
    structures and both are locked.
-5. **Dependent = deferred, not failed.**
+5. **Dependent = deferred, not failed.** X's "unknown" state is this
+   invariant on expressions; `nomono.k` is its test.
 6. **Tracing never changes behavior.**
-7. **One writer per fact.** Heads: N. Steps: ChainBinding. Promotion
-   cell->decl: inference. `canonical`, `type_flags`, segment slots, `self`
-   receiver type, `spec_kind` refinement, spec chain links,
-   `instantiated_from` on specs: T. `instantiated_from` on implicit
-   nodes: registry (then M2). `needs_using`: MemberLookup.
+7. **One writer per fact.** Heads: N. Steps with declared bases:
+   ChainBinding. Steps needing inference: ChainBinding's `bind_step`,
+   called by X. Promotion cell->decl: X. `canonical`, `type_flags`,
+   segment slots, `self` receiver type, `spec_kind` refinement, spec
+   chain links, `instantiated_from` on specs: T. Function chains: R.
+   `Expr::type_`, `value_category`, `expr_flags`, inferred decl slots: X.
+   `instantiated_from` on implicit nodes: registry (then M2).
+   `needs_using`: MemberLookup. `sc->bounds`: ConstraintExtraction.
 8. **Canonical identity is build-wide.**
-9. **T never rewrites nodes.**
+9. **T never rewrites nodes.** X never allocates nodes.
 10. **Builtins are not names.**
 11. **Imports are erased at N/CB.**
 12. **`RecordType::decl` is the record whose body defines the instance.**
-    Dependent args -> the primary's representative (a pattern). Concrete
-    args -> the instance decl from the registry: an explicit full
-    specialization with equal canonical `spec_args`, else an implicit
-    `Instantiated` node minted on first mention and filled by M2. Partial
-    specializations are patterns: never a `RecordType::decl`. Spec redecl
-    chains link in T on canonical `spec_args`, not in N(a). A spec's
-    forward declaration and definition must be in one file. Specializing
-    after instantiation is an error. Non-generic types never enter the
-    registry.
-13. **T never dispatches a foreign node.** Read the slot; DAG order fills it.
-14. **The representative is the only identity.** Every frame owner, every
-    `record()` decl, every `generic_param()` owner, every chain collapse
-    goes through `NameLookup::representative`. No local copies.
+13. **T never dispatches a foreign node.** X reads a foreign decl's slots
+    (return type, inferred var type) and never types a foreign body.
+14. **The representative is the only identity.**
+15. **The written cast target is the result type.** `a as T : T`, always.
+16. **Two conversion ranks, unordered within rank 2.** The only tiebreak
+    is non-generic over generic among Exact winners, and it is not a
+    conversion ordering; `-fno-implicit-conv` can therefore remove a
+    candidate but never select a different one (lattice §7).
+17. **A generic parameter's regime is its declaration's.** `<T>` opaque,
+    `<T impl I>` bounded, `<T: type>` duck. No inference of regime from use.
+18. **A class definition is closed at its file.** Friends are same-file
+    extension members only; nothing in another file changes the emitted
+    definition.
+19. **An interface bound names every interface argument.**
 
 ---
 
 ## 4. What remains, in the order it should be done
 
-Name/type domain -- residue:
+Blocking X (spec items; land before the bug sweep):
 
-    a. Split `ImportResolution`'s shared R015E into per-error codes    diag table
-    b. `Foo<i32>::Inner` dependence flag (§2.6 PARTIAL)              small
-    c. `NameLookup::qualified_step` spelled overload or delete       small
-    d. decide the `[T]`/`string` member model (§2b OPEN)             design
-    e. `_register_specs_in` into executable scopes (§2.6 PARTIAL)      small
-    f. `Self` for non-record `extend` targets (§2.6)                  small
-    g. closure bodies push a null DC (`_parse_closure_expr`); decls
-       inside a closure get no parent and are not attached             small
+    1. BuiltinKind::Never                                    CanonicalNodes  small
+    2. PointerType::is_unsafe in the store key               Types/Store/T   small
+    3. TypeCastExpr::cast_mode + parser                      Expressions/P   small
+    4. ChainBinding: prepare / bind_step / anchor_for_*      ChainBinding    small
+    5. SC001E / SC001W placeholders                          diag table      trivial
+    6. Sema.k schedule line; delete the four stubs           driver          trivial
+    7. InstantiationRegistry function arm                    registry        small
+
+Non-blocking, same subsystem:
+
+    8.  Named-argument node + CallTyping::arg_info           parser/X        small
+    9.  SemaDump `-- expression types --` + inferred decls   dump            small
+    10. TypeQual enum path check in TypeUtil                 X               trivial
+    11. GenericParamKindBound::Duck; sc->bounds; the three-  P/C/CB/X        small
+        regime bind_dependent_step; replace_self; receiver
+        in OvlResult
+    12. Tests/Sema/ExprTyper/* golden dumps                  tests
+
+Name/type residue:
+
+    a. Split ImportResolution's shared R015E                 diag table
+    b. `Foo<i32>::Inner` dependence flag (§2.6 PARTIAL)      small
+    c. `NameLookup::qualified_step` spelled overload         small
+    d. Lang items by fid+path; containers as builtin records design DONE,
+       (§2.5, §2.6); delete vector()/set_of()/map_of() and    code MISSING
+       _ext_by_shape
+    e. `_register_specs_in` into executable scopes           small
+    f. `_selfs` as *Type (§2.6)                               small
+    g. closure bodies push a null DC                          small
 
 Type domain (each unblocks the next):
 
-    e. OverloadResolution     `Candidates` steps; function redecl chains;
-                                ctor selection; operators (ADL); UFCS
-    f. TypeInference          `NeedsInference` steps, inferred vars, tuple
-                                index, initializer field names, generic
-                                heads with defaults/named args
-    g. Pattern checking       ctor-pattern heads, bare `case n`, `.Variant`
-    h. AccessCheck
-    i. ConformanceChecking
-    j. ExtensionLowering      `semantic_dc` rewrite
+    h. ExtensionOrphanCheck + import-scoped extension index   small
+    i. ConformanceChecking: the conformance table, impl-only
+       members, arity/Self checks, visibility at instantiation
+    j. PatternChecking: ctor-pattern heads, bare `case n`,
+       `.Variant`, exhaustiveness
+    k. ADL / free operator functions (X, OperatorTyping)
+    l. AccessCheck (+ `prot` same-library provenance)
+    m. ConstChecking, PanicEffectChecking (reads panic_sites)
+    n. ExtensionLowering: `a.m()` -> `m(&a)`, prvalue receiver
+       materialization, `semantic_dc` rewrite
 
 Mono / codegen:
 
-    k. M1 enumeration over the registry; M2 fill + partial selection +
-       dependent resolution; EmitPlan reads `InstanceEntry::home_fid`.
-
-Everything in (a)-(d) is name-domain residue. Everything from (e) on needs
-a type on an EXPRESSION before a name can be picked, and is not resolution.
+    o. M1 enumeration over the registry (types AND functions)
+    p. M2: fill + partial selection + dependent conformance +
+       `: type` re-check (`ExprTyper::retype_instance`)
+    q. EmitWitness + EmitPlan witness edge + EmitIR witness calls
+    r. EmitIR: `typename` / `.template` on Dependent segments/steps;
+       generic emission; the fwd-decl emitter (IMPORTS.md items 12, 14)

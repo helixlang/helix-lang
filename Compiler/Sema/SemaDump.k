@@ -10,7 +10,7 @@
 ///     passes produced, which is otherwise invisible: `resolved_decl` links,
 ///     redecl chains, out-of-line attachment, lang items, and canonical types.
 ///
-///     Eight sections, in pipeline order, so the dump reads as a phase trace:
+///     Ten sections, in pipeline order, so the dump reads as a phase trace:
 ///
 ///       phase        -- how far sema actually got for this TU.
 ///       lang items   -- sc.well_known                            [N(a)]
@@ -22,6 +22,9 @@
 ///       bindings     -- every NamedIdentExpr use site, with the  [N(b)]
 ///                       source that answered it
 ///       types        -- every Type node's canonical / dependent  [T]
+///       expr types   -- every Expr node's type_             [ExprTyper]
+///       inferred     -- the decls whose type the typer, not [ExprTyper]
+///                       the source, supplied
 ///
 ///     `tables` and `scopes` are NOT the same list seen twice. A DeclContext
 ///     owns a symbol table; a lexical frame does not, and N keeps locals out
@@ -60,6 +63,7 @@
 import Sema::SemaContext::*;
 import Sema::Resolve::NameLookup::*;
 import Sema::Resolve::ResolutionTrace::*;
+import Sema::Type::TypeUtil::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
 import AST::Context::TranslationUnit::*;
@@ -261,11 +265,22 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
     priv var _n_step_open:  usize = 0;
     priv var _n_step_err:   usize = 0;
 
+    /// The expression-types section reuses this visitor for a SECOND walk;
+    /// the flag is what tells the shared visit_ hooks which pass they are in,
+    /// so neither section prints the other's rows.
+    priv var _expr_mode:     bool  = false;
+    priv var _n_ex_typed:    usize = 0;
+    priv var _n_ex_unknown:  usize = 0;
+    priv var _n_ex_err:      usize = 0;
+    priv var _inferred:      vec::<string>;   ///< rows for the inferred-decls list.
+    priv var _tu:            TypeUtil;        ///< only for str(); holds no state.
+
     fn SemaDump(self, sc: *SemaContext, opts: PrintOptions) {
         self.sc   = sc;
         self.ctx  = sc->ctx;
         self.opts = opts;
         self.fid  = sc->ctx->fid;
+        self._tu  = TypeUtil(sc);
     }
 
     fn run(self) {
@@ -292,6 +307,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
         self._dump_out_of_line(tu);
         self._dump_scopes();
         self._dump_bindings(tu);
+        self._dump_expr_types(tu);
         self._dump_summary();
 
         std::print(self._p.out);
@@ -919,6 +935,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
 
     fn visit_named_ident_expr(self, n: *NamedIdentExpr) -> bool {
         if n == &null { return true; }
+        if self._expr_mode { return true; }   // the types walk prints its own row.
         self._scope_header();
 
         var nm = self.ctx->get_spelling(n->name);
@@ -984,6 +1001,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
     /// so until T lands every non-dependent type reads as uncanonicalized.
     fn visit_type(self, n: *Type) -> bool {
         if n == &null { return true; }
+        if self._expr_mode { return true; }   // counted once, on the first walk.
         self._n_ty_total += 1;
         if n->canonical != &null { self._n_ty_canon += 1; }
         // TypeFlags is a scoped enum: cast to the underlying type to mask.
@@ -1077,6 +1095,7 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
     fn traverse_chain_expr(self, n: *ChainExpr) -> *ChainExpr {
         if n == &null { return n; }
         var out = RecursiveASTVisitor_SemaDump::traverse_chain_expr(n);
+        if self._expr_mode { return out; }
         for var i: usize = 0; i < n->steps.size(); ++i {
             var st = n->steps.get(i);
             if (st == &null) || (st->name == &null) { continue; }
@@ -1114,6 +1133,131 @@ class SemaDump derives RecursiveASTVisitor::<SemaDump> {
             self._p.newline();
         }
         return out;
+    }
+
+    // --- section 7: expression types --------------------------------------
+
+    /// What ExprTyper wrote, node by node. A SECOND walk rather than a trace:
+    /// the pass records its answer in `Expr::type_` and nowhere else, so the
+    /// walk is both the cheapest way to read it and the only one that cannot
+    /// disagree with the tree.
+    ///
+    /// The three ways a row can lack a type are NOT the same thing and are
+    /// printed apart: `<ERROR>` was diagnosed, `<unknown>` is waiting for an
+    /// instantiation, and `<no type: ...>` is an expression that denotes a
+    /// callable, a type or a module and never had one to give.
+    priv fn _dump_expr_types(self, tu: *TranslationUnit) {
+        self._p.paint(Color::NodeKind, "-- expression types --");
+        self._p.newline();
+
+        if tu->program == &null { return; }
+
+        self._expr_mode     = true;
+        self._emitted_scope = "";
+        self._scope         = "<tu>";
+
+        var items = &(tu->program->items);
+        for var i: usize = 0; i < items->size(); ++i {
+            var item = *(items->get(i));
+            switch item.get_kind() {
+                case TopLevelKind::Decl { self.dyn()->dispatch_decl(item.as_decl()); }
+                case TopLevelKind::Stmt { self.dyn()->dispatch_stmt(item.as_stmt()); }
+                case TopLevelKind::Expr { self.dyn()->dispatch_expr(item.as_expr()); }
+            }
+        }
+
+        self._expr_mode = false;
+
+        var total = self._n_ex_typed + self._n_ex_unknown + self._n_ex_err;
+        if total == 0 {
+            self._p.paint(Color::Dim, "  (no expressions)");
+            self._p.newline();
+        } else {
+            self._p.paint(Color::Tree, "  ");
+            self._p.put(f"{self._n_ex_typed} typed, {self._n_ex_unknown} unknown, ");
+            if self._n_ex_err > 0 {
+                self._p.paint(Color::Error, f"{self._n_ex_err} errored");
+            } else {
+                self._p.put("0 errored");
+            }
+            self._p.newline();
+        }
+
+        self._dump_inferred();
+    }
+
+    /// Every declaration whose type the TYPER supplied rather than the source.
+    /// The tell is the slot holding a CANONICAL node: canonicals carry an
+    /// invalid range because they belong to the store, not to any one file,
+    /// so a type slot with no source range was never written down.
+    priv fn _dump_inferred(self) {
+        self._p.paint(Color::NodeKind, "-- inferred decls --");
+        self._p.newline();
+        if self._inferred.size() == 0 {
+            self._p.paint(Color::Dim, "  (none: every declaration wrote its own type)");
+            self._p.newline();
+            return;
+        }
+        for var i: usize = 0; i < self._inferred.size(); ++i {
+            self._p.paint(Color::Tree, "  ");
+            self._p.put(self._inferred[i]);
+            self._p.newline();
+        }
+    }
+
+    /// One row per expression. Runs only in the second walk.
+    fn visit_expr(self, n: *Expr) -> bool {
+        if (!self._expr_mode) || (n == &null) { return true; }
+        self._scope_header();
+
+        self._p.paint(Color::Tree, "    ");
+        self._p.paint(Color::Ident, self._pad(expr_kind_name(n->kind), 24));
+        self._p.paint(Color::Dim,
+            self._pad(f"@ {sema_dump_loc(self.ctx, n->range.start)}", 10));
+        self._p.put(" : ");
+
+        if n->is_poisoned() {
+            self._n_ex_err += 1;
+            self._p.paint(Color::Error, "<ERROR>");
+        } else if n->type_ != &null {
+            self._n_ex_typed += 1;
+            self._p.put(self._tu.str(n->type_));
+        } else if n->is_instantiation_dependent() {
+            self._n_ex_unknown += 1;
+            self._p.paint(Color::Dim, "<unknown>");
+        } else {
+            self._p.paint(Color::Dim, "<no type: callable/type/module>");
+        }
+        self._p.newline();
+        return true;
+    }
+
+    /// Collected on the same walk, printed after it: a declaration is only
+    /// interesting here when the typer filled the slot.
+    fn visit_decl(self, n: *Decl) -> bool {
+        if (!self._expr_mode) || (n == &null) { return true; }
+
+        if isa::<VariableDecl>(n) {
+            var v = cast::<VariableDecl>(n);
+            if self._is_inferred_slot(v->type_) {
+                self._inferred.push_back(
+                    f"{self.ctx->get_spelling(v->name)} : {self._tu.str(v->type_)}");
+            }
+            return true;
+        }
+        if isa::<FunctionDecl>(n) {
+            var f = cast::<FunctionDecl>(n);
+            if self._is_inferred_slot(f->return_type) {
+                self._inferred.push_back(
+                    f"{self.ctx->get_spelling(f->name)}() -> {self._tu.str(f->return_type)}");
+            }
+        }
+        return true;
+    }
+
+    priv fn _is_inferred_slot(self, t: *Type) -> bool {
+        if t == &null { return false; }
+        return !t->range.is_valid();
     }
 
     // --- section 6 + summary ----------------------------------------------

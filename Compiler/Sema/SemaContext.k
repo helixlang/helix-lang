@@ -31,6 +31,7 @@ import AST::Context::GlobalDisambigTable::*;
 import AST::Context::CanonicalTypes::*;
 import AST::Node::Base::*;
 import AST::Node::CanonicalNodes::*;
+import Sema::Check::ConstraintSet::*;
 import Sema::Resolve::NameLookup::*;
 import Sema::Resolve::ResolutionTrace::*;
 import Sema::Resolve::ResolutionState::*;
@@ -220,6 +221,17 @@ class SemaContext {
     /// THE canonical type store. Borrowed from GlobalDisambigTable, NOT owned:
     /// canonical identity is build-wide (see CanonicalTypes.k header).
     pub var types: obs::<CanonicalTypeStore> = &null;
+
+    /// THE bound table: requires-clause conformance constraints keyed by the
+    /// OWNER decl (function / type / extension), as
+    /// `reinterpret_cast::<u64>(decl)`. Written once by ConstraintExtraction
+    /// in the T stage; read by ChainBinding's dependent path (what a `T` in a
+    /// body is allowed to see) and, later, by ConformanceChecking.
+    ///
+    /// Keyed by decl rather than by param because that is the granularity the
+    /// clause is written at: one requires clause belongs to one declaration,
+    /// and which param each conjunct names is a property of the conjunct.
+    pub var bounds: libcxx::unordered_map::<u64, ConstraintSet>;
 
     /// Demand-driven resolution memo + cycle stack. Per-TU, unsynchronized.
     pub var rstate: ResolutionState;

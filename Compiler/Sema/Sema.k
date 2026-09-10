@@ -46,6 +46,7 @@ import Sema::Verify::CxxNameCheck::*;
 import Sema::Check::ConstraintExtraction::*;
 import Sema::Check::TypeCycleCheck::*;
 import Sema::Check::ShadowCheck::*;
+import Sema::Type::ExprTyper::*;
 import AST::Context::ASTContext::*;
 import AST::Context::GlobalDisambigTable::*;
 import Support::TimeReport::*;
@@ -217,16 +218,28 @@ class Sema {
     }
 
     /// Phase T. Every non-dependent Type node -> canonical; dependent
-    /// types MARKED, not resolved (hard invariant #5). Then every chain
-    /// step decidable from declared types is bound (ChainBinding: base-walk
-    /// PRE is T complete, RESOLUTION.md §2b). Arity / unknown-type-name /
-    /// no-member errors live here.
+    /// types MARKED, not resolved (hard invariant #5). Then the bound table
+    /// is built from the requires clauses, and every chain step decidable
+    /// from declared types -- or from a parameter's BOUND -- is bound
+    /// (ChainBinding: base-walk PRE is T complete, RESOLUTION.md §2b).
+    /// Arity / unknown-type-name / no-member errors live here.
     priv fn _stage_type_resolution(self) -> bool {
         if self._already(SemaPhase::TypesResolved) { return true; }
         var _t = TimeRegion("T-types");
         self.sc.require_phase(SemaPhase::NamesResolved);
         { var _p = TimeRegion("TypeResolve");  TypeResolution(&self.sc).run(); }
         { var _p = TimeRegion("RedeclMerge");  RedeclMerge(&self.sc).run();    }
+
+        // Constraint partition, BEFORE ChainBinding. Desugar already ran in
+        // the Expand phase (pure AST rewrite: inline bounds -> requires as
+        // ConstraintExpr conjuncts), so requires_clause is canonical; this
+        // sorts each conjunct into conformance constraints vs value
+        // predicates and files the result in sc.bounds under its owner decl.
+        // ChainBinding is a CONSUMER -- what `x.draw()` on an `x: T` may bind
+        // to is exactly what T's declaration promised -- so the table has to
+        // exist before it walks.
+        { var _p = TimeRegion("Constraints"); ConstraintExtraction(&self.sc).run(); }
+
         { var _p = TimeRegion("ChainBinding"); ChainBinding(&self.sc).run();   }
         self.sc.advance_phase(SemaPhase::TypesResolved);
         return !self._hard_stop();
@@ -241,24 +254,19 @@ class Sema {
         var _t = TimeRegion("C-checks");
         self.sc.require_phase(SemaPhase::TypesResolved);
 
-        // Constraint partition. Desugar already ran in the Expand phase (pure
-        // AST rewrite: inline bounds -> requires as ConstraintExpr conjuncts),
-        // so requires_clause is canonical here. Extract partitions it into
-        // conformance constraints vs value predicates. Extraction requires
-        // TypesResolved (it feeds the bound table + definition-side checking,
-        // which consume the ConstraintSet) hence it lives here, not in Expand.
-        var extract = ConstraintExtraction(&self.sc);
-        extract.run();
-        // TODO(sema): feed extract.sets into the bound table + definition-side check.
-
         // Layout acyclicity. Runs before anything that needs a size:
         // LayoutPass will not terminate on a recursive type, and EmitPlan's
         // `complete` topological sort asserts on a cycle rather than
         // diagnosing one. This pass is where a by-value loop is reported.
         { var _p = TimeRegion("TypeCycle"); TypeCycleCheck(&self.sc).run(); }
 
-        // Runs late: it REQUIRES TypeInference to be complete.
-    
+        // Expression typing. After TypeCycleCheck because it asks for sizes
+        // and layouts through the canonical store, and a by-value cycle has
+        // to be reported before anything walks one.
+        { var _p = TimeRegion("ExprTyper"); ExprTyper(&self.sc).run(); }
+
+        // Runs late: it REQUIRES ExprTyper to be complete.
+
         { var _p = TimeRegion("ShadowCheck"); ShadowCheck(&self.sc).run(); }
 
         // TODO(sema): OperatorSignatureCheck(&self.sc).run();
