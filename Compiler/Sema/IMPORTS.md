@@ -48,8 +48,8 @@ Plus the two ffi forms, which are imports of *headers*, not of Kairo files:
 
 | # | Form | Binds |
 |---|------|-------|
-| 8 | ffi bare | `ffi "c++" import "h.hh"` | nothing (the header's names are unqualified) |
-| 9 | ffi aliased | `ffi "c++" import "h.hh" as my_h` | `my_h` -> FfiAnchor(the ImportDecl) |
+| 8 | ffi bare | `ffi "c++" import "h.hh"` | every ident-keyed name of every header in h.hh's include closure |
+| 9 | ffi aliased | `ffi "c++" import "h.hh" as my_h` | `my_h` -> one ModuleHandle per closure header (each header TU's module_self) |
 
 Mixed forms (`import foo::{*, A as B}`) are (5) with a wildcard item, and
 work by composition. `pub`/`prot` on any form is re-export (§4.4).
@@ -175,16 +175,17 @@ Do not change that loop order.
 
 [DONE] The three defects in I, and re-export:
 
-1. `_rebuild_merged` admits `ModuleHandle` and `FfiAnchor` targets. A
-   name denoting a scope is a legitimate lookup answer; excluding them
-   made `foo` after `import foo` resolve to an EMPTY cell.
-2. `OverlayEntry::non_function_count` exempts those two kinds, and counts
+1. `_rebuild_merged` admits `ModuleHandle` targets (a Kairo module, or a
+   C++ header's under an ffi alias). A name denoting a scope is a
+   legitimate lookup answer; excluding them made `foo` after `import foo`
+   resolve to an EMPTY cell.
+2. `OverlayEntry::non_function_count` exempts that kind, and counts
    DISTINCT entities rather than targets so `import foo::MyClass`
    alongside `import foo::*` is not an ambiguity either.
 3. Symbol-path imports fold through `_fold_symbol_path`. See §4.1.
 4. Re-export is folded. See §4.4.
 
-Both scope-handle kinds record `Public` as their ACCESS fact. `vis` is
+A module handle records `Public` as its ACCESS fact. `vis` is
 what N reads to say "exists but is private"; recording the import edge's
 own pub/prot there made every plain `import foo` report "'foo' is
 imported but is declared private in its module". Whether the edge
@@ -219,7 +220,9 @@ to foo's `ModuleDecl`. [DONE]
 one and union the hits; a genuine ambiguity is still `_commit`'s to
 diagnose.
 
-[DONE] `Foreign` anchor for ffi. See §5.
+[DONE] No ffi special case. An ffi alias binds the header TUs' own
+ModuleDecls, so a step off it is an ordinary multi-scope `Module` step
+into tables Sema/Foreign filled. See §5.
 
 [DONE] Cross-TU probes are spelled, not imm-keyed. `in_context` probed a
 foreign module's table with THIS TU's imm index, which is right only when
@@ -237,9 +240,9 @@ The codegen half. Specified fully in §6.
 
 ## 3. Invariants (add to RESOLUTION.md §3)
 
-8. **Imports are erased.** No pass after N/CB reads an `ImportDecl` except
-   to find `FfiAnchor`s and the ffi `#include` list. A codegen decision
-   that needs "how was this imported" is a bug; ask the decl where it lives.
+8. **Imports are erased.** No pass after N/CB reads an `ImportDecl`. A
+   codegen decision that needs "how was this imported" is a bug; ask the
+   decl where it lives (`is_imported()` for a C++ header's).
 9. **One namespace per decl, derived, never stored per use.** A decl's C++
    namespace is its DC parent chain -> `ModuleDecl::module_path`. Every TU
    that emits that decl computes the same path from the same node.
@@ -289,12 +292,17 @@ as well as two plain imports.
 
 ### 4.2 Module handles in `merged` [DONE]
 
-`_rebuild_merged`: append `t.decl` for `Type`, `ModuleHandle`, and
-`FfiAnchor` targets. Only `FunctionSet` unions cells.
+`_rebuild_merged`: append `t.decl` for `Type` and `ModuleHandle` targets.
+Only `FunctionSet` unions cells.
 
 ### 4.3 Reopened namespaces [DONE]
 
-`non_function_count`: skip `ModuleHandle` and `FfiAnchor`.
+`non_function_count`: skip `ModuleHandle`. The same exemption makes an ffi
+alias over N closure headers one scope, not N ambiguous entities.
+TypeResolve's qualified walk applies the rule in TYPE position too (`mods`):
+while a segment's cell is all modules, the next `::` segment is looked up in
+every one of them, so `std::vector<i32>` finds `vector` whichever of libc++'s
+many `std` openings declared it.
 ChainBinding: `Anchor.scopes: vec<*DeclContext>`; all-module candidate
 sets become a multi-scope `Module` anchor; `::` searches every scope.
 
@@ -333,45 +341,58 @@ after ChainBinding. Not an import problem; listed for completeness.
 
 ## 5. ffi imports
 
-[DECIDED] An ffi import is a `#include` plus, optionally, a Kairo-side
-*scope fiction*. The header's declarations exist only inside clang until the
-extraction pass (`Interop/Clang`, post-I, [MISSING], large) hangs real
-`Decl`s off the anchor.
+[DONE] An ffi import imports real declarations. Clang parses the header;
+Sema/Foreign translates what it declares into ordinary Kairo decls, one TU
+per header; phase I folds them exactly as it folds a Kairo file. No pass
+after I asks where a decl came from except through `FFILinkage`
+(`is_imported()`, the C++ spellings, layout, `ffi_c_variadic`,
+`ffi_explicit`, `clang_decl`).
 
-Until then, the model that is correct now and stays correct later:
+    PP       PPWalker::_handle_ffi builds the ImportDecl (header, alias,
+             linkage) and appends the unquoted spelling to the file's
+             ORDERED header list; _finalize requests one HeaderSet for the
+             list (HeaderSetCache::request). The clang parse runs on the
+             pool (HEADER_BUILD_GROUP), overlapping the Kairo parse.
+    driver   FrontendAction::_sema, before any sema: wait_all; per fid with
+             a set, HeaderIndex::index (a fid + TU per header clang touched,
+             in touch order; DeclImport declare then define; freeze), then
+             _attach_ffi_edges: closure_of(spelling) -> resolved_fid (the
+             header's own fid), ffi_closure_fids (its transitive include
+             closure), one ImportEdge per closure header.
+    I        _resolve_ffi. Aliased: one ModuleHandle per closure header, all
+             under the ONE alias key -- the reopened-namespace shape (§4.3),
+             so `my_h::f` searches every header's table. Bare:
+             _fold_all_cells over every closure header, as the `#include`
+             it stands for would.
+    N/T/CB   nothing special. Cross-TU probes spell through in_scope; a
+             header TU has an ImmediateTable (TCM::ensure_imm_table) and no
+             tokens.
+    typer    a C `...` tail ranks Converted, unchecked (OverloadResolution);
+             an `explicit` ctor is not a converting ctor (CastTyping 5d);
+             ADL (MemberLookup::associated_scopes) finds `std::op <<`.
+    codegen  CodegenBackend::run mounts each set's PCH in the backend's
+             in-memory VFS and loads the MAIN file's set as the implicit
+             PCH; a header's decls are never re-emitted (EmitPlan::_admit).
 
-[DONE, both halves.] The PP no longer drops an ffi import outright: it
-builds the `ImportDecl` header, alias, linkage and records it in
-`tu->imports` without resolving a path, claiming a fid, or contributing an
-import edge. The tokens are still dropped from the output buffer and clang
-is still not consulted. Phase I already knew how to bind the anchor;
-nothing had ever reached it.
+**Unresolved header.** A spelling clang cannot find leaves resolved_fid 0
+and phase I binds nothing, so each use of its names is an ordinary R020E
+miss. [MISSING] The set's own clang diagnostics go to its
+TextDiagnosticPrinter on stderr, not through ClangDiagAdapter into the
+Kairo engine, so they neither count as errors nor carry Kairo spans.
 
-**Aliased (`as my_h`).** `my_h` binds to the `ImportDecl` (needs §4.2).
-ChainBinding gets `AnchorKind::Foreign`; every step after a Foreign anchor
-records `MemberOutcome::Foreign`: no decl, no diagnostic, no poison, chain
-flagged so inference stops there. Codegen emits `my_h::use()` as `use()` 
-the prefix is stripped, not translated, because the header was included and
-C++ resolves `use` itself. That is why it works when the header declares no
-namespace. When extraction lands, Foreign steps get real decls; nothing
-upstream changes.
+**The bare-ffi miss gate is gone**, and with it `NamedIdentExpr::foreign`,
+`TraceRow::foreign_gate`, `AnchorKind::Foreign`, `MemberOutcome::Foreign`
+and `OverlayTargetKind::FfiAnchor`. A typo in a TU with a bare ffi import
+is a typo again.
 
-**Bare (no alias).** The header's names are in unqualified scope, so a bare
-`use()` must resolve, and today N reports it undeclared. The only option
-without extraction: on an unqualified miss, if THIS TU has a bare ffi
-import, mark the use Foreign instead of erroring. This turns typos into
-deferred clang errors the exact failure the frontend exists to prevent 
-so it is gated on the presence of a bare ffi import in this TU, documented
-as temporary, and extraction is the thing that removes the gate, not an
-optional improvement. Implemented as `NamedIdentExpr::foreign` +
-`TraceRow::foreign_gate`, with a skip in `NameBindingVerifier` so the
-deliberate non-binding is not an invariant violation. Nothing is poisoned,
-so T treats the node as absent rather than errored.
+**One PCH per clang TU.** A Kairo TU whose import graph spans two header
+sets loads the main file's set as the PCH and `#include`s every other
+set's headers textually by resolved path. Correct, just re-parsed.
 
-**Codegen.** Every ffi `ImportDecl` in the TU (and, transitively, in every
-TU whose decls this TU emits an interface for? no: only THIS TU's, because
-foreign decls are never re-emitted by Kairo) becomes one `#include` at the
-top of the emitted C++. Order: declaration order.
+**Lifetime.** Header TUs live for the build (CompilerInstance::release
+refuses one). A set's clang instance lives until HeaderSetCache::release_all
+at the end of execute(); per-set release once its last importer passes
+Checked is the refinement.
 
 ---
 
@@ -386,7 +407,8 @@ RAV over this TU. Collect the canonical redecl link of every decl reached
 through `NamedIdentExpr::resolved_decl`, `ChainExpr::Step::resolved_decl`,
 every entry of a `candidate_cell`, and every `Type::canonical` that is a
 `RecordType` (its `decl`). Keep those whose DC chain bottoms out in a
-different fid. Skip `FfiAnchor` ImportDecls and Foreign steps.
+different fid. Skip decls imported from a C++ header (`is_imported()`):
+the header declares them.
 
 ### 6.2 Closure [DONE]
 
@@ -486,11 +508,11 @@ Each item is independently testable. Do them in this order.
 
     1. ImportDecl::file_seg_count stamped by PP           PP         DONE
     2. _fold_symbol_path; route multi-seg items through it  I        DONE
-    3. ModuleHandle + FfiAnchor into `merged`             I          DONE
+    3. ModuleHandle into `merged`                         I          DONE
     4. non_function_count exemption                       I          DONE
     5. Anchor.scopes, multi-module `::`                   CB         DONE
-    6. Foreign anchor + Foreign outcome                   CB, trace  DONE
-    7. Bare-ffi miss gate in N                            N          DONE
+    6. Foreign anchor + Foreign outcome                   CB, trace  REMOVED by 15
+    7. Bare-ffi miss gate in N                            N          REMOVED by 15
     8. Re-export fold                                     I          DONE
     9. Named roots: add_include(name), SearchRoot.name, module_base prefix   PP/Resolution DONE
    10. TypeCycleCheck                                     Sema/Check DONE
@@ -499,13 +521,13 @@ Each item is independently testable. Do them in this order.
    13. Instantiation registry + extern template           M1/M2
    13a. Cross-reopening redefinition check (same signature, two definitions) at M2 sync
    14. EmitCXXHeader via the same emitter                 Codegen    ~20 lines
-   15. Clang extraction pass (removes the §5 gate)        Interop    large
+   15. Clang extraction pass (removes the §5 gate)        Interop, Sema/Foreign  DONE (§5)
 
 Test for 1–9: `Tests/Sema/imports_all_forms`. `main.k` imports `foo.k`
 under every form in §1, plus `module util` reopened across two files, plus
 a re-export through `pub import bar::*`, plus an aliased ffi header.
 `--print-sema` shows every head bound `[import overlay]` and every step
-bound or foreign, with exactly two diagnostics: a name behind a PRIVATE
+bound, the ffi one included, with exactly two diagnostics: a name behind a PRIVATE
 import edge and one deliberate typo. `main.sema.golden` is the whole dump,
 for diffing what a change did beyond the asserted lines. Named roots (9)
 are covered separately: two roots each holding `a.k`, imported as `a` and

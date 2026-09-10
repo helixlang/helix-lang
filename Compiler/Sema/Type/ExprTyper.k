@@ -297,7 +297,6 @@ class ExprTyper
     // === identifiers ========================================================
 
     priv fn _type_ident(self, n: *NamedIdentExpr, expected: *Type) -> *Type {
-        if n->foreign { self.mark_unknown(n); return &null; }
         if n->is_deferred() {
             // an overload set as a value: only a callee may read a cell.
             var all_mod = true;
@@ -348,7 +347,6 @@ class ExprTyper
             }
             case DeclKind::GenericParamDecl { self.mark_unknown(n); return &null; }
             case DeclKind::ModuleDecl      { self.note_module_expr(n); return &null; }
-            case DeclKind::ImportDecl      { self.mark_unknown(n); return &null; }   // ffi anchor
             case DeclKind::ExtensionDecl {
                 // `Self` inside an extend: denotes the target type.
                 var t = self.type_from_type_decl(d, n->generic_args, static_cast::<*Expr>(n));

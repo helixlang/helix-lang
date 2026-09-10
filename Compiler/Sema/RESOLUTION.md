@@ -75,7 +75,8 @@ overload set goes through whole.
     C-style `for var i = ...` scopes `i` to the loop.
     [DONE] `Self` (BiSelf) in expression position binds to the enclosing
     type body's decl -- the class/struct/... or the ExtensionDecl.
-    [DONE] Bare-ffi miss gate (TEMPORARY, IMPORTS.md §5).
+    [REMOVED] The bare-ffi miss gate. ffi imports bring real decls now
+    (IMPORTS.md §5), so an unqualified miss is a miss in every TU.
     [DONE, by design] N does NOT bind: chain steps (ChainBinding);
     ConstructorPattern heads and bare `case n` (pattern checking);
     named-initializer field names (X); attribute ARGUMENTS.
@@ -102,7 +103,7 @@ target is not a name: the driver knows the builtin module's fid, and
 `Future`, `Yield`, `Ordering`, `Panic`, `string`.
 
 `NameBindingVerifier` is N's exit test: no reachable `NamedIdentExpr`
-survives with both slots null unless poisoned or foreign.
+survives with both slots null unless poisoned.
 
 ### 2.6 T TypeResolution [DONE]
 
@@ -198,14 +199,15 @@ every `ChainExpr` left to right from an ANCHOR and binds each step:
     Type     -> `::` does member lookup; `.` is an error
     Value    -> `.`/`->`/`?.`/`?->` peel the wrapper then member lookup on
                 the canonical; `::` is an error
-    NeedsInference / Foreign / Errored -> record why, stop
+    NeedsInference / Errored -> record why, stop
     Dependent -> the three-regime rule below
 
 Anchors: param/field/typed var -> Value; class/struct/enum/interface/
 alias -> Type; `Self` bound to an ExtensionDecl -> Type (its target);
 module -> Module; generic param -> Dependent (carrying its canonical);
 call / inferred var / overload set / operator or tuple-index step ->
-NeedsInference; ffi anchor -> Foreign.
+NeedsInference. An ffi alias denotes the header TUs' ModuleDecls, so it
+anchors as Module like any reopened namespace.
 
 **Two callers, one binder** [DECIDED, MISSING, spec 4]. `bind_step(chain,
 st, anchor)` is public. ChainBinding calls it from its own walk with the
@@ -362,7 +364,13 @@ is an error; shifts unify the right operand alone; compound assignment
 converts the right operand only). Comparison -> bool; `<=>` -> `Ordering`;
 `??` on `T?` joins the inner with the right; `===` requires unifiable
 operands. Non-primitives search the LEFT operand's members and extensions
-under `op_name`; no ADL and no free operator functions yet (§4 item e).
+under `op_name`, plus free operator functions found by ADL in the modules of
+EITHER operand's type (`MemberLookup::associated_scopes`: the enclosing
+modules up to, not including, the TU; pointers/refs/nullables peel; generic
+args recurse). Members and frees rank in ONE set
+(`OverloadResolution::resolve_mixed`), so a tie between them is ambiguous.
+An unqualified call gets the same ADL over its arguments unless ordinary
+lookup found a method.
 Literal-on-one-side takes the other side's type. `&x` needs an lvalue and
 yields `*T`; `*p` yields the pointee as an lvalue.
 
@@ -413,7 +421,8 @@ shorthands. Destructuring by position or field name. Context bindings take
 the value's type until ContextLowering. `yield`'s check against `yield T`
 is YieldLowering's.
 
-**What X does NOT do**: ADL / free operator functions; pack deduction and
+**What X does NOT do**: ADL through the global namespace (a type at TU
+scope associates no scope, by design; see `_enclosing_modules`); pack deduction and
 ranking; pattern head resolution and exhaustiveness (PatternChecking);
 const-correctness, including assignment to const and const-cast validity
 beyond "adds const" (ConstChecking); effect propagation (reads
@@ -648,7 +657,7 @@ Type domain (each unblocks the next):
        members, arity/Self checks, visibility at instantiation
     j. PatternChecking: ctor-pattern heads, bare `case n`,
        `.Variant`, exhaustiveness
-    k. ADL / free operator functions (X, OperatorTyping)
+    k. ADL / free operator functions (X, OperatorTyping)     DONE
     l. AccessCheck (+ `prot` same-library provenance)
     m. ConstChecking, PanicEffectChecking (reads panic_sites)
     n. ExtensionLowering: `a.m()` -> `m(&a)`, prvalue receiver
