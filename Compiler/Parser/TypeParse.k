@@ -354,6 +354,13 @@ class <T> TypeParse {
         dyn()->apply_quals(ty, &quals);
         dyn()->apply_annotations_to_node(ty, &annot);
 
+        // `unsafe` on a pointer is not just a qualifier bit: `unsafe *T` is a
+        // distinct canonical from `*T`, and the store keys on the field rather
+        // than on flags. The bit stays in `flags` for the printer.
+        if (ty->kind == TypeKind::PointerType) && (ty->is_unsafe()) {
+            cast::<PointerType>(ty)->is_unsafe = true;
+        }
+
         dyn()->exit_depth();
         return ty;
     }

@@ -1730,9 +1730,21 @@ class <T> ExprParse {
 
         dyn()->advance(); // consume `as`
 
+        // The word after `as` picks the cast MODE. `const` and `unsafe` are
+        // also type qualifiers, so they are peeked and left for parse_type to
+        // consume: `as const T` must still produce a const-spelled target (the
+        // const-cast rung compares the written type), and `as unsafe *T` must
+        // produce the `unsafe *T` canonical, which only the qualifier path
+        // builds. `static` is not a qualifier, so it is eaten here.
+        var mode      = CastMode::Default;
         var is_unsafe = false;
         if dyn()->check(TokenKind::KwUnsafe) {
+            mode      = CastMode::Unsafe;
             is_unsafe = true;
+        } else if dyn()->check(TokenKind::KwConst) {
+            mode = CastMode::Const;
+        } else if dyn()->check(TokenKind::KwStatic) {
+            mode = CastMode::Static;
             dyn()->advance();
         }
 
@@ -1753,7 +1765,8 @@ class <T> ExprParse {
             operand->range | target->range,
             operand,
             target,
-            is_unsafe
+            is_unsafe,
+            mode
         );
     }
 

@@ -746,6 +746,7 @@ class <T> DeclParse {
     /// \brief parses an optional generic parameter list into `out`.
     ///  Grammar:  '<' generic_param (',' generic_param)* '>'
     ///    generic_param := '...'? identifier (':' kind_bound)?
+    ///    kind_bound    := 'class' | 'struct' | 'enum' | 'union' | 'type'
     ///                     (('impl'|'derives') 'virtual'? vis? type)*
     ///                     ('=' type)?
     ///                   | 'const' identifier ':' type ('=' type)?
@@ -915,13 +916,20 @@ class <T> DeclParse {
         return gp;
     }
 
+    /// `: type` is not a kind the way `: class` is -- it is the DUCK bound,
+    /// the opt-in to C++ template semantics, where the parameter admits any
+    /// member access and every one of them is checked at instantiation
+    /// instead of here. It is spelled in this slot because it occupies the
+    /// same syntactic position and, like the kind bounds, describes the
+    /// parameter SLOT rather than conjoining a constraint.
     priv fn _parse_kind_bound(self, ctx_range: SourceRange) -> GenericParamKindBound {
         if dyn()->check(TokenKind::KwClass)     { dyn()->advance(); return GenericParamKindBound::Class;  }
         if dyn()->check(TokenKind::KwStruct)    { dyn()->advance(); return GenericParamKindBound::Struct; }
         if dyn()->check(TokenKind::KwEnum)      { dyn()->advance(); return GenericParamKindBound::Enum;   }
         if dyn()->check(TokenKind::KwUnion)     { dyn()->advance(); return GenericParamKindBound::Union;  }
+        if dyn()->check(TokenKind::KwType)      { dyn()->advance(); return GenericParamKindBound::Duck;   }
         dyn()->diag->report(DiagID::S049E, ctx_range.start,
-            "expected 'class', 'struct', 'enum', or 'union' as a kind bound after ':\x27"
+            "expected 'class', 'struct', 'enum', 'union', or 'type' as a kind bound after ':\x27"
         ).first(ctx_range).emit();
         return GenericParamKindBound::Any;
     }
