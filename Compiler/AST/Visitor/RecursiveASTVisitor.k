@@ -37,6 +37,25 @@ import AST::Node::Statements::*;
 import AST::Node::Types::*;
 import AST::Context::DeclContext::*;
 import AST::Context::CanonicalTypes::*;
+import AST::Node::Casting::*;
+import Token::TokenKind::*;
+
+/// The VALUE of a named call argument, or null when \p a is positional.
+///
+/// `f(x: 1)` has no node of its own: the parser wraps it in an
+/// AssignOperatorExpr with a `:` operator token and a bare identifier on the
+/// left (ExprParse::_parse_call_args documents the encoding, and
+/// CallTyping::arg_info is the other reader). One decoder, so a change to the
+/// encoding has one place to land.
+fn named_call_arg_value(a: *Expr) -> *Expr {
+    if a == &null { return &null; }
+    if !isa::<AssignOperatorExpr>(a) { return &null; }
+    var asn = cast::<AssignOperatorExpr>(a);
+    if asn->op_token.kind != TokenKind::OpColon { return &null; }
+    if (asn->lhs == &null) || (asn->rhs == &null) { return &null; }
+    if !isa::<NamedIdentExpr>(asn->lhs) { return &null; }
+    return asn->rhs;
+}
 
 class <D> RecursiveASTVisitor {
     var ctx: *ASTContext;
@@ -603,7 +622,16 @@ class <D> RecursiveASTVisitor {
         }
         for var i: usize = 0; i < n->args.size(); i++ {
             if self.stop { break; }
-            self.dyn()->dispatch_expr(*(n->args.get(i)));  // discard
+            var a = *(n->args.get(i));
+            // A NAMED argument is encoded as `label : value` -- an
+            // AssignOperatorExpr whose operator token is `:` and whose lhs is
+            // a bare identifier (ExprParse::_parse_call_args). The label is
+            // the callee's PARAMETER name, not a name use: only overload
+            // resolution can say what it refers to, and walking it would make
+            // every visitor treat it as an unbound identifier. Walk the value.
+            var value = named_call_arg_value(a);
+            if value != &null { self.dyn()->dispatch_expr(value); continue; }
+            self.dyn()->dispatch_expr(a);  // discard
         }
         return n;
     }

@@ -62,6 +62,56 @@ import Token::TokenKind::*;
 /// AstDumper derives RecursiveASTVisitor::<AstDumper> so its dispatch_*
 /// overrides are reached through the CRTP dyn() routing. The source-faithful
 /// (src_*) methods are independent of RAV and unchanged.
+/// The node name the dumper prints for an expression kind. File scope so
+/// SemaDump can label a row with the same string the AST dump uses, without
+/// a second switch that drifts from this one.
+fn expr_kind_name(k: ExprKind) -> string {
+    switch k {
+        case ExprKind::IntegerLiteralExpr       { return "IntegerLiteralExpr";       }
+        case ExprKind::FloatingLiteralExpr      { return "FloatingLiteralExpr";      }
+        case ExprKind::StringLiteralExpr        { return "StringLiteralExpr";        }
+        case ExprKind::CharacterLiteralExpr     { return "CharacterLiteralExpr";     }
+        case ExprKind::BooleanLiteralExpr       { return "BooleanLiteralExpr";       }
+        case ExprKind::NullLiteralExpr          { return "NullLiteralExpr";          }
+        case ExprKind::ListLiteralExpr          { return "ListLiteralExpr";          }
+        case ExprKind::TupleLiteralExpr         { return "TupleLiteralExpr";         }
+        case ExprKind::SetLiteralExpr           { return "SetLiteralExpr";           }
+        case ExprKind::MapLiteralExpr           { return "MapLiteralExpr";           }
+        case ExprKind::NamedInitializerExpr     { return "NamedInitializerExpr";     }
+        case ExprKind::AnonInitializerExpr      { return "AnonInitializerExpr";      }
+        case ExprKind::ChainExpr                { return "ChainExpr";                }
+        case ExprKind::CallExpr                 { return "CallExpr";                 }
+        case ExprKind::SubscriptExpr            { return "SubscriptExpr";            }
+        case ExprKind::NamedIdentExpr           { return "NamedIdentExpr";           }
+        case ExprKind::UnaryOperatorExpr        { return "UnaryOperatorExpr";        }
+        case ExprKind::BinaryOperatorExpr       { return "BinaryOperatorExpr";       }
+        case ExprKind::AssignOperatorExpr       { return "AssignOperatorExpr";       }
+        case ExprKind::ImplConformanceExpr      { return "ImplConformanceExpr";      }
+        case ExprKind::DerivesRelationExpr      { return "DerivesRelationExpr";      }
+        case ExprKind::IfExpr                   { return "IfExpr";                   }
+        case ExprKind::TryCatchExpr             { return "TryCatchExpr";             }
+        case ExprKind::MatchExpr                { return "MatchExpr";                }
+        case ExprKind::RangeExpr                { return "RangeExpr";                }
+        case ExprKind::ClosureExpr              { return "ClosureExpr";              }
+        case ExprKind::AwaitExpr                { return "AwaitExpr";                }
+        case ExprKind::SpawnExpr                { return "SpawnExpr";                }
+        case ExprKind::ThreadExpr               { return "ThreadExpr";               }
+        case ExprKind::ConstraintExpr           { return "ConstraintExpr";           }
+        case ExprKind::SizeOfExpr               { return "SizeOfExpr";               }
+        case ExprKind::AlignOfExpr              { return "AlignOfExpr";              }
+        case ExprKind::TypeOfExpr               { return "TypeOfExpr";               }
+        case ExprKind::EvalExpr                 { return "EvalExpr";                 }
+        case ExprKind::UnsafeExpr               { return "UnsafeExpr";               }
+        case ExprKind::ParenExpr                { return "ParenExpr";                }
+        case ExprKind::VerbatimExpr             { return "VerbatimExpr";             }
+        case ExprKind::DeleteExpr               { return "DeleteExpr";               }
+        case ExprKind::PackExpansionExpr        { return "PackExpansionExpr";        }
+        case ExprKind::TypeCastExpr             { return "TypeCastExpr";             }
+        case ExprKind::ImplicitBoundaryCastExpr { return "ImplicitBoundaryCastExpr"; }
+        default                                 { return "<expr>";                  }
+    }
+}
+
 class AstDumper derives RecursiveASTVisitor::<AstDumper> {
     pub var p:   Painter;
     pub var ctx: obs::<ASTContext>;
@@ -1289,6 +1339,7 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
             else if gp->kind_bound == GenericParamKindBound::Struct { self.p.paint(Color::Keyword, "struct"); }
             else if gp->kind_bound == GenericParamKindBound::Enum   { self.p.paint(Color::Keyword, "enum");   }
             else if gp->kind_bound == GenericParamKindBound::Union  { self.p.paint(Color::Keyword, "union");  }
+            else if gp->kind_bound == GenericParamKindBound::Duck   { self.p.paint(Color::Keyword, "type");   }
         }
 
         for var i: usize = 0; i < gp->derives_bounds.size(); ++i {
@@ -3256,52 +3307,7 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
         return f"trying: {intended}";
     }
 
-    fn _expr_kind_name_of(self, k: ExprKind) -> string {
-        switch k {
-            case ExprKind::IntegerLiteralExpr       { return "IntegerLiteralExpr";       }
-            case ExprKind::FloatingLiteralExpr      { return "FloatingLiteralExpr";      }
-            case ExprKind::StringLiteralExpr        { return "StringLiteralExpr";        }
-            case ExprKind::CharacterLiteralExpr     { return "CharacterLiteralExpr";     }
-            case ExprKind::BooleanLiteralExpr       { return "BooleanLiteralExpr";       }
-            case ExprKind::NullLiteralExpr          { return "NullLiteralExpr";          }
-            case ExprKind::ListLiteralExpr          { return "ListLiteralExpr";          }
-            case ExprKind::TupleLiteralExpr         { return "TupleLiteralExpr";         }
-            case ExprKind::SetLiteralExpr           { return "SetLiteralExpr";           }
-            case ExprKind::MapLiteralExpr           { return "MapLiteralExpr";           }
-            case ExprKind::NamedInitializerExpr     { return "NamedInitializerExpr";     }
-            case ExprKind::AnonInitializerExpr      { return "AnonInitializerExpr";      }
-            case ExprKind::ChainExpr                { return "ChainExpr";                }
-            case ExprKind::CallExpr                 { return "CallExpr";                 }
-            case ExprKind::SubscriptExpr            { return "SubscriptExpr";            }
-            case ExprKind::NamedIdentExpr           { return "NamedIdentExpr";           }
-            case ExprKind::UnaryOperatorExpr        { return "UnaryOperatorExpr";        }
-            case ExprKind::BinaryOperatorExpr       { return "BinaryOperatorExpr";       }
-            case ExprKind::AssignOperatorExpr       { return "AssignOperatorExpr";       }
-            case ExprKind::ImplConformanceExpr      { return "ImplConformanceExpr";      }
-            case ExprKind::DerivesRelationExpr      { return "DerivesRelationExpr";      }
-            case ExprKind::IfExpr                   { return "IfExpr";                   }
-            case ExprKind::TryCatchExpr             { return "TryCatchExpr";             }
-            case ExprKind::MatchExpr                { return "MatchExpr";                }
-            case ExprKind::RangeExpr                { return "RangeExpr";                }
-            case ExprKind::ClosureExpr              { return "ClosureExpr";              }
-            case ExprKind::AwaitExpr                { return "AwaitExpr";                }
-            case ExprKind::SpawnExpr                { return "SpawnExpr";                }
-            case ExprKind::ThreadExpr               { return "ThreadExpr";               }
-            case ExprKind::ConstraintExpr           { return "ConstraintExpr";           }
-            case ExprKind::SizeOfExpr               { return "SizeOfExpr";               }
-            case ExprKind::AlignOfExpr              { return "AlignOfExpr";              }
-            case ExprKind::TypeOfExpr               { return "TypeOfExpr";               }
-            case ExprKind::EvalExpr                 { return "EvalExpr";                 }
-            case ExprKind::UnsafeExpr               { return "UnsafeExpr";               }
-            case ExprKind::ParenExpr                { return "ParenExpr";                }
-            case ExprKind::VerbatimExpr             { return "VerbatimExpr";             }
-            case ExprKind::DeleteExpr               { return "DeleteExpr";               }
-            case ExprKind::PackExpansionExpr        { return "PackExpansionExpr";        }
-            case ExprKind::TypeCastExpr             { return "TypeCastExpr";             }
-            case ExprKind::ImplicitBoundaryCastExpr { return "ImplicitBoundaryCastExpr"; }
-            default                                 { return "<expr>";                  }
-        }
-    }
+    fn _expr_kind_name_of(self, k: ExprKind) -> string { return expr_kind_name(k); }
 
     fn _type_kind_name_of(self, k: TypeKind) -> string {
         switch k {

@@ -331,18 +331,28 @@ class PointerType derives Type {
     pub var pointee: *Type;
     pub var length:  usize = 0; ///< Statically known length. 0 = unknown.
 
+    /// `unsafe *T` is a DIFFERENT TYPE from `*T`, not the same type wearing a
+    /// qualifier: the conversion lattice refuses to cross between them and the
+    /// `as unsafe *` ladder exists precisely to cross it deliberately. That
+    /// makes safety part of the canonical identity, so it lives in a field the
+    /// store can key on -- the IsUnsafe bit in `flags` stays too, but only the
+    /// printer reads it.
+    pub var is_unsafe: bool = false;
+
     static fn create(
-        ctx:     *ASTContext,
-        range:   SourceRange,
-        pointee: *Type
+        ctx:       *ASTContext,
+        range:     SourceRange,
+        pointee:   *Type,
+        is_unsafe: bool = false
     ) -> *PointerType {
-        var node      = ctx->alloc::<PointerType>();
-        node->kind    = TypeKind::PointerType;
-        node->range   = range;
+        var node        = ctx->alloc::<PointerType>();
+        node->kind      = TypeKind::PointerType;
+        node->range     = range;
         node->init_annotations(&(ctx->ast_alloc));;
         node->init_spans(&(ctx->ast_alloc));
-        node->pointee = pointee;
-        node->length  = 0;
+        node->pointee   = pointee;
+        node->length    = 0;
+        node->is_unsafe = is_unsafe;
         propagate_flags(node, pointee);
         return node;
     }
