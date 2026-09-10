@@ -46,6 +46,7 @@ import Sema::Verify::CxxNameCheck::*;
 import Sema::Check::ConstraintExtraction::*;
 import Sema::Check::TypeCycleCheck::*;
 import Sema::Check::ShadowCheck::*;
+import Sema::Check::ValueCategoryPass::*;
 import Sema::Type::ExprTyper::*;
 import AST::Context::ASTContext::*;
 import AST::Context::GlobalDisambigTable::*;
@@ -264,6 +265,11 @@ class Sema {
         // and layouts through the canonical store, and a by-value cycle has
         // to be reported before anything walks one.
         { var _p = TimeRegion("ExprTyper"); ExprTyper(&self.sc).run(); }
+
+        // ExprTyper assigns value categories inline (overload resolution
+        // needs them mid-typing); this verifies that assignment is total and
+        // ICEs on a typed expression without one.
+        { var _p = TimeRegion("ValueCategory"); ValueCategoryPass(&self.sc).run(); }
 
         // Runs late: it REQUIRES ExprTyper to be complete.
 

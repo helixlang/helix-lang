@@ -188,6 +188,13 @@ const excluded for Kairo-authored decls, included for foreign). R(a) walks
 frozen cells; R(b) matches `fn Class::method` against the in-class set.
 Return-type / default / linkage / modifier agreement checked across the
 chain. File scope permits repeats, a type body does not ([class.mem]).
+A pair with DISTINCT signatures whose parameters all lower to the same C++
+types is R052E at the second decl (`f(u64)` / `f(usize)` on a 64-bit
+target: `usize` is `size_t`, the pointer-width unsigned integer), because
+the emitted C++ would declare one function twice. Lowering compared is the
+builtin table only (`usize`/`isize` vs the fixed-width integer of
+`target.pointer_width`); records, pointers and refs compare by canonical as
+identity does. Kairo-authored pairs only.
 
 ### 2.7 ChainBinding [DONE]
 
