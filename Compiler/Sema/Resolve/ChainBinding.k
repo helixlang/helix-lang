@@ -804,15 +804,15 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
 
         var it = self.sc->bounds.find(reinterpret_cast::<u64>(owner));
         if it == self.sc->bounds.end() { return b; }
-        var set = &(it->second);
-        for var i: usize = 0; i < set->impl_constraints.size(); ++i {
-            var c = set->impl_constraints[i];
+        var _set = &(it->second);
+        for var i: usize = 0; i < _set->impl_constraints.size(); ++i {
+            var c = _set->impl_constraints[i];
             if !self._constraint_names(c, gp) { continue; }
             var d = self._record_decl_of(c->rhs);
             if d != &null { b.interfaces.push_back(d); }
         }
-        for var i: usize = 0; i < set->derives_constraints.size(); ++i {
-            var c = set->derives_constraints[i];
+        for var i: usize = 0; i < _set->derives_constraints.size(); ++i {
+            var c = _set->derives_constraints[i];
             if !self._constraint_names(c, gp) { continue; }
             var d = self._record_decl_of(c->rhs);
             if d != &null { b.bases.push_back(d); }
