@@ -842,7 +842,7 @@ class NameResolution derives RecursiveASTVisitor::<NameResolution> {
         if im == u32(-1) { return; }        // never interned in this TU: absent.
         var r = self.sc->lookup.unqualified(root, DeclName::ident(im));
         if !r.found() { return; }
-        self.sc->well_known.set(k, r.first());
+        self.sc->well_known._set(k, r.first());
     }
 
     // === N(b): binding ====================================================

@@ -274,7 +274,7 @@ class OverloadResolution {
         for var j: usize = 0; j < nparams; ++j {
             if filled[j] { continue; }
             if j == pack_at { continue; }
-            if params[j]->default_val != &null { continue; }
+            if (params[j]->default_val != &null) || params[j]->has_default { continue; }
             var pn = self.tu.param_name(params[j]);
             c->viable = false;
             c->reason = f"missing argument for parameter '{pn}\x27";

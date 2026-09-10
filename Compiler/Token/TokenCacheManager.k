@@ -174,6 +174,18 @@ class TokenCacheManager {
         return self._slots[fid].imm;   // valid even while Streaming
     }
 
+    /// A fid that is not Kairo source (a C++ header): an identifier table
+    /// with no lexer and no tokens. Idempotent.
+    fn ensure_imm_table(self, fid: u32) {
+        var wlock = std::UniqueLock(self._lex_mu);
+        while self._slots.size() <= (fid as usize) { self._slots.push_back(Slot()); }
+        if self._slots[fid].imm != &null { return; }
+        var imm = std::create::<ImmediateTable>();
+        imm->initialize(self._sm);
+        self._slots[fid].imm   = imm;
+        if self._slots[fid].state == SlotState::NotLexed { self._slots[fid].state = SlotState::Ready; }
+    }
+
     fn reset(self) {
         var wlock = std::UniqueLock(self._lex_mu);
         for slot: ref!(Slot) in _slots {
