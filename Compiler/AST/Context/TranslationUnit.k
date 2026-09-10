@@ -190,6 +190,10 @@ class TranslationUnit derives DeclContext {
     /// (FileImportIndex). Readers: parser disambig fallback + ImportResolution.
     pub var import_edges:   ArenaList::<ImportEdge>;
 
+    /// A C++ header imported through Sema/Foreign: decls come from clang,
+    /// there is no Kairo token stream behind this fid.
+    pub var is_foreign:     bool = false;
+
     fn TranslationUnit(self, ctx: *ASTContext, fid: u32, scope: *DisambigTable, g_scope: *GlobalDisambigTable) {
         self.init_dc(DeclContextKind::TranslationUnit, ctx, &null, &null);
         self.ctx          = ctx;
