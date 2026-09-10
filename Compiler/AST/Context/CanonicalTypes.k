@@ -204,8 +204,11 @@ class CanonicalTypeStore {
         return ty;
     }
 
-    fn pointer(self, pointee: *Type) -> *Type {
-        return self._unary(TypeKind::PointerType, pointee);
+    /// `*T` and `unsafe *T` are two entities, not one type with a flag: the
+    /// conversion lattice will not cross between them, so safety is part of
+    /// the uniquing key.
+    fn pointer(self, pointee: *Type, is_unsafe: bool = false) -> *Type {
+        return self._unary(TypeKind::PointerType, pointee, is_unsafe);
     }
 
     fn nullable(self, inner: *Type) -> *Type {
@@ -473,10 +476,14 @@ class CanonicalTypeStore {
     /// Shared body for the one-component kinds. Each has exactly one child
     /// slot at a different field name, so the probe and the fill switch on
     /// kind; everything else is identical.
-    priv fn _unary(self, k: TypeKind, child: *Type) -> *Type {
+    /// \param is_unsafe only meaningful for PointerType; every other kind
+    ///        passes false, which folds a constant into the hash and leaves
+    ///        their keys unchanged relative to each other.
+    priv fn _unary(self, k: TypeKind, child: *Type, is_unsafe: bool = false) -> *Type {
         if child == &null { return &null; }
         var h = canon_hash_u64(0, static_cast::<u64>(static_cast::<u8>(k)));
         h = canon_hash_ptr(h, reinterpret_cast::<*void>(child));
+        h = canon_hash_u64(h, (static_cast::<u64>(1)) if (is_unsafe) else (static_cast::<u64>(0)));
 
         var lock = std::LockGuard(self._mu);
         var b = self._bucket(h);
@@ -484,7 +491,14 @@ class CanonicalTypeStore {
             for var i: usize = 0; i < b->size(); ++i {
                 var c = (*b)[i];
                 if c->kind != k { continue; }
-                if self._unary_child(c) == child { return c; }
+                if self._unary_child(c) != child { continue; }
+                // Two pointers to the same pointee are still two types when
+                // they disagree on safety; the hash separates them, this is
+                // what keeps a bucket collision from merging them anyway.
+                if k == TypeKind::PointerType {
+                    if cast::<PointerType>(c)->is_unsafe != is_unsafe { continue; }
+                }
+                return c;
             }
         }
 
@@ -492,8 +506,9 @@ class CanonicalTypeStore {
         switch k {
             case TypeKind::PointerType {
                 var n = self._alloc::<PointerType>();
-                n->pointee = child;
-                n->length  = 0;
+                n->pointee   = child;
+                n->length    = 0;
+                n->is_unsafe = is_unsafe;
                 ty = static_cast::<*Type>(n);
                 ty->size_bits  = self._ptr_bits;
                 ty->align_bits = self._ptr_bits;

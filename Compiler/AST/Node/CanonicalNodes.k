@@ -92,6 +92,14 @@ enum BuiltinKind derives u8 {
     /// as a return type and as the pointee of an untyped pointer.
     Void = 0,
 
+    /// The type of an expression that does not produce a value because
+    /// control never reaches its end: a `-> !` call, `return`, `break`.
+    /// Not spellable in type position -- `-> !` is recorded on the
+    /// declaration as is_noreturn and mapped here, so builtin_for_token()
+    /// has no row for it. Convertible TO everything (a diverging arm joins
+    /// with any other arm) and FROM nothing.
+    Never,
+
     /// One byte in memory, not one bit -- addressability. Valid values are
     /// exactly {0, 1}; bool->integer is ALWAYS zext, never sext. `true` and
     /// `false` are keyword tokens lexed to literal nodes, not shadowable
@@ -352,6 +360,11 @@ fn builtin_for_token(k: TokenKind) -> BuiltinKind {
 fn builtin_cxx_spelling(b: BuiltinKind) -> string {
     switch b {
         case BuiltinKind::Void  { return "void"; }
+
+        // A noreturn function still has a C++ return type; the divergence
+        // rides on [[noreturn]], which EmitPlan attaches from is_noreturn.
+        case BuiltinKind::Never { return "void"; }
+
         case BuiltinKind::Bool  { return "bool"; }
 
         // --- integers: fixed width ---------------------------------------
@@ -415,6 +428,7 @@ fn builtin_cxx_spelling(b: BuiltinKind) -> string {
 fn builtin_spelling(b: BuiltinKind) -> string {
     switch b {
         case BuiltinKind::Void   { return "void";  }
+        case BuiltinKind::Never  { return "!";     }
         case BuiltinKind::Bool   { return "bool";  }
         case BuiltinKind::Byte   { return "byte";  }
         case BuiltinKind::Char   { return "char";  }
@@ -453,6 +467,7 @@ fn builtin_spelling(b: BuiltinKind) -> string {
 fn builtin_fixed_bits(b: BuiltinKind) -> usize {
     switch b {
         case BuiltinKind::Void   { return 0;   }
+        case BuiltinKind::Never  { return 0;   }
         case BuiltinKind::Bool   { return 8;   }
         case BuiltinKind::Byte   { return 8;   }
         case BuiltinKind::Char   { return 32;  }
