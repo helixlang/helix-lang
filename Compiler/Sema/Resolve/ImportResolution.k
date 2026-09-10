@@ -71,13 +71,14 @@ class ImportResolution {
     }
 
     priv fn _resolve_one(self, id: *ImportDecl, overlay: *ImportOverlay) {
-        // ffi: linkage already stamped by the parser
-        // `ffi "c" import "h"` contributes nothing to lookup; `as z` binds an
-        // anchor the future clang-extraction pass hangs decls off of.
+        // ffi: clang parsed the header set and Sema/Foreign indexed it into
+        // one Kairo TU per header BEFORE sema; the driver stamped the closure
+        // (the header and everything it transitively includes) onto the node.
+        // resolved_fid 0: the spelling never resolved, and the set's own
+        // diagnostics already said so.
         if id->has_ffi_linkage() {
-            if id->has_alias {
-                self._bind_ffi_anchor(id, overlay);
-            }
+            if id->resolved_fid == 0 { return; }
+            self._resolve_ffi(id, overlay);
             return;
         }
 
@@ -362,16 +363,34 @@ class ImportResolution {
         self._add(overlay, visible, t);
     }
 
-    priv fn _bind_ffi_anchor(self, id: *ImportDecl, overlay: *ImportOverlay) {
-        var name = self.sc->ctx->get_spelling(id->alias);
-        if name.size() == 0 { return; }
-        var t = OverlayTarget{};
-        t.kind   = OverlayTargetKind::FfiAnchor;
-        t.decl   = static_cast::<*Decl>(id);
-        t.origin = static_cast::<*Decl>(id);
-        t.vis    = OverlayVisibility::Public;   // a scope you named; see _fold_plain.
-
-        self._add(overlay, name, t);
+    /// IMPORTS.md §5. `ffi import "h" as z`: ONE key, one ModuleHandle per
+    /// header in the closure. non_function_count skips ModuleHandle, so N
+    /// headers under one alias are one scope spread over N tables -- the
+    /// reopened-module shape ChainBinding's multi-scope Module anchor already
+    /// searches (§4.3). Bare `ffi import "h"`: every name of every header in
+    /// the closure, unqualified, as the `#include` it stands for would.
+    priv fn _resolve_ffi(self, id: *ImportDecl, overlay: *ImportOverlay) {
+        var alias: string = "";
+        if id->has_alias { alias = self.sc->ctx->get_spelling(id->alias); }
+        for var i: usize = 0; i < id->ffi_closure_fids.size(); ++i {
+            var fid = id->ffi_closure_fids[i];
+            var src_tu = self._source_tu(fid);
+            if src_tu == &null { continue; }
+            if id->has_alias {
+                if (alias.size() == 0) || (src_tu->module_self == &null) { continue; }
+                var t = OverlayTarget{};
+                t.kind    = OverlayTargetKind::ModuleHandle;
+                t.decl    = src_tu->module_self;
+                t.origin  = static_cast::<*Decl>(id);
+                t.vis     = OverlayVisibility::Public;   // a scope you named; see _fold_plain.
+                t.src_fid = fid;
+                self._add(overlay, alias, t);
+                continue;
+            }
+            var syms = src_tu->symbols();
+            if syms == &null { continue; }
+            self._fold_all_cells(id, overlay, syms, fid);
+        }
     }
 
     /// Intern the visible name into THIS TU's imm space (overlay key), add the
@@ -414,11 +433,10 @@ class ImportResolution {
                     if d != &null { entry->merged.append(d); }
                 }
             } else if (t.kind == OverlayTargetKind::Type)
-                   || (t.kind == OverlayTargetKind::ModuleHandle)
-                   || (t.kind == OverlayTargetKind::FfiAnchor) {
-                // A module handle is a real ModuleDecl; an ffi anchor is the
-                // ImportDecl. Both are legitimate lookup answers (a name
-                // denoting a scope).
+                   || (t.kind == OverlayTargetKind::ModuleHandle) {
+                // A module handle is a real ModuleDecl (a Kairo file's, or a
+                // C++ header's under an ffi alias): a legitimate lookup answer,
+                // a name denoting a scope.
                 if t.decl != &null { entry->merged.append(t.decl); }
             }
         }
