@@ -197,7 +197,10 @@ struct InheritEdge {
 ///  | <...T>
 ///
 ///  Owned by a TemplateParams-carrying decl. `kind_bound` is the
-///  `: class/struct/enum/union` kind bound. `impl_bounds` holds the `impl`
+///  `: class/struct/enum/union/type` kind bound; `: type` (Duck) is the opt-in
+///  to C++-style duck typing, where every member access through the parameter
+///  is deferred to instantiation. Without a kind bound and without an
+///  impl/derives bound the parameter is OPAQUE: it has no members at all. `impl_bounds` holds the `impl`
 ///  (structural interface) constraints; `derives_bounds` holds the `derives`
 ///  (nominal base-class / interface-inheritance) constraints. The two are kept
 ///  physically separate like ClassDecl's implements/derives_list because
@@ -206,15 +209,24 @@ struct InheritEdge {
 ///  (`const N: T`), whose type is `value_type`. `is_pack` marks `...T`.
 ///
 enum GenericParamKindBound derives u8 {
-    Any = 0,   ///< no `: kind` bound.
+    Any = 0,   ///< no `: kind` bound: T is OPAQUE. No members, no `::`.
     Class,
     Struct,
     Enum,
     Union,
+    Duck,      ///< `: type`: full C++ duck typing, every member access deferred to M2.
 }
 
 class GenericParamDecl derives Decl {
     pub var name:           Token;                  ///< the parameter identifier (T, N, ...).
+    /// The decl that DECLARES this parameter (the class/fn/alias/extension),
+    /// as its redecl representative. A generic param sits in no symbol table
+    /// -- it is a template parameter, not a member -- so `semantic_dc` is null
+    /// on it and there is no other way back. T stamps this when it pushes the
+    /// param's frame, with exactly the owner the canonical GenericParamType is
+    /// uniqued on, so `param -> canonical` and `canonical -> param` agree.
+    /// Null for a closure's params (a closure is not a decl) and before T.
+    pub var owner:          *Decl = &null;
     pub var kind_bound:     GenericParamKindBound = GenericParamKindBound::Any;
     pub var impl_bounds:    FrozenList::<InheritEdge>;  ///< `impl` interface bounds (structural).
     pub var derives_bounds: FrozenList::<InheritEdge>;  ///< `derives` base bounds (nominal, vtable).

@@ -614,6 +614,10 @@ class FloatingLiteralExpr derives Expr {
         node->range = range;
         node->token = token;
         node->ctx   = ctx;
+        // Same as the integer literal above: every get_* accessor on this
+        // node asserts on a null imm, so the table entry is attached at
+        // construction, not on first use.
+        node->imm   = ctx->get_imm_table()->get::<Immediate::FloatData>(token.imm);
         node->init_annotations(&(ctx->ast_alloc));;
         return node;
     }

@@ -1179,6 +1179,18 @@ class PackExpansionExpr derives Expr {
     static fn expr_kind() -> ExprKind { return ExprKind::PackExpansionExpr; }
 }
 
+/// Which `as` was written. The word after `as` selects a DIFFERENT ladder,
+/// not a hint on the same one: `static` disables the dynamic rungs, `const`
+/// asserts the const-cast rung and errors on anything else, `unsafe` opens
+/// the reinterpret rung. CastTyping dispatches on this before it looks at
+/// either type.
+enum CastMode derives u8 {
+    Default = 0,   ///< `a as T`
+    Static,        ///< `a as static T`
+    Const,         ///< `a as const T`
+    Unsafe,        ///< `a as unsafe *T`
+}
+
 ///
 ///  TypeCastExpr
 ///  expr as Type
@@ -1187,14 +1199,20 @@ class PackExpansionExpr derives Expr {
 class TypeCastExpr derives Expr {
     pub var operand:   *Expr;
     pub var target:    *Type;
+
+    /// Kept in step with `mode == CastMode::Unsafe`. Redundant on purpose for
+    /// now -- the printer and ClangDiagAdapter still read the bool -- and goes
+    /// away once every reader has moved to `mode`.
     pub var is_unsafe: bool;
+    pub var mode:      CastMode = CastMode::Default;
 
     static fn create(
         ctx:       *ASTContext,
         range:     SourceRange,
         operand:   *Expr,
         target:    *Type,
-        is_unsafe: bool = false
+        is_unsafe: bool = false,
+        mode:      CastMode = CastMode::Default
     ) -> *TypeCastExpr {
         var node        = ctx->alloc::<TypeCastExpr>();
         node->kind      = ExprKind::TypeCastExpr;
@@ -1202,6 +1220,7 @@ class TypeCastExpr derives Expr {
         node->operand   = operand;
         node->target    = target;
         node->is_unsafe = is_unsafe;
+        node->mode      = mode;
         node->init_annotations(&(ctx->ast_alloc));;
         return node;
     }
