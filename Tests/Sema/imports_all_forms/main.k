@@ -16,12 +16,12 @@
 //   5  selective          import foo::{inner, add as plus}
 //   6  wildcard           import foo::*
 //   3' symbol path, twice import u1::util / import u2::util  (reopened module)
-//   9  ffi aliased        ffi "c++" import "stdio.h" as cstd
+//   9  ffi aliased        ffi "c++" import "c_stub.h" as cstd
 //
 // Not exercised: `import module foo` (form 7) needs a foo/module.k directory
 // module, which is a path-resolution property with no bearing on the lookup
-// forms this file is about; and bare ffi (form 8), whose miss gate is its own
-// test because it changes what an UNRELATED miss means.
+// forms this file is about; and bare ffi (form 8), which folds a header's
+// names unqualified and is exercised in Tests/Sema/FFI.
 
 import foo
 import foo as fmod
@@ -31,14 +31,14 @@ import foo::{inner, add as plus}
 import foo::*
 import u1::util
 import u2::util
-ffi "c++" import "stdio.h" as cstd
+ffi "c++" import "c_stub.h" as cstd
 
 fn use_all() -> i32 {
     // Form 3: a symbol-path import names a TYPE, usable as one.
     var m: MyClass
 
-    // Form 9: a step off an ffi anchor is Foreign -- clang resolves it, we
-    // neither bind it nor complain about it.
+    // Form 9: `cstd` is the header's own module; the step binds to the
+    // imported decl, C varargs and all (IMPORTS.md §5).
     cstd::printf("hi")
 
     var a1 = foo::add(1, 2)      // 1: through the module handle
@@ -70,9 +70,10 @@ fn use_all() -> i32 {
 // SEMA: ===== SEMA fid {{[0-9]+}}: {{.*}}imports_all_forms/main.k =====
 // SEMA: fn use_all  @
 
-// Form 9: the ffi anchor binds; the step off it is nobody's to resolve.
-// SEMA:      use     cstd  {{.*}} -> import {{.*}}  [import overlay]
-// SEMA-NEXT: member  ::printf  {{.*}}<foreign: resolved by clang   ffi header>
+// Form 9: the alias binds the header's own module, and the step binds the
+// decl Sema/Foreign imported from it.
+// SEMA:      use     cstd  {{.*}} -> module c_stub {{.*}}  [import overlay]
+// SEMA-NEXT: member  ::printf  {{.*}} -> fn printf @
 
 // Forms 1 and 2: the same module through its own name and through an alias.
 // SEMA:      use     foo  {{.*}} -> module foo {{.*}}  [import overlay]
@@ -112,4 +113,4 @@ fn use_all() -> i32 {
 // SEMA:      member  ::h  {{.*}}<UNRESOLVED>
 // SEMA:      member  ::addd  {{.*}}<UNRESOLVED>
 // SEMA: 0 unresolved
-// SEMA: 10 chain step(s): 7 bound, 0 overload sets, 1 open, 2 unresolved
+// SEMA: 10 chain step(s): 8 bound, 0 overload sets, 0 open, 2 unresolved

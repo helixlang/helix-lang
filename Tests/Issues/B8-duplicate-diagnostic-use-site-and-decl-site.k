@@ -9,7 +9,7 @@
 // ### Additional context
 // Source: Compiler/Sema/Resolve/TypeResolve.k (_pick_type_candidate,
 // _primary_of_spec). Confirmed live: this fires TWO separate R001E errors
-// for one fault (a specialization with no primary template) — one at the
+// for one fault (a specialization with no primary template) one at the
 // decl site ("'Box' is declared as a specialization, but no primary
 // template named 'Box' is visible here") and a second, differently
 // worded one at the use site ("'Box' has a specialization but no primary

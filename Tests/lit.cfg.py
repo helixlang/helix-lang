@@ -97,7 +97,29 @@ filecheck_bin = _find_filecheck()
 # --- Substitutions -----------------------------------------------------------
 # Plain-text substitution. Order matters only when one pattern is a prefix of
 # another; ours are distinct, but list longest-first as habit.
-config.substitutions.append(("%kairo", kairo_bin + " --error-format=basic"))
+# --- C++ header roots for ffi imports -----------------------------------------
+# kairo takes its header-search roots ONLY from flags (no discovery), and ffi
+# imports parse real headers, so the suite hard-passes them. Defaults: the
+# host as sysroot (libc++ at /usr/include/c++/v1, libc at /usr/include) and
+# the tree's own clang resource dir. Override: --param sysroot=/path,
+# --param resource_dir=/path.
+def _clang_roots():
+    sysroot = lit_config.params.get("sysroot", "/usr")
+    res = lit_config.params.get("resource_dir")
+    if not res:
+        cands = sorted(glob.glob(os.path.join(
+            config.test_source_root, "..", "build", "llvm", "lib", "clang", "*")))
+        cands = [c for c in cands
+                 if os.path.isfile(os.path.join(c, "include", "stddef.h"))]
+        res = os.path.normpath(cands[-1]) if cands else ""
+    roots = " --sysroot=%s" % sysroot
+    if res:
+        roots += " --resource-dir=%s" % res
+    return roots
+
+kairo_roots = _clang_roots()
+
+config.substitutions.append(("%kairo", kairo_bin + " --error-format=basic" + kairo_roots))
 config.substitutions.append(("%FileCheck", filecheck_bin))
 
 # --- Parity (differential) tests --------------------------------------------
@@ -137,10 +159,10 @@ clang_bin = _find_clang()
 if clang_bin:
     config.available_features.add("clang")
     config.substitutions.append(
-        ("%parity", "%s %s %s %s" % (
+        ("%parity", "%s %s '%s' %s" % (
             sys.executable,
             os.path.join(config.test_source_root, "parity_check.py"),
-            kairo_bin,
+            kairo_bin + kairo_roots,     # one quoted command: kairo + its header roots
             clang_bin)))
 else:
     # Leave a substitution that explains itself, in case a test forgets

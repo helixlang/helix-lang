@@ -13,7 +13,7 @@
 // Compiler/Sema/SemaDump.k. Confirmed live: --print-symbols only shows
 // the top-level <tu> scope and never descends into outer's body to show
 // Inner's member table at all. --print-sema's own "-- scope symbol
-// tables --" section has the same gap — it lists only <tu> and never
+// tables --" section has the same gap it lists only <tu> and never
 // shows <tu>::outer::Inner's table, even though the separate
 // "-- lexical scopes --" section in the same dump does correctly show
 // Inner and Inner::get nested under fn outer. The information exists

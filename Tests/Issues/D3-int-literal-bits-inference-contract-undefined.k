@@ -3,7 +3,7 @@
 // note: --dump-type-info was checked and is not implemented yet in this
 // build ("-- type info: ... (not yet implemented) --"), so --print-sema's
 // output doesn't surface the internal `bits` field on the integer literal
-// either. This file compiles clean either way — it exists to have
+// either. This file compiles clean either way it exists to have
 // something to attach a debugger/print statement to once there's a way to
 // inspect the literal's inferred bit-width.
 //

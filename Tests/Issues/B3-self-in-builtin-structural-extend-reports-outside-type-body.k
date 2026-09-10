@@ -17,7 +17,7 @@
 // The diagnostic looks like it comes from a separate check walking a
 // decl-only `selfs` stack that disagrees with name resolution. Note:
 // plain `extend i32 { fn foo(self) -> i32 { return Self } }` (a builtin
-// target, no generics) did NOT reproduce this — the fault is specifically
+// target, no generics) did NOT reproduce this the fault is specifically
 // tied to the structural/generic extension target (`extend <T> [T]`).
 
 extend <T> [T] {

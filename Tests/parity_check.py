@@ -12,9 +12,12 @@ text to clang's would be a test of translation rather than of behaviour. What
 rule each side applied is printed on divergence so a human can judge it.
 
 Usage: parity_check.py <kairo> <clang> <file.k>
+       <kairo> may carry flags as one shell-quoted word ('kairo --sysroot=..'):
+       lit passes the C++ header roots that way.
 Exit:  0 = same verdict, 1 = diverged, 2 = harness problem (missing oracle).
 """
 import os
+import shlex
 import subprocess
 import sys
 
@@ -51,7 +54,7 @@ def main():
               file=sys.stderr)
         return 2
 
-    kv, kout = verdict([kairo, kfile, "--type-check-only"])
+    kv, kout = verdict(shlex.split(kairo) + [kfile, "--type-check-only"])
     cv, cout = verdict([clang, "-fsyntax-only", "-std=c++20", cpp])
 
     if kv == cv:
