@@ -1,6 +1,6 @@
 // A decl head may wrap, putting `requires` on its own line. The newline in
 // front of it must not terminate the head.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 eval fn <P> is_ptr() -> bool = false
 

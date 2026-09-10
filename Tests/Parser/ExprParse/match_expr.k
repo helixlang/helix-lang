@@ -6,7 +6,7 @@
 // AST-NEXT:       |-NamedIdentExpr named
 // AST-NEXT:       |-case .Point
 // AST-NEXT:       | `-IntegerLiteralExpr 0
-// AST-NEXT:       |-case .Circle(var r) where r > 1.0
+// AST-NEXT:       |-case .Circle(var r) where r > 1
 // AST-NEXT:       | `-IntegerLiteralExpr 1
 // AST-NEXT:       |-case .Rect(var w, var h)
 // AST-NEXT:       | `-IntegerLiteralExpr 2

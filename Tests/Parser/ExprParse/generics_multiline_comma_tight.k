@@ -1,4 +1,4 @@
-// RUN: %kairo %s --print-ast=tree | %FileCheck %s
+// RUN: { %kairo %s --print-ast=tree || true; } | %FileCheck %s
 // Generic args parse onto the name, not as comparisons; the chain
 // round-trips to canonical single-line source.
 // CHECK: `-DeclStmt

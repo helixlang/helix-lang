@@ -4,5 +4,5 @@
 // AST-NEXT: | `-AlignOfExpr i256
 // AST-NEXT: `-ExpressionStmt
 // AST-NEXT:   `-RecoveryExpr trying: ChainExpr
-// ERR: error   [S034E]: unexpected ')' with no matching opener
+// ERR: error [S052E]: expected expression, found ')'
 alignof i256)

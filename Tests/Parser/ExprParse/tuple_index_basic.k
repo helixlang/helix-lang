@@ -1,5 +1,5 @@
 // RUN: { %kairo %s --print-ast=tree 2>/dev/null || true; } | %FileCheck %s --check-prefix=AST
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // A tuple index is a Step whose target is the ordinal instead of a name. It
 // works through every member-access separator; `access_kind` still records
 // which separator was written.

@@ -33,13 +33,17 @@ fn main() -> i32 {
 // This suite's own host is x86_64, so nothing is diagnosed here.
 // HOST-NOT: P003E
 
-// ARM64: P003E{{.*}}'f80' is not available for target 'aarch64-unknown-linux-gnu'
-// The message has to carry WHY, not just a refusal.
-// ARM64-SAME: x87 80-bit extended format
-// ARM64-SAME: only on x86 and x86_64
-// ARM64: the effective target is 'aarch64-unknown-linux-gnu'
+// The message has to carry WHY, not just a refusal: the feature that is
+// missing (x87) and the target that is missing it, then where that target came
+// from, then what to use instead.
+// ARM64: error [P003E]: 'f80' requires x87, which aarch64 does not have
+// ARM64: note [I900N]: the effective target is 'aarch64-unknown-linux-gnu'
+// ARM64-SAME: --target if given, else the host triple
+// ARM64: note [I900N]: use 'f64'
+// ARM64-SAME: or 'f128' for the wider range
 
-// RISCV: P003E{{.*}}'f80' is not available for target 'riscv64-unknown-linux-gnu'
+// RISCV: error [P003E]: 'f80' requires x87, which riscv64 does not have
+// RISCV: note [I900N]: the effective target is 'riscv64-unknown-linux-gnu'
 
 // 32-bit x86 still has an x87 stack.
 // X86-NOT: P003E

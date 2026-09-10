@@ -6,7 +6,26 @@ fn main() -> int {
 // encodes a byte offset into it, so anything inserted before `fn` shifts the
 // whole expected stream.
 
-// RUN: %kairo --print-cg %s | %FileCheck %s
+// RUN: { %kairo --print-cg %s || true; } | %FileCheck %s
+// XFAIL: *
+//
+// UNIMPLEMENTED: CodeGen. This is the M2 EXIT CRITERION, so it is expected to
+// fail until M2 lands -- RESOLUTION.md 2.9 lists L/M1/M2 as [MISSING] and
+// `--print-cg` produces nothing today.
+//
+// TWO things must be fixed when it is un-XFAILed, not one:
+//
+//  1. CodeGen has to exist and emit the stream below.
+//  2. The program above is not valid Kairo. `int` is not a Kairo type (the
+//     integer types are i8..i512 / u8..u512), so the file stops at
+//     "R021E: unknown type name 'int'" before codegen is ever reached. It
+//     wants to be `i32`.
+//
+// (2) is deliberately NOT fixed here: every CHECK below encodes a BYTE OFFSET
+// into the source, so changing `int` to `i32` shifts the entire expected
+// stream. Whoever implements M2 should fix the type and regenerate, rather
+// than inherit offsets that were recorded against a program that never
+// compiled.
 
 // The M2 exit criterion: the emitted token stream for the simplest complete
 // program, locked byte-for-byte. This replaces M1's hand-written stream.

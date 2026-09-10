@@ -442,7 +442,19 @@ def main():
 
     prefix_name = args.check_prefix if args.check_prefix else "CHECK"
     check_prefix_flag = f" --check-prefix={args.check_prefix}" if args.check_prefix else ""
-    run_line = f"// RUN: %kairo --print-ast=tree %s | %FileCheck %s{check_prefix_flag}"
+    # Two things this line MUST keep doing, both learned the hard way:
+    #
+    #   `{ ... || true; }` -- lit runs RUN lines with pipefail, and the compiler
+    #   exits nonzero whenever it emits an error. Without the guard a test whose
+    #   CHECKs all matched still FAILS, with no FileCheck output to explain it.
+    #
+    #   `--type-check-only` -- without it the driver runs on into CodeGen, which
+    #   ICEs today ("top-level statements are not supported at M2"), and `2>&1`
+    #   so diagnostics reach FileCheck alongside the tree.
+    run_line = (
+        f"// RUN: {{ %kairo %s --type-check-only --print-ast=tree 2>&1 || true; }} "
+        f"| %FileCheck %s{check_prefix_flag}"
+    )
 
     rebuilt_segments: list[str] = []
     total_checks = 0

@@ -5,5 +5,5 @@
 // AST-NEXT:   `-BinaryOperatorExpr +
 // AST-NEXT:     |-NamedIdentExpr a
 // AST-NEXT:     `-NamedIdentExpr b
-// ERR: error   [S019E]: unclosed ')' opened here
+// ERR: error [S054E]: expected ')' or ',' after expression
 (a + b

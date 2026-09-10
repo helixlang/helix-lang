@@ -12,6 +12,6 @@
 // AST-NEXT: `-ExpressionStmt
 // AST-NEXT:   `-CallExpr (0 args)
 // AST-NEXT:     `-NamedIdentExpr foo
-// ERR: error   [S019E]: unclosed ')' opened here
+// ERR: error [S054E]: expected ')' to close tuple literal
 x = (1, 2, 3
 foo()

@@ -41,10 +41,10 @@ fn use_overloaded() -> i32 {
 }
 
 // ---------------------------------------------------------------------------
-// CASE 2: two decls with the IDENTICAL signature. This is not diagnosed by
-// N -- redecl-vs-overload needs signature comparison, which is
-// OverloadResolution's job and does not exist yet. Using it lands the same
-// 2-candidate set CASE 1 got.
+// CASE 2: two decls with the IDENTICAL signature. N does not diagnose this --
+// redecl-vs-overload needs signature comparison, which N cannot do -- but
+// RedeclMerge, running after T on canonical signatures, does: two definitions
+// with the same signature are a redefinition, not an overload set.
 
 fn exact_dup(a: i32) -> i32 { return a }
 fn exact_dup(a: i32) -> i32 { return a + 1 }
@@ -69,11 +69,18 @@ fn use_module_and_file() -> i32 {
 }
 
 // --- diagnostics -------------------------------------------------------
-// Every one of these is legal today (the redecl/overload distinction is
-// deferred, not enforced as an error).
-// DIAG-NOT: error
-// DIAG-NOT: redefinition
+// CASE 2 is the ONLY diagnostic in this file: same signature, two definitions.
+// The note is a child of the error, so it renders after it even though it
+// points at an earlier line.
+// DIAG: error [R029E]: redefinition of 'exact_dup'
+// DIAG-NEXT: note [R029N]: previous definition of 'exact_dup' is here
+//
+// Everything else here is a genuine overload set and must stay quiet. In
+// particular no name in this file is ever unresolvable, and no OTHER
+// redefinition may appear.
 // DIAG-NOT: undeclared identifier
+// DIAG-NOT: redefinition of 'differing
+// DIAG-NOT: redefinition of 'use_
 
 // --- bindings ----------------------------------------------------------
 // SEMA: ===== SEMA fid {{[0-9]+}}: {{.*}}lookup_redecl_function.k =====
@@ -81,11 +88,13 @@ fn use_module_and_file() -> i32 {
 // The "multi-decl names" section lists cells ALPHABETICALLY, not in source
 // order, so `exact_dup` (CASE 2) is dumped before `overloaded` (CASE 1).
 
-// CASE 2: the identical-signature pair survives as an undifferentiated
-// 2-candidate set -- the documented gap, not a chain merge.
-// SEMA:      <tu>::exact_dup   [overload set x2]
-// SEMA-NEXT:   - fn exact_dup @ 49:1  [definition]
-// SEMA-NEXT:   - fn exact_dup @ 50:1  [definition]
+// CASE 2: RedeclMerge links the identical-signature pair into ONE chain
+// rather than leaving it as a 2-candidate overload set, and poisons the loser
+// so uses degrade instead of cascading. The `[redecl chain]` tag (not
+// `[overload set]`) is the assertion that matters here.
+// SEMA:      <tu>::exact_dup   [redecl chain x2]
+// SEMA-NEXT:   - fn exact_dup @ 49:1  [definition]  [canonical]
+// SEMA-NEXT:   - fn exact_dup @ 50:1  [poisoned]  [definition]
 
 // CASE 1: both arities survive as one 2-candidate overload set.
 // SEMA:      <tu>::overloaded   [overload set x2]

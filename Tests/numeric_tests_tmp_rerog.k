@@ -1,3 +1,249 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-FunctionDecl <T> ok(a: T, b: *T, t: (i32, i32, i32), p: *(i32, i32))
+// AST-NEXT: | |-GenericParamDecl 'T'
+// AST-NEXT: | |-ParamDecl a: T
+// AST-NEXT: | |-ParamDecl b: *T
+// AST-NEXT: | |-ParamDecl t: (i32, i32, i32)
+// AST-NEXT: | |-ParamDecl p: *(i32, i32)
+// AST-NEXT: | `-CompoundStmt (34)
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 't.0'
+// AST-NEXT: |   |   |-NamedIdentExpr t
+// AST-NEXT: |   |   `-Step .0  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 't.0.1'
+// AST-NEXT: |   |   |-NamedIdentExpr t
+// AST-NEXT: |   |   |-Step .0  tuple-index
+// AST-NEXT: |   |   `-Step .1  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 't.0.1.2'
+// AST-NEXT: |   |   |-NamedIdentExpr t
+// AST-NEXT: |   |   |-Step .0  tuple-index
+// AST-NEXT: |   |   |-Step .1  tuple-index
+// AST-NEXT: |   |   `-Step .2  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 't.10'
+// AST-NEXT: |   |   |-NamedIdentExpr t
+// AST-NEXT: |   |   `-Step .10  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr '(1, 2).0'
+// AST-NEXT: |   |   |-TupleLiteralExpr (2)
+// AST-NEXT: |   |   | |-IntegerLiteralExpr 1
+// AST-NEXT: |   |   | `-IntegerLiteralExpr 2
+// AST-NEXT: |   |   `-Step .0  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr +
+// AST-NEXT: |   |   |-ChainExpr 't.0'
+// AST-NEXT: |   |   | |-NamedIdentExpr t
+// AST-NEXT: |   |   | `-Step .0  tuple-index
+// AST-NEXT: |   |   `-IntegerLiteralExpr 1
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-CallExpr (2 args)
+// AST-NEXT: |   |   |-NamedIdentExpr f
+// AST-NEXT: |   |   |-ChainExpr 't.0'
+// AST-NEXT: |   |   | |-NamedIdentExpr t
+// AST-NEXT: |   |   | `-Step .0  tuple-index
+// AST-NEXT: |   |   `-ChainExpr 't.1'
+// AST-NEXT: |   |     |-NamedIdentExpr t
+// AST-NEXT: |   |     `-Step .1  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-CallExpr (0 args)
+// AST-NEXT: |   |   `-ChainExpr 't.0.field(1, 2).0.bar'
+// AST-NEXT: |   |     |-CallExpr (2 args)
+// AST-NEXT: |   |     | |-ChainExpr 't.0.field'
+// AST-NEXT: |   |     | | |-NamedIdentExpr t
+// AST-NEXT: |   |     | | |-Step .0  tuple-index
+// AST-NEXT: |   |     | | `-Step .field
+// AST-NEXT: |   |     | |-IntegerLiteralExpr 1
+// AST-NEXT: |   |     | `-IntegerLiteralExpr 2
+// AST-NEXT: |   |     |-Step .0  tuple-index
+// AST-NEXT: |   |     `-Step .bar
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 'arr[0].1'
+// AST-NEXT: |   |   |-SubscriptExpr
+// AST-NEXT: |   |   | |-NamedIdentExpr arr
+// AST-NEXT: |   |   | `-IntegerLiteralExpr 0
+// AST-NEXT: |   |   `-Step .1  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-ChainExpr 't.0'
+// AST-NEXT: |   |   | |-NamedIdentExpr t
+// AST-NEXT: |   |   | `-Step .0  tuple-index
+// AST-NEXT: |   |   `-ChainExpr 't.1'
+// AST-NEXT: |   |     |-NamedIdentExpr t
+// AST-NEXT: |   |     `-Step .1  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 'p->0'
+// AST-NEXT: |   |   |-NamedIdentExpr p
+// AST-NEXT: |   |   `-Step ->0  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 'p?.0'
+// AST-NEXT: |   |   |-NamedIdentExpr p
+// AST-NEXT: |   |   `-Step ?.0  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr 'p?->0'
+// AST-NEXT: |   |   |-NamedIdentExpr p
+// AST-NEXT: |   |   `-Step ?->0  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-AssignOperatorExpr =
+// AST-NEXT: |   |   |-NamedIdentExpr x
+// AST-NEXT: |   |   `-FloatingLiteralExpr 0.5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-AssignOperatorExpr =
+// AST-NEXT: |   |   |-NamedIdentExpr y
+// AST-NEXT: |   |   `-FloatingLiteralExpr 0.5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-CallExpr (0 args)
+// AST-NEXT: |   |   `-ChainExpr '1.foo'
+// AST-NEXT: |   |     |-IntegerLiteralExpr 1
+// AST-NEXT: |   |     `-Step .foo
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-ChainExpr '1.e5'
+// AST-NEXT: |   |   |-IntegerLiteralExpr 1
+// AST-NEXT: |   |   `-Step .e5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-FloatingLiteralExpr 100000
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-FloatingLiteralExpr 12
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-FloatingLiteralExpr 1000.5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-IntegerLiteralExpr 1
+// AST-NEXT: |   |   `-IntegerLiteralExpr 5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-PackExpansionExpr
+// AST-NEXT: |   |   `-IntegerLiteralExpr 1
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-IntegerLiteralExpr 5
+// AST-NEXT: |   |   `-IntegerLiteralExpr 5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-IntegerLiteralExpr 5
+// AST-NEXT: |   |   `-SubscriptExpr
+// AST-NEXT: |   |     |-NamedIdentExpr arr
+// AST-NEXT: |   |     `-RangeExpr ..
+// AST-NEXT: |   |       |-IntegerLiteralExpr 1
+// AST-NEXT: |   |       `-IntegerLiteralExpr 5
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-SubscriptExpr
+// AST-NEXT: |   |   |-NamedIdentExpr arr
+// AST-NEXT: |   |   `-RangeExpr ..
+// AST-NEXT: |   |     |-ChainExpr 't.0'
+// AST-NEXT: |   |     | |-NamedIdentExpr t
+// AST-NEXT: |   |     | `-Step .0  tuple-index
+// AST-NEXT: |   |     `-ChainExpr 't.1'
+// AST-NEXT: |   |       |-NamedIdentExpr t
+// AST-NEXT: |   |       `-Step .1  tuple-index
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-FloatingLiteralExpr 1
+// AST-NEXT: |   |   `-FloatingLiteralExpr 2
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-RangeExpr ..
+// AST-NEXT: |   |   |-ChainExpr 'x.0'
+// AST-NEXT: |   |   | |-NamedIdentExpr x
+// AST-NEXT: |   |   | `-Step .0  tuple-index
+// AST-NEXT: |   |   `-NamedIdentExpr y
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr .*
+// AST-NEXT: |   |   |-UnaryOperatorExpr prefix !
+// AST-NEXT: |   |   | `-NamedIdentExpr a
+// AST-NEXT: |   |   `-NamedIdentExpr p
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr ->*
+// AST-NEXT: |   |   |-UnaryOperatorExpr prefix !
+// AST-NEXT: |   |   | `-NamedIdentExpr a
+// AST-NEXT: |   |   `-NamedIdentExpr p
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr +
+// AST-NEXT: |   |   |-BinaryOperatorExpr .*
+// AST-NEXT: |   |   | |-NamedIdentExpr a
+// AST-NEXT: |   |   | `-NamedIdentExpr p
+// AST-NEXT: |   |   `-IntegerLiteralExpr 1
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr ^^
+// AST-NEXT: |   |   |-BinaryOperatorExpr .*
+// AST-NEXT: |   |   | |-NamedIdentExpr a
+// AST-NEXT: |   |   | `-NamedIdentExpr p
+// AST-NEXT: |   |   `-IntegerLiteralExpr 2
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr ?.*
+// AST-NEXT: |   |   |-NamedIdentExpr a
+// AST-NEXT: |   |   `-NamedIdentExpr p
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-BinaryOperatorExpr ?->*
+// AST-NEXT: |   |   |-NamedIdentExpr a
+// AST-NEXT: |   |   `-ChainExpr 'p(a .* p).field'
+// AST-NEXT: |   |     |-CallExpr (1 args)
+// AST-NEXT: |   |     | |-NamedIdentExpr p
+// AST-NEXT: |   |     | `-BinaryOperatorExpr .*
+// AST-NEXT: |   |     |   |-NamedIdentExpr a
+// AST-NEXT: |   |     |   `-NamedIdentExpr p
+// AST-NEXT: |   |     `-Step .field
+// AST-NEXT: |   `-ExpressionStmt
+// AST-NEXT: |     `-BinaryOperatorExpr .*
+// AST-NEXT: |       |-BinaryOperatorExpr .*
+// AST-NEXT: |       | |-NamedIdentExpr a
+// AST-NEXT: |       | `-NamedIdentExpr p
+// AST-NEXT: |       `-NamedIdentExpr q
+// AST-NEXT: |-FunctionDecl  bad_index(t: (i32, i32, i32))
+// AST-NEXT: | |-ParamDecl t: (i32, i32, i32)
+// AST-NEXT: | `-CompoundStmt (6)
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-NamedIdentExpr t
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-NamedIdentExpr t
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-NamedIdentExpr t
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-NamedIdentExpr t
+// AST-NEXT: |   |-ExpressionStmt
+// AST-NEXT: |   | `-NamedIdentExpr t
+// AST-NEXT: |   `-ExpressionStmt
+// AST-NEXT: |     `-NamedIdentExpr t
+// AST-NEXT: |-FunctionDecl  spaced_before_separator(t: (i32, i32, i32))
+// AST-NEXT: | |-ParamDecl t: (i32, i32, i32)
+// AST-NEXT: | `-CompoundStmt (1)
+// AST-NEXT: |   `-ExpressionStmt
+// AST-NEXT: |     `-ChainExpr 't.0'
+// AST-NEXT: |       |-NamedIdentExpr t
+// AST-NEXT: |       `-Step .0  tuple-index
+// AST-NEXT: |-FunctionDecl  trailing_dot_no_target(t: (i32, i32, i32))
+// AST-NEXT: | |-ParamDecl t: (i32, i32, i32)
+// AST-NEXT: | `-CompoundStmt (1)
+// AST-NEXT: |   `-ExpressionStmt
+// AST-NEXT: |     `-ChainExpr 't.0'
+// AST-NEXT: |       |-NamedIdentExpr t
+// AST-NEXT: |       `-Step .0  tuple-index
+// AST-NEXT: |-FunctionDecl  trailing_dot_on_int()
+// AST-NEXT: | `-CompoundStmt (1)
+// AST-NEXT: |   `-ExpressionStmt
+// AST-NEXT: |     `-IntegerLiteralExpr 1
+// AST-NEXT: `-FunctionDecl  trailing_dot_before_int_line()
+// AST-NEXT:   `-CompoundStmt (2)
+// AST-NEXT:     |-ExpressionStmt
+// AST-NEXT:     | `-IntegerLiteralExpr 1
+// AST-NEXT:     `-ExpressionStmt
+// AST-NEXT:       `-IntegerLiteralExpr 2
+// AST: -- 9 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S054E]:
+// END-GENERATED-CHECKS
+
 // Manual smoke file for tuple indexing + pointer-to-member parsing.
 //   kairo test.k --syntax-only --print-tokens
 //   kairo test.k --syntax-only --print-ast=tree

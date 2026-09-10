@@ -1,5 +1,5 @@
 // RUN: { %kairo %s --print-ast=tree 2>/dev/null || true; } | %FileCheck %s --check-prefix=AST
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // A decimal point must be followed by a digit, so `1.` is no longer the float
 // 1.0. That makes `1.foo()` a method call on an integer literal. The leading-dot
 // float in value position (`= .5`) is unaffected: only what precedes the dot

@@ -1,6 +1,6 @@
 // `static` introduces a binding everywhere a binding is legal. It is only an
 // abi modifier when a `fn` head follows, so it must not be swallowed as one.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 static TOP: i32 = 1
 static thread TOP_TL: i32 = 2

@@ -63,8 +63,14 @@ fn local_shadows_global() -> i32 {
 
 // ---------------------------------------------------------------------------
 // CASE 3: a param shadows a field of the enclosing type. Inside the method
-// body `count` must be the param, not the field   both resolve, so the
-// observable half is that neither errors and the frame ordering holds.
+// body `count` must be the param, not the field.
+//
+// The sibling method is the other half of the same rule: with no local named
+// `count` in scope, a bare `count` does NOT fall through to the field. Kairo
+// has no implicit `this->` (R049, RESOLUTION.md 2.5) -- a member needs
+// `self.`. That is what makes the param case above meaningful rather than
+// coincidental: the param wins because it is a LOCAL, not because it beat the
+// field in a contest both could enter.
 
 class Counter {
     var count: i32;
@@ -73,8 +79,8 @@ class Counter {
         return count
     }
 
-    fn field_still_visible(self) -> i32 {
-        return count
+    fn field_needs_self(self) -> i32 {
+        return self.count
     }
 }
 
@@ -135,7 +141,7 @@ fn same_frame_redefinition() -> i32 {
 //   kairo Tests/Sema/name_resolution.k --type-check-only --print-sema
 
 // CASE 5
-// DIAG: name_resolution.k:109:{{[0-9]+}}: error{{.*}}: use of undeclared identifier 'later'
+// DIAG: name_resolution.k:115:{{[0-9]+}}: error{{.*}}: use of undeclared identifier 'later'
 // CASE 8
 // DIAG: error{{.*}}: use of undeclared identifier 'no_such_name'
 // CASE 9
@@ -173,7 +179,10 @@ fn same_frame_redefinition() -> i32 {
 // SEMA:      <tu>::overloaded   [overload set x2]
 // SEMA-NEXT:   - fn overloaded @ 32:1
 // SEMA-NEXT:   - fn overloaded @ 33:1
-// SEMA:      overloaded  @ 36:12  -> 2 candidate(s)
+// The lexical-scope trace shows the same use as "deferred to overload
+// resolution"; anchor on the BINDINGS row so the two SEMA-NEXTs below
+// attach to the candidate list and not to that earlier line.
+// SEMA:      overloaded  @ 36:12  -> 2 candidate(s), awaiting overload resolution
 // SEMA-NEXT:     - fn overloaded @ 32:1
 // SEMA-NEXT:     - fn overloaded @ 33:1
 
@@ -183,31 +192,33 @@ fn same_frame_redefinition() -> i32 {
 // SEMA-NEXT:   shadowed  @ 59:18  -> var shadowed @ 56:1
 // SEMA:        shadowed  @ 61:21  -> var shadowed @ 60:5
 
-// CASE 3: in bump the param wins; in the sibling method `count` is still the
-// field -- the param frame did not leak out of its function.
+// CASE 3: in bump the param wins, and the trace names the field it hid. In the
+// sibling method the field is reached through `self`, so N binds only the
+// receiver -- the `.count` step is ChainBinding's, and stays open here.
 // SEMA:      <tu>::Counter::bump
-// SEMA-NEXT:   count  @ 73:16  -> param count @ 72:19
-// SEMA:      <tu>::Counter::field_still_visible
-// SEMA-NEXT:   count  @ 77:16  -> field count @ 70:5
+// SEMA-NEXT:   count  @ 79:16  -> param count @ 78:19  [local frame 0]  (shadows field count @ 76:5 in Counter)
+// SEMA:      <tu>::Counter::field_needs_self
+// SEMA-NEXT:   self  @ 83:16  -> param self @ 82:25  [local frame 0]
+// SEMA-NEXT:   .count  @ 83:21  <open: inference or M2>
 
 // CASE 4: `var outer_x = outer_x` -- the initializer binds the OUTER var (87),
 // and only the following use binds the local (90).
 // SEMA:      <tu>::init_sees_outer
-// SEMA-NEXT:   outer_x  @ 90:19  -> var outer_x @ 87:1
-// SEMA-NEXT:   outer_x  @ 91:12  -> var outer_x @ 90:5
+// SEMA-NEXT:   outer_x  @ 96:19  -> var outer_x @ 93:1
+// SEMA-NEXT:   outer_x  @ 97:12  -> var outer_x @ 96:5
 
 // CASE 6/7: both resolve cross-TU into nameres_lib.k, and the alias binds the
 // ORIGINAL decl (selective_target), not a synthetic one.
-// SEMA:      wildcard_target  @ 98:13  -> fn wildcard_target @ 7:5
-// SEMA-NEXT:   aliased  @ 99:13  -> fn selective_target @ 9:5
+// SEMA:      wildcard_target  @ 104:13  -> fn wildcard_target @ 7:5
+// SEMA-NEXT:   aliased  @ 105:13  -> fn selective_target @ 9:5
 
 // CASE 5 / 8: unresolved, and marked diagnosed rather than silently null.
-// SEMA:      later  @ 109:13  <UNRESOLVED>  (diagnosed)
-// SEMA:      no_such_name  @ 118:12  <UNRESOLVED>  (diagnosed)
+// SEMA:      later  @ 115:13  <UNRESOLVED>  (diagnosed)
+// SEMA:      no_such_name  @ 124:12  <UNRESOLVED>  (diagnosed)
 
 // CASE 9: the redefinition loser is poisoned so downstream degrades instead
 // of cascading.
-// SEMA:      dup  @ 127:12  -> var dup @ 126:5  [poisoned]
+// SEMA:      dup  @ 133:12  -> var dup @ 132:5  [poisoned]
 
 // Whole-file tally: nothing unbound-and-undiagnosed.
 // SEMA:      15 bound, 1 deferred (overload sets), 2 unresolved

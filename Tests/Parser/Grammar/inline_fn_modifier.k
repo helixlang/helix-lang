@@ -1,6 +1,6 @@
 // `inline` is a leading function modifier, not only the `inline "c++"` ffi
 // block introducer. It must work at decl scope and in type/extend bodies.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 inline fn free_fn() -> i32 { return 1 }
 

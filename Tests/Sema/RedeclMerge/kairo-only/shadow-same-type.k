@@ -1,3 +1,41 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-FunctionDecl  f(cond: bool)
+// AST-NEXT: | |-ParamDecl cond: bool
+// AST-NEXT: | `-CompoundStmt (2)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var count: i32
+// AST-NEXT: |   |   `-IntegerLiteralExpr 0
+// AST-NEXT: |   `-ConditionalStmt
+// AST-NEXT: |     |-cond
+// AST-NEXT: |     | `-NamedIdentExpr cond
+// AST-NEXT: |     `-then
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-DeclStmt
+// AST-NEXT: |           `-VariableDecl var count: i32
+// AST-NEXT: |             `-IntegerLiteralExpr 1
+// AST-NEXT: `-FunctionDecl  g(cond: bool)
+// AST-NEXT:   |-ParamDecl cond: bool
+// AST-NEXT:   `-CompoundStmt (2)
+// AST-NEXT:     |-DeclStmt
+// AST-NEXT:     | `-VariableDecl const raw: i32
+// AST-NEXT:     |   `-IntegerLiteralExpr 1
+// AST-NEXT:     `-ConditionalStmt
+// AST-NEXT:       |-cond
+// AST-NEXT:       | `-NamedIdentExpr cond
+// AST-NEXT:       `-then
+// AST-NEXT:         `-CompoundStmt (1)
+// AST-NEXT:           `-DeclStmt
+// AST-NEXT:             `-VariableDecl const raw: bool
+// AST-NEXT:               `-BooleanLiteralExpr true
+// AST: -- 0 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: warning [R048W]:
+// END-GENERATED-CHECKS
+
 // NO ORACLE: Rust does not lint shadowing at all; C++ -Wshadow fires on
 // every shadow regardless of type and is off by default for that reason.
 // Kairo warns only on SAME-TYPE shadowing, which is the case that means

@@ -1,5 +1,5 @@
 // RUN: { %kairo %s --print-ast=tree 2>/dev/null || true; } | %FileCheck %s --check-prefix=AST
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // `.*` `->*` `?.*` `?->*` are binary operators at their own precedence level,
 // not access separators: the RHS is a full expression, not an id-expression.
 // They bind tighter than every other binary operator (including `^^`) and

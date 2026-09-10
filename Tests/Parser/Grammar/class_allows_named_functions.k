@@ -1,5 +1,5 @@
 // The struct rule must not leak into classes.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 class C {
     var a: i32

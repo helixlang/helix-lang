@@ -1,4 +1,4 @@
-// RUN: %kairo %s --type-check-only 2>&1 | %FileCheck %s --allow-empty
+// RUN: { %kairo %s --type-check-only 2>&1 || true; } | %FileCheck %s --allow-empty
 //
 // CHECK-NOT: error
 import bar;

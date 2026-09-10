@@ -58,10 +58,10 @@ class Leaf derives Base { }
 class <T> Box { var v: T; }
 class <T> Ptr { var p: *T; }
 
-class UsesBox { var b: Box<UsesBox>; }
-// DIAG: SC002E{{.*}}'UsesBox' contains itself by value
-
 class UsesPtr { var p: Ptr<UsesPtr>; }
+
+// The by-VALUE half of this pair (`class UsesBox { var b: Box<UsesBox>; }`)
+// needs M2 and lives in type_cycle_generic.k, marked XFAIL. See there.
 
 // --- indirection breaks every cycle -----------------------------------------
 //

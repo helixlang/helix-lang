@@ -8,6 +8,7 @@
 import os
 import shutil
 import glob
+import sys
 import lit.formats
 
 # --- Suite identity ----------------------------------------------------------
@@ -20,7 +21,10 @@ config.test_format = lit.formats.ShTest(execute_external=True)
 config.suffixes = [".k"]
 
 # Directories never scanned for tests (inputs/fixtures live here).
-config.excludes = ["Inputs", "Manual", "Clang"]
+# Issues/ is a bug-reproducer corpus, not a lit suite: nearly every file in
+# it is a known-failing case kept for triage, and its expected behaviour is
+# whatever the issue says, not whatever the compiler currently prints.
+config.excludes = ["Inputs", "Manual", "Clang", "Issues"]
 
 # --- Where tests live --------------------------------------------------------
 config.test_source_root = os.path.dirname(__file__)
@@ -95,6 +99,55 @@ filecheck_bin = _find_filecheck()
 # another; ours are distinct, but list longest-first as habit.
 config.substitutions.append(("%kairo", kairo_bin + " --error-format=basic"))
 config.substitutions.append(("%FileCheck", filecheck_bin))
+
+# --- Parity (differential) tests --------------------------------------------
+# Tests/Sema/RedeclMerge/parity/*.k each sit beside a .cpp that is the ORACLE:
+# the assertion is that kairo and clang reach the same verdict. That needs a
+# clang, which is not guaranteed, so it is a lit FEATURE -- tests requiring it
+# say `// REQUIRES: clang` and are reported UNSUPPORTED (not failed) without it.
+def _find_clang():
+    # Every candidate is VERIFIED before it is returned. Advertising the
+    # "clang" feature for a path that does not exist turns 18 UNSUPPORTED
+    # tests into 18 failures that say nothing about kairo.
+    def ok(path):
+        return path and os.path.isfile(path) and os.access(path, os.X_OK)
+
+    p = lit_config.params.get("clang")
+    if p:
+        p = os.path.abspath(p)
+        if not ok(p):
+            lit_config.fatal("--param clang=%s is not an executable" % p)
+        return p
+    env = os.environ.get("CLANG_BIN")
+    if env:
+        env = os.path.abspath(env)
+        if not ok(env):
+            lit_config.fatal("CLANG_BIN=%s is not an executable" % env)
+        return env
+    # Prefer the tree's own clang: it is the one kairo's FFI is built against,
+    # so its C++ verdicts are the ones kairo is actually claiming parity with.
+    local = os.path.normpath(
+        os.path.join(config.test_source_root, "..", "build", "llvm", "bin", "clang"))
+    if ok(local):
+        return local
+    found = shutil.which("clang")
+    return found if ok(found) else None
+
+clang_bin = _find_clang()
+if clang_bin:
+    config.available_features.add("clang")
+    config.substitutions.append(
+        ("%parity", "%s %s %s %s" % (
+            sys.executable,
+            os.path.join(config.test_source_root, "parity_check.py"),
+            kairo_bin,
+            clang_bin)))
+else:
+    # Leave a substitution that explains itself, in case a test forgets
+    # `REQUIRES: clang` and runs anyway.
+    config.substitutions.append(
+        ("%parity", "echo 'parity needs clang; pass --param clang=/path or set "
+                    "CLANG_BIN' >&2; false #"))
 # %s and %t are provided by lit automatically:
 #   %s -> absolute path to the current test file
 #   %t -> a temp path unique to this test (use for scratch output)

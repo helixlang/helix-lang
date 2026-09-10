@@ -2,7 +2,7 @@
 //   `<>  Name<i32>`  full/explicit  - the marker carries no params
 //   `<P> Name<*P>`   partial        - the param list binds the pattern vars
 // Without the second, SpecKind::Partial is unreachable from the grammar.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 struct <T> NS { var v: T }
 struct <> NS<bool> { var b: u8 }

@@ -11,7 +11,17 @@ set -l root (realpath $here/../../..)
 
 set -l mode debug
 if set -q argv[1]; set mode $argv[1]; end
-set -l kairo $root/build/x86_64-linux-gnu/$mode/bin/kairo
+# Do not hardcode a triple (the bash twin used to, and reported "no binary" on
+# every host but one). KAIRO_BIN wins if set, as it does in lit.
+set -l kairo $KAIRO_BIN
+if test -z "$kairo"
+    for cand in $root/build/*/$mode/bin/kairo
+        if test -x $cand
+            set kairo $cand
+            break
+        end
+    end
+end
 
 if not test -x $kairo
     echo "no binary at $kairo"; exit 2

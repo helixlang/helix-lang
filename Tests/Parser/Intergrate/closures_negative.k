@@ -1,3 +1,205 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_const
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_unsafe
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_eval
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 3
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_final
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 4
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_inline
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 5
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_virtual
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 6
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_override
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 7
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_multi
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 8
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_mixed
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 9
+// AST-NEXT: |-FunctionDecl  escape_stack_ptr() -> fn() -> i32
+// AST-NEXT: | `-CompoundStmt (2)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var x
+// AST-NEXT: |   |   `-IntegerLiteralExpr 42
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-ClosureExpr ->  i32
+// AST-NEXT: |       |-Capture *x
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-ReturnStmt
+// AST-NEXT: |           `-UnaryOperatorExpr prefix *
+// AST-NEXT: |             `-NamedIdentExpr x
+// AST-NEXT: |-FunctionDecl  escape_stack_all() -> fn()
+// AST-NEXT: | `-CompoundStmt (3)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var a
+// AST-NEXT: |   |   `-IntegerLiteralExpr 1
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var b
+// AST-NEXT: |   |   `-IntegerLiteralExpr 2
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-ClosureExpr
+// AST-NEXT: |       |-Capture *
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-ExpressionStmt
+// AST-NEXT: |           `-AssignOperatorExpr +=
+// AST-NEXT: |             |-UnaryOperatorExpr prefix *
+// AST-NEXT: |             | `-NamedIdentExpr a
+// AST-NEXT: |             `-UnaryOperatorExpr prefix *
+// AST-NEXT: |               `-NamedIdentExpr b
+// AST-NEXT: |-FunctionDecl  inner_capture_error()
+// AST-NEXT: | `-CompoundStmt (2)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var x
+// AST-NEXT: |   |   `-IntegerLiteralExpr 10
+// AST-NEXT: |   `-DeclStmt
+// AST-NEXT: |     `-FunctionDecl  inner(y: i32) -> i32
+// AST-NEXT: |       |-ParamDecl y: i32
+// AST-NEXT: |       `-BinaryOperatorExpr +
+// AST-NEXT: |         |-NamedIdentExpr y
+// AST-NEXT: |         `-NamedIdentExpr x
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_param_no_type
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl x: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 0
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_unclosed_paren
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-ParamDecl x: i32
+// AST-NEXT: |     `-ClosureExpr
+// AST-NEXT: |       |-Capture *x
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-ReturnStmt
+// AST-NEXT: |           `-IntegerLiteralExpr 0
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_const_no_ident
+// AST-NEXT: |   `-BinaryOperatorExpr |
+// AST-NEXT: |     |-BinaryOperatorExpr *
+// AST-NEXT: |     | |-RecoveryExpr trying: ClosureExpr
+// AST-NEXT: |     | `-NamedIdentExpr y
+// AST-NEXT: |     `-SetLiteralExpr (1)
+// AST-NEXT: |       `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 0
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_unclosed_capture
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-Capture *x
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 0
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_no_body
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_empty_expr
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var after_bad_expr
+// AST-NEXT: |   `-IntegerLiteralExpr 5
+// AST-NEXT: |-FunctionDecl  test_expr_recovery()
+// AST-NEXT: | `-CompoundStmt (1)
+// AST-NEXT: |   `-DeclStmt
+// AST-NEXT: |     `-VariableDecl var broken
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var da
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_dup_capture
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-Capture da
+// AST-NEXT: |     |-Capture da
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-NamedIdentExpr da
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var sa
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var bad_dup_mixed
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-Capture sa
+// AST-NEXT: |     |-Capture *sa
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-NamedIdentExpr sa
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var outer_val
+// AST-NEXT: |   `-IntegerLiteralExpr 10
+// AST-NEXT: `-DeclStmt
+// AST-NEXT:   `-VariableDecl var bad_empty_capture
+// AST-NEXT:     `-ClosureExpr ->  i32
+// AST-NEXT:       `-CaptureList (explicit no capture)
+// AST-NEXT:       `-CompoundStmt (1)
+// AST-NEXT:         `-ReturnStmt
+// AST-NEXT:           `-NamedIdentExpr outer_val
+// AST: -- 22 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S053E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S047E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S052E]:
+// AST: {{.*}}: error [S052E]:
+// AST: {{.*}}: error [S054E]:
+// AST: {{.*}}: error [S052E]:
+// END-GENERATED-CHECKS
+
 // ==========================================================================
 //  closures_negative.k
 //  Every case in this file is expected to produce a diagnostic.

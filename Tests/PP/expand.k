@@ -1,3 +1,97 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var l
+// AST-NEXT: |   `-ListLiteralExpr (0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var m
+// AST-NEXT: |   `-ListLiteralExpr (1)
+// AST-NEXT: |     `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var n
+// AST-NEXT: |   `-ListLiteralExpr (3)
+// AST-NEXT: |     |-IntegerLiteralExpr 1
+// AST-NEXT: |     |-IntegerLiteralExpr 2
+// AST-NEXT: |     `-IntegerLiteralExpr 3
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var c1
+// AST-NEXT: |   `-IntegerLiteralExpr 3
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var c2
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var f1
+// AST-NEXT: |   `-IntegerLiteralExpr 2
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 3
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var i1
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var g
+// AST-NEXT: |   `-NamedIdentExpr get_size
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var g2
+// AST-NEXT: |   `-NamedIdentExpr get_alpha
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var s
+// AST-NEXT: |   `-StringLiteralExpr "rest!(1, 2)"
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var d
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var w
+// AST-NEXT: |   `-ListLiteralExpr (2)
+// AST-NEXT: |     |-CallExpr (1 args)
+// AST-NEXT: |     | |-NamedIdentExpr box
+// AST-NEXT: |     | `-IntegerLiteralExpr 1
+// AST-NEXT: |     `-CallExpr (1 args)
+// AST-NEXT: |       |-NamedIdentExpr box
+// AST-NEXT: |       `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var p
+// AST-NEXT: |   `-ListLiteralExpr (2)
+// AST-NEXT: |     |-TupleLiteralExpr (2)
+// AST-NEXT: |     | |-NamedIdentExpr id
+// AST-NEXT: |     | `-IntegerLiteralExpr 7
+// AST-NEXT: |     `-TupleLiteralExpr (2)
+// AST-NEXT: |       |-NamedIdentExpr id
+// AST-NEXT: |       `-IntegerLiteralExpr 8
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var e
+// AST-NEXT: |   `-ListLiteralExpr (0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var s2
+// AST-NEXT: |   `-StringLiteralExpr "a + b"
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var u1
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var fp
+// AST-NEXT: |   `-StringLiteralExpr "{{.*}}"
+// AST-NEXT: `-DeclStmt
+// AST-NEXT:   `-VariableDecl var s3
+// AST-NEXT:     `-StringLiteralExpr "foo + 1"
+// AST: -- 3 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: error [S052E]:
+// AST: {{.*}}: error [S052E]:
+// AST: {{.*}}: error [S052E]:
+// END-GENERATED-CHECKS
+
 // SEPARATE:
 macro list!(...xs) { [ xs... ] }
 

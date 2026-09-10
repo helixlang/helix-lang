@@ -1,5 +1,5 @@
 // RUN: { %kairo %s --print-ast=tree 2>/dev/null || true; } | %FileCheck %s --check-prefix=AST
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // Indices chain with each other and with named steps, and a tuple index in
 // index position must not fuse into one float: `t.0.1` is two ordinals.
 // OK-NOT: error

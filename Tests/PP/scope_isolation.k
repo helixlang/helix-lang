@@ -1,3 +1,35 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-ModuleDecl std
+// AST-NEXT: |-ModuleDecl foo
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-CallExpr (2 args)
+// AST-NEXT: |   |-NamedIdentExpr fprintf
+// AST-NEXT: |   |-NamedIdentExpr stderr
+// AST-NEXT: |   `-NamedIdentExpr t
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-CallExpr (1 args)
+// AST-NEXT: |   |-NamedIdentExpr print
+// AST-NEXT: |   `-StringLiteralExpr "yes"
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-RecoveryExpr trying: ChainExpr
+// AST-NEXT: |-ModuleDecl a
+// AST-NEXT: | `-ModuleDecl b
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 1
+// AST-NEXT: |-ExpressionStmt
+// AST-NEXT: | `-IntegerLiteralExpr 2
+// AST-NEXT: `-ExpressionStmt
+// AST-NEXT:   `-RecoveryExpr trying: ChainExpr
+// AST: -- 0 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: error [R013E]:
+// AST: {{.*}}: error [R013E]:
+// END-GENERATED-CHECKS
+
 // Scope isolation: module frames must pop on their closing `}` so sibling
 // modules don't nest and macro scopes stay separated.
 // Regression for ScopeTracker frame brace-depth off-by-one (frames never

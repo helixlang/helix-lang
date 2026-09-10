@@ -30,8 +30,14 @@
 
 // ---------------------------------------------------------------------------
 // CASE 1: `T::Item` in TYPE position, `self.val.thing` (rooted in `T`) in
-// VALUE position, inside a generic class method. Both are dependent, both
-// deferred -- neither is an error.
+// VALUE position, inside a generic class method. Nothing here is an error.
+//
+// The two `.` steps are NOT alike, and the split is the point. `Box<T>` is a
+// dependent RECORD, so `.val` is looked up by name and binds to the field like
+// any other member (RESOLUTION.md 2.7: "A dependent RECORD is still looked up
+// by name ... only a dependent NON-record stops as Dependent"). `.val` has
+// type `T`, which IS a dependent non-record, so `.thing` has nothing to look
+// into and stops as dependent for M2.
 
 class <T> Box {
     var val: T;
@@ -73,9 +79,10 @@ fn <T> generic_fn(x: T) -> T::Item {
 // --- bindings ----------------------------------------------------------
 // SEMA: ===== SEMA fid {{[0-9]+}}: {{.*}}typeres_dependent.k =====
 
-// CASE 1: both steps recorded Dependent, not bound and not errored.
+// CASE 1: `.val` binds through the dependent record; only `.thing`, rooted in
+// the bare generic parameter, defers.
 // SEMA:      fn Box::get  @
-// SEMA:        member  .val  {{.*}}<dependent: rooted in a generic parameter   M2>
+// SEMA:        member  .val  {{.*}}-> field val @ 43:5  [member of Box]
 // SEMA-NEXT:   member  .thing  {{.*}}<dependent: rooted in a generic parameter   M2>
 
 // CASE 2: `self` binds ordinarily even though its declared type (Self) is
@@ -95,4 +102,4 @@ fn <T> generic_fn(x: T) -> T::Item {
 
 // The whole-file type tally: some canonical (Box, i32-free here), the rest
 // legitimately dependent -- never "poisoned".
-// SEMA: type node(s): {{[0-9]+}} canonical, {{[1-9][0-9]*}} dependent
+// SEMA: type node(s): {{[0-9]+}} canonical, {{[1-9][0-9]*}} of them dependent, 0 errored

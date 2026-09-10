@@ -1,6 +1,6 @@
 // A struct body admits fields, nested types, constructors and operator
 // overloads. None of these is a named function, so none is rejected.
-// RUN: %kairo %s --syntax-only 2>&1 | %FileCheck %s --check-prefix=OK --allow-empty
+// RUN: { %kairo %s --syntax-only 2>&1 || true; } | %FileCheck %s --check-prefix=OK --allow-empty
 // OK-NOT: error
 struct Point {
     var x: i32

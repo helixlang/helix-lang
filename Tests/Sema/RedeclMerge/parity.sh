@@ -9,14 +9,26 @@
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
 
+# lit now runs these too -- `lit Tests/Sema/RedeclMerge/parity` -- and is the
+# path CI should use. This script stays for the verbose per-case output.
+
 mode=debug
 if [[ -n "$1" ]]; then mode="$1"; fi
-kcc="$root/build/arm64-apple-macosx/$mode/bin/kairo"
+
+# Do NOT hardcode a triple: this used to say arm64-apple-macosx and silently
+# reported "no binary" on every other host. KAIRO_BIN wins if set, as in lit.
+kcc="$KAIRO_BIN"
+if [[ -z "$kcc" ]]; then
+    for cand in "$root"/build/*/"$mode"/bin/kairo; do
+        if [[ -x "$cand" ]]; then kcc="$cand"; break; fi
+    done
+fi
 
 if [[ ! -x "$kcc" ]]; then
-    echo "no binary at $kcc"
+    echo "no kairo binary found under $root/build/*/$mode/bin/ (set KAIRO_BIN to override)"
     exit 2
 fi
+echo "kcc: $kcc"
 
 pass=0
 fail=0

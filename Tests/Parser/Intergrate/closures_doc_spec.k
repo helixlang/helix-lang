@@ -1,3 +1,374 @@
+// BEGIN-GENERATED-CHECKS (gen_checks.py) -- do not hand-edit, re-run instead
+// RUN: { %kairo %s --type-check-only --print-ast=tree 2>&1 || true; } | %FileCheck %s --check-prefix=AST
+// AST: ============== AST (tree) for fid 0 ==============
+// AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var add
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl a: i32
+// AST-NEXT: |     |-ParamDecl b: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-NamedIdentExpr a
+// AST-NEXT: |           `-NamedIdentExpr b
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var double
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl x: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr *
+// AST-NEXT: |           |-NamedIdentExpr x
+// AST-NEXT: |           `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var opr: fn(i32, i32) -> i32
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl a: i32
+// AST-NEXT: |     |-ParamDecl b: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-NamedIdentExpr a
+// AST-NEXT: |           `-NamedIdentExpr b
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var x
+// AST-NEXT: |   `-IntegerLiteralExpr 10
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var add_x
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl y: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-NamedIdentExpr y
+// AST-NEXT: |           `-NamedIdentExpr x
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var count
+// AST-NEXT: |   `-IntegerLiteralExpr 0
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var increment
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-Capture *
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ExpressionStmt
+// AST-NEXT: |         `-AssignOperatorExpr +=
+// AST-NEXT: |           |-UnaryOperatorExpr prefix *
+// AST-NEXT: |           | `-NamedIdentExpr count
+// AST-NEXT: |           `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var cx
+// AST-NEXT: |   `-IntegerLiteralExpr 10
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var cy
+// AST-NEXT: |   `-IntegerLiteralExpr 20
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var cz
+// AST-NEXT: |   `-IntegerLiteralExpr 30
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var const_capture
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl a: i32
+// AST-NEXT: |     |-Capture const *cx
+// AST-NEXT: |     |-Capture const *cy
+// AST-NEXT: |     |-Capture const *cz
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-BinaryOperatorExpr +
+// AST-NEXT: |           | |-BinaryOperatorExpr +
+// AST-NEXT: |           | | |-NamedIdentExpr a
+// AST-NEXT: |           | | `-UnaryOperatorExpr prefix *
+// AST-NEXT: |           | |   `-NamedIdentExpr cx
+// AST-NEXT: |           | `-UnaryOperatorExpr prefix *
+// AST-NEXT: |           |   `-NamedIdentExpr cy
+// AST-NEXT: |           `-UnaryOperatorExpr prefix *
+// AST-NEXT: |             `-NamedIdentExpr cz
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var ma
+// AST-NEXT: |   `-IntegerLiteralExpr 10
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var mb
+// AST-NEXT: |   `-IntegerLiteralExpr 20
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var mixed_capture
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl x: i32
+// AST-NEXT: |     |-Capture ma
+// AST-NEXT: |     |-Capture *mb
+// AST-NEXT: |     `-CompoundStmt (2)
+// AST-NEXT: |       |-ExpressionStmt
+// AST-NEXT: |       | `-AssignOperatorExpr +=
+// AST-NEXT: |       |   |-UnaryOperatorExpr prefix *
+// AST-NEXT: |       |   | `-NamedIdentExpr mb
+// AST-NEXT: |       |   `-IntegerLiteralExpr 1
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-BinaryOperatorExpr +
+// AST-NEXT: |           | |-NamedIdentExpr x
+// AST-NEXT: |           | `-NamedIdentExpr ma
+// AST-NEXT: |           `-UnaryOperatorExpr prefix *
+// AST-NEXT: |             `-NamedIdentExpr mb
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var na
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var nb
+// AST-NEXT: |   `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var copy_named
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-Capture na
+// AST-NEXT: |     |-Capture nb
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-NamedIdentExpr na
+// AST-NEXT: |           `-NamedIdentExpr nb
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var pa
+// AST-NEXT: |   `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var pb
+// AST-NEXT: |   `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var ptr_named
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-Capture *pa
+// AST-NEXT: |     |-Capture *pb
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr +
+// AST-NEXT: |           |-UnaryOperatorExpr prefix *
+// AST-NEXT: |           | `-NamedIdentExpr pa
+// AST-NEXT: |           `-UnaryOperatorExpr prefix *
+// AST-NEXT: |             `-NamedIdentExpr pb
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var greet
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     |-ParamDecl name: string = "world"
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ExpressionStmt
+// AST-NEXT: |         `-CallExpr (1 args)
+// AST-NEXT: |           |-ChainExpr 'std::println'
+// AST-NEXT: |           | |-NamedIdentExpr std
+// AST-NEXT: |           | `-Step ::println
+// AST-NEXT: |           `-StringLiteralExpr "Hello, {name}!"
+// AST-NEXT: |             `-NamedIdentExpr name
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var identity
+// AST-NEXT: |   `-ClosureExpr ->  T
+// AST-NEXT: |     |-GenericParamDecl 'T'
+// AST-NEXT: |     |-ParamDecl x: T
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-NamedIdentExpr x
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var risky
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     `-CompoundStmt (2)
+// AST-NEXT: |       |-ConditionalStmt
+// AST-NEXT: |       | |-cond
+// AST-NEXT: |       | | `-NamedIdentExpr bad_condition
+// AST-NEXT: |       | `-then
+// AST-NEXT: |       |   `-CompoundStmt (1)
+// AST-NEXT: |       |     `-PanicStmt
+// AST-NEXT: |       |       `-CallExpr (1 args)
+// AST-NEXT: |       |         |-ChainExpr 'std::Error::Runtime'
+// AST-NEXT: |       |         | |-NamedIdentExpr std
+// AST-NEXT: |       |         | |-Step ::Error
+// AST-NEXT: |       |         | `-Step ::Runtime
+// AST-NEXT: |       |         `-StringLiteralExpr "failed"
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 42
+// AST-NEXT: |-FunctionDecl  outer() -> i32
+// AST-NEXT: | `-CompoundStmt (3)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var x
+// AST-NEXT: |   |   `-IntegerLiteralExpr 10
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-FunctionDecl  inner(y: i32) -> i32
+// AST-NEXT: |   |   |-ParamDecl y: i32
+// AST-NEXT: |   |   `-BinaryOperatorExpr +
+// AST-NEXT: |   |     |-NamedIdentExpr y
+// AST-NEXT: |   |     `-IntegerLiteralExpr 1
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-CallExpr (1 args)
+// AST-NEXT: |       |-NamedIdentExpr inner
+// AST-NEXT: |       `-NamedIdentExpr x
+// AST-NEXT: |-FunctionDecl  apply(f: fn(i32) -> i32, x: i32) -> i32
+// AST-NEXT: | |-ParamDecl f: fn(i32) -> i32
+// AST-NEXT: | |-ParamDecl x: i32
+// AST-NEXT: | `-CompoundStmt (1)
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-CallExpr (1 args)
+// AST-NEXT: |       |-NamedIdentExpr f
+// AST-NEXT: |       `-NamedIdentExpr x
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var r1
+// AST-NEXT: |   `-CallExpr (2 args)
+// AST-NEXT: |     |-NamedIdentExpr apply
+// AST-NEXT: |     |-ClosureExpr ->  i32
+// AST-NEXT: |     | |-ParamDecl x: i32
+// AST-NEXT: |     | `-CompoundStmt (1)
+// AST-NEXT: |     |   `-ReturnStmt
+// AST-NEXT: |     |     `-BinaryOperatorExpr *
+// AST-NEXT: |     |       |-NamedIdentExpr x
+// AST-NEXT: |     |       `-IntegerLiteralExpr 2
+// AST-NEXT: |     `-IntegerLiteralExpr 21
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var triple
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     |-ParamDecl x: i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-BinaryOperatorExpr *
+// AST-NEXT: |           |-NamedIdentExpr x
+// AST-NEXT: |           `-IntegerLiteralExpr 3
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var r2
+// AST-NEXT: |   `-CallExpr (2 args)
+// AST-NEXT: |     |-NamedIdentExpr apply
+// AST-NEXT: |     |-NamedIdentExpr triple
+// AST-NEXT: |     `-IntegerLiteralExpr 10
+// AST-NEXT: |-FunctionDecl  map(data: [i32], transform: fn(i32) -> i32) -> [i32]
+// AST-NEXT: | |-ParamDecl data: [i32]
+// AST-NEXT: | |-ParamDecl transform: fn(i32) -> i32
+// AST-NEXT: | `-CompoundStmt (3)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var result: [i32]
+// AST-NEXT: |   |-RangedForStmt item
+// AST-NEXT: |   | |-NamedIdentExpr data
+// AST-NEXT: |   | `-CompoundStmt (1)
+// AST-NEXT: |   |   `-ExpressionStmt
+// AST-NEXT: |   |     `-CallExpr (1 args)
+// AST-NEXT: |   |       |-ChainExpr 'result.push'
+// AST-NEXT: |   |       | |-NamedIdentExpr result
+// AST-NEXT: |   |       | `-Step .push
+// AST-NEXT: |   |       `-CallExpr (1 args)
+// AST-NEXT: |   |         |-NamedIdentExpr transform
+// AST-NEXT: |   |         `-NamedIdentExpr item
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-NamedIdentExpr result
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var doubled
+// AST-NEXT: |   `-CallExpr (2 args)
+// AST-NEXT: |     |-NamedIdentExpr map
+// AST-NEXT: |     |-ListLiteralExpr (3)
+// AST-NEXT: |     | |-IntegerLiteralExpr 1
+// AST-NEXT: |     | |-IntegerLiteralExpr 2
+// AST-NEXT: |     | `-IntegerLiteralExpr 3
+// AST-NEXT: |     `-ClosureExpr ->  i32
+// AST-NEXT: |       |-ParamDecl x: i32
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-ReturnStmt
+// AST-NEXT: |           `-BinaryOperatorExpr *
+// AST-NEXT: |             |-NamedIdentExpr x
+// AST-NEXT: |             `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var panic_closure
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     `-CompoundStmt (2)
+// AST-NEXT: |       |-ConditionalStmt
+// AST-NEXT: |       | |-cond
+// AST-NEXT: |       | | `-NamedIdentExpr bad_condition
+// AST-NEXT: |       | `-then
+// AST-NEXT: |       |   `-CompoundStmt (1)
+// AST-NEXT: |       |     `-PanicStmt
+// AST-NEXT: |       |       `-CallExpr (1 args)
+// AST-NEXT: |       |         |-ChainExpr 'std::Error::Runtime'
+// AST-NEXT: |       |         | |-NamedIdentExpr std
+// AST-NEXT: |       |         | |-Step ::Error
+// AST-NEXT: |       |         | `-Step ::Runtime
+// AST-NEXT: |       |         `-StringLiteralExpr "failed"
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 42
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var volatile_closure
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var async_closure
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (0)
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var multi_modifier
+// AST-NEXT: |   `-ClosureExpr ->  i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-IntegerLiteralExpr 100
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var divergent
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-PanicStmt
+// AST-NEXT: |         `-CallExpr (1 args)
+// AST-NEXT: |           |-ChainExpr 'std::Error::Runtime'
+// AST-NEXT: |           | |-NamedIdentExpr std
+// AST-NEXT: |           | |-Step ::Error
+// AST-NEXT: |           | `-Step ::Runtime
+// AST-NEXT: |           `-StringLiteralExpr "always panics"
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var nested_expr
+// AST-NEXT: |   `-ClosureExpr
+// AST-NEXT: |     `-ClosureExpr ->  i32
+// AST-NEXT: |       |-ParamDecl x: i32
+// AST-NEXT: |       `-BinaryOperatorExpr *
+// AST-NEXT: |         |-NamedIdentExpr x
+// AST-NEXT: |         `-IntegerLiteralExpr 2
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var nested_block
+// AST-NEXT: |   `-ClosureExpr ->  fn(i32) -> i32
+// AST-NEXT: |     `-CompoundStmt (1)
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-ClosureExpr ->  i32
+// AST-NEXT: |           |-ParamDecl x: i32
+// AST-NEXT: |           `-CompoundStmt (1)
+// AST-NEXT: |             `-ReturnStmt
+// AST-NEXT: |               `-BinaryOperatorExpr +
+// AST-NEXT: |                 |-NamedIdentExpr x
+// AST-NEXT: |                 `-IntegerLiteralExpr 1
+// AST-NEXT: |-DeclStmt
+// AST-NEXT: | `-VariableDecl var nested_mixed
+// AST-NEXT: |   `-ClosureExpr ->  fn(i32) -> i32
+// AST-NEXT: |     `-CompoundStmt (2)
+// AST-NEXT: |       |-DeclStmt
+// AST-NEXT: |       | `-VariableDecl var offset
+// AST-NEXT: |       |   `-IntegerLiteralExpr 10
+// AST-NEXT: |       `-ReturnStmt
+// AST-NEXT: |         `-ClosureExpr ->  i32
+// AST-NEXT: |           |-ParamDecl x: i32
+// AST-NEXT: |           `-BinaryOperatorExpr +
+// AST-NEXT: |             |-NamedIdentExpr x
+// AST-NEXT: |             `-NamedIdentExpr offset
+// AST-NEXT: |-FunctionDecl  make_safe_closure() -> fn() -> i32
+// AST-NEXT: | `-CompoundStmt (2)
+// AST-NEXT: |   |-DeclStmt
+// AST-NEXT: |   | `-VariableDecl var x
+// AST-NEXT: |   |   `-IntegerLiteralExpr 42
+// AST-NEXT: |   `-ReturnStmt
+// AST-NEXT: |     `-ClosureExpr ->  i32
+// AST-NEXT: |       `-CompoundStmt (1)
+// AST-NEXT: |         `-ReturnStmt
+// AST-NEXT: |           `-NamedIdentExpr x
+// AST-NEXT: `-FunctionDecl  make_bad_closure() -> fn() -> i32
+// AST-NEXT:   `-CompoundStmt (2)
+// AST-NEXT:     |-DeclStmt
+// AST-NEXT:     | `-VariableDecl var x
+// AST-NEXT:     |   `-IntegerLiteralExpr 42
+// AST-NEXT:     `-ReturnStmt
+// AST-NEXT:       `-ClosureExpr ->  i32
+// AST-NEXT:         |-Capture *x
+// AST-NEXT:         `-CompoundStmt (1)
+// AST-NEXT:           `-ReturnStmt
+// AST-NEXT:             `-UnaryOperatorExpr prefix *
+// AST-NEXT:               `-NamedIdentExpr x
+// AST: -- 0 error(s), 0 warning(s) --
+//
+// -- diagnostics (order matches emission order) --
+// AST: {{.*}}: error [SC004E]:
+// END-GENERATED-CHECKS
+
 // ==========================================================================
 //  closures_doc_spec.k
 //  Full coverage of every feature described in the Closures documentation.
