@@ -21,15 +21,6 @@ import AST::Node::Base::*;
 class DependentResolution {
     // TODO: implement DependentResolution
 
-    /// `T::Item` through \p inst, an instance of an IMPORTED template
-    /// (MemberLookup::filled_by_clang). Clang owns that instantiation, so the
-    /// answer is clang's: complete the ClassTemplateSpecializationDecl behind
-    /// the primary's `clang_decl` with clang::Sema::RequireCompleteType, under
-    /// the owning HeaderSet's sema_lock(), and map the member it finds back
-    /// through the ForeignRegistry.
-    ///
-    /// STUB: null, which every caller already reads as "still dependent".
-    fn member_of_foreign_instance(self, inst: *Decl, name: string) -> *Decl {
-        return &null;
-    }
+    // A member through an instance of an IMPORTED template is not answered
+    // here: the instance itself is filled from clang (ForeignInstantiate::fill).
 }

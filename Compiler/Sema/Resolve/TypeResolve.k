@@ -80,6 +80,7 @@ import Token::Token::*;
 import Token::TokenKind::*;
 import Diagnostic::Registry::*;
 import AST::Context::InstantiationRegistry::*;
+import Sema::Type::ArgumentDeduction::*;
 
 __inline_cpp("
 #define RecursiveASTVisitor_TypeResolution RecursiveASTVisitor<TypeResolution>
@@ -1133,6 +1134,21 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             if !filled[i] {
                 if gp->default_type == &null { ct->poison(); return false; }   // arity said otherwise; defensive.
                 var dc = self._demand_default(gp, primary);
+                // A FOREIGN default comes back as the header's canonical, and
+                // a default naming the primary's own params (`class A =
+                // allocator<T>`) is dependent there. Every param before this
+                // one is already placed, so substitute them in: without it
+                // `std::vector<i32>` keyed as `vector<i32, allocator<T>>`, a
+                // dependent type with no instance behind it, and nothing (the
+                // clang fill included) ever looked past the pattern.
+                if (dc != &null) && dc->is_dependent() && self._foreign(primary) {
+                    var ded = Deduction(self.sc, &null);
+                    var rep = NameLookup::representative(primary);
+                    for var j: usize = 0; j < out->size(); ++j { ded.bind(rep, static_cast::<u32>(j), (*out)[j]); }
+                    var sub = ded.substitute(dc);
+                    if (sub != &null) && (!sub->is_dependent()) { dc = sub; }
+                    else { dc = &null; }      // still names an unplaced param: the stand-in below.
+                }
                 if dc == &null {
                     if gp->default_type->is_poisoned() { ct->poison(); return false; }
                     // Dependent default (mentions the primary's own params):

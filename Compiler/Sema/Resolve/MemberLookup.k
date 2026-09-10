@@ -51,6 +51,7 @@
 
 import Sema::SemaContext::*;
 import Sema::Resolve::NameLookup::*;
+import Sema::Foreign::ForeignInstantiate::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
 import AST::Context::TranslationUnit::*;
@@ -274,6 +275,15 @@ class MemberLookup {
         if seen->contains(key) { return; }
         seen->insert(key);
 
+        // 0. An instance of an IMPORTED template has an empty table until
+        //    clang fills it. Fill BEFORE step 1 reads that table -- at 2b the
+        //    first lookup through a fresh instance would miss every member it
+        //    was about to get. A failed fill leaves it unfilled, and 2b walks
+        //    the pattern exactly as before fills existed.
+        if MemberLookup::filled_by_clang(d) && self._unfilled(d) && (self.sc != &null) && (self.sc->foreign != &null) {
+            self.sc->foreign->fill(d);
+        }
+
         // 1. own table.
         var dc = NameLookup::context_of(d);
         if dc != &null {
@@ -290,9 +300,10 @@ class MemberLookup {
         if (pat != &null) && (pat != d) {
             var pexts = self.extensions_of_decl(pat);
             if pexts != &null { self._append_from_extensions(pexts, name, out); }
-            // 2b. An implicit instantiation M2 has not filled has an empty
-            //     table and an empty base list. The names it WILL have are
-            //     the pattern's: walk that instead (seen dedups).
+            // 2b. An implicit instantiation nobody has filled (M2, or clang
+            //     via step 0) has an empty table and an empty base list. The
+            //     names it WILL have are the pattern's: walk that instead
+            //     (seen dedups).
             if self._unfilled(d) { self._walk_record(pat, name, out, seen); return; }
         }
 
@@ -334,12 +345,14 @@ class MemberLookup {
         return &null;
     }
 
+    /// An instance whose table is still empty. `instantiated` is the one
+    /// answer for both fillers: M2 sets it for a Kairo pattern,
+    /// ForeignInstantiate for an imported one. It must not be short-circuited
+    /// by filled_by_clang (which is true for the instance's whole life): a
+    /// filled foreign instance walking its pattern would see the pattern's
+    /// dependent spellings -- `size_type` unresolved -- instead of clang's.
     priv fn _unfilled(self, d: *Decl) -> bool {
-        // An instance of an IMPORTED template is clang's to fill, never M2's,
-        // so its own table stays empty for the whole build and the names it
-        // has are always the pattern's (DeclImport declared them).
-        if MemberLookup::filled_by_clang(d) { return true; }
-        if isa::<ClassDecl>(d)     { var n = cast::<ClassDecl>(d);     return n->is_instance() && !n->instantiated; }
+        if isa::<ClassDecl>(d)    { var n = cast::<ClassDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<StructDecl>(d)    { var n = cast::<StructDecl>(d);    return n->is_instance() && !n->instantiated; }
         if isa::<UnionDecl>(d)     { var n = cast::<UnionDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<EnumDecl>(d)      { var n = cast::<EnumDecl>(d);      return n->is_instance() && !n->instantiated; }
@@ -347,10 +360,11 @@ class MemberLookup {
         return false;
     }
 
-    /// True when \p d is an instance whose primary came from a C++ header.
-    /// Such an instance is clang's: M2 must SKIP it, and a `T::Item` through
-    /// it is answered by DependentResolution asking clang::Sema, not by
-    /// substituting into a Kairo body. Public because M2 is the other reader.
+    /// True when \p d is an instance whose primary came from a C++ header --
+    /// before AND after it is filled. Such an instance is clang's: M2 must
+    /// SKIP it, and its members come from ForeignInstantiate::fill (clang's
+    /// own instantiation, imported), not from substituting into the pattern.
+    /// Public because M2 is the other reader.
     static fn filled_by_clang(d: *Decl) -> bool {
         if d == &null { return false; }
         if isa::<ClassDecl>(d)     { var n = cast::<ClassDecl>(d);     return n->is_instance() && MemberLookup::primary_is_imported(n->instantiated_from); }
