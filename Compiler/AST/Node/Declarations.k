@@ -87,8 +87,15 @@ class <T> TemplateParams {
     ///   None/Primary   null.
     pub var instantiated_from: *Decl = &null;
     /// Instantiated only: M2 has filled the body. Until then the node's tables
-    /// and base list are EMPTY and lookup walks `instantiated_from`.
+    /// and base list are EMPTY and lookup walks `instantiated_from`. For an
+    /// instance of an IMPORTED template the filler is ForeignInstantiate
+    /// (clang's instantiation), not M2.
     pub var instantiated: bool = false;
+    /// Instantiated + imported primary only: ForeignInstantiate tried and
+    /// clang could not (or Kairo could not ask). Sticky, so a failed instance
+    /// costs one attempt per build, not one per member lookup; lookup keeps
+    /// walking the pattern.
+    pub var foreign_fill_failed: bool = false;
 
     fn is_specialization(self) -> bool {
         return (self.spec_kind == SpecKind::Explicit)

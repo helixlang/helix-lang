@@ -78,6 +78,11 @@ class InstantiationRegistry {
     priv var _table: libcxx::unordered_map::<u64, vec::<*InstanceEntry>>;
     /// primary -> its partial specializations, in registration order.
     priv var _partials: libcxx::unordered_map::<u64, vec::<*Decl>>;
+    /// implicit node -> the entry it was minted for. An implicit node's own
+    /// `spec_args` stay EMPTY (they are the user-written `<...>` of an
+    /// explicit spec, and every printer reads them that way), so this is how
+    /// a holder of the node alone gets back its args.
+    priv var _by_node: libcxx::unordered_map::<u64, *InstanceEntry>;
 
     fn InstantiationRegistry(self) {
         self._table.reserve(128);
@@ -90,6 +95,15 @@ class InstantiationRegistry {
     fn find(self, primary: *Decl, args: *vec::<*Type>) -> *InstanceEntry {
         var rlock = std::SharedLock(self._mu);
         return self._probe(self._hash(primary, args), primary, args);
+    }
+
+    /// The entry an IMPLICIT node was minted for, or null (an explicit spec,
+    /// or not a registry node at all).
+    fn entry_of(self, node: *Decl) -> *InstanceEntry {
+        var rlock = std::SharedLock(self._mu);
+        var it = self._by_node.find(reinterpret_cast::<u64>(node));
+        if it == self._by_node.end() { return &null; }
+        return it->second;
     }
 
     /// Get-or-create. On create, mints the implicit instantiation node.
@@ -110,6 +124,7 @@ class InstantiationRegistry {
         if node == &null { return &null; }
         var e = self._new_entry(primary, args, node, false, fid);
         self._table[h].push_back(e);
+        self._by_node[reinterpret_cast::<u64>(node)] = e;
         return e;
     }
 
