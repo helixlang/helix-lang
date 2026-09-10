@@ -25,6 +25,14 @@
 ///     (presence is recorded), implicit instantiations found in the header
 ///     (the registry mints them on demand), non-type template arguments.
 ///
+///   \par Fill mode
+///     ForeignInstantiate reuses both passes on ONE ClassTemplateSpecialization-
+///     Decl clang just completed. `fill_target` pins every decl to the
+///     primary's header (instantiated members carry the PATTERN's locations,
+///     and that header is frozen); `fill_spec` -> `fill_scope` maps the
+///     specialization to its registry shell; the tables a fill creates go to
+///     `fill_scopes` for the fill to freeze, not to the target's `scopes`.
+///
 ///   Part of the Kairo Project, under the Apache License v2.0 with the
 ///   Kairo Runtime Library Exception.
 ///
@@ -93,6 +101,12 @@ class DeclImport {
     /// header fid -> target. Owned by HeaderIndex; borrowed here.
     pub var targets: obs::<libcxx::unordered_map::<u32, *HeaderTarget>>;
 
+    // --- fill mode (ForeignInstantiate; all null for a header walk) ----------
+    pub var fill_target: *HeaderTarget = &null;   ///< when set: every decl lands here.
+    pub var fill_scope:  *DeclContext  = &null;   ///< the instance shell.
+    pub var fill_spec:   *clang::Decl  = &null;   ///< the ClassTemplateSpecializationDecl it stands for.
+    pub var fill_scopes: vec::<*DeclContext>;     ///< every table the fill created; the fill freezes them.
+
     pub var n_declared: usize = 0;
     pub var n_defined:  usize = 0;
     pub var n_skipped:  usize = 0;
@@ -128,6 +142,10 @@ class DeclImport {
     /// file we track. Falls back through redecls so a definition in a file
     /// we never entered still lands next to its declaration.
     fn target_of(self, d: const_obs::<clang::Decl>) -> *HeaderTarget {
+        // Fill mode: an instantiated member carries its PATTERN's location, so
+        // the path below would answer with the pattern's header -- frozen
+        // since HeaderIndex finished it -- and the member would be dropped.
+        if self.fill_target != &null { return self.fill_target; }
         var loc = self.csm->getDecomposedExpansionLoc(d->getLocation());
         var kf = self._set->kfid_for(loc.first);
         if kf == 0 { return &null; }
@@ -163,6 +181,13 @@ class DeclImport {
     /// the TU for the global namespace, a ModuleDecl for a namespace, the
     /// record's own context for a member.
     fn scope_for(self, t: *HeaderTarget, dc: const_obs::<clang::DeclContext>) -> *DeclContext {
+        // Fill mode: the specialization being imported IS the shell. Nothing
+        // registered its USR (an implicit specialization is never walked), so
+        // the registry probe below would miss it. Records nested in it were
+        // declared by this fill and resolve through the registry as usual.
+        if (self.fill_spec != &null) && (dc != &null) && (clang::Decl::castFromDeclContext(dc) == self.fill_spec) {
+            return self.fill_scope;
+        }
         if dc == &null { return static_cast::<*DeclContext>(t->tu); }
         // Transparent contexts: linkage specs, inline namespaces, anonymous
         // structs/unions, export blocks -- their members belong to the parent.
@@ -192,14 +217,19 @@ class DeclImport {
         if dc->dc_symbols == &null {
             var tbl = t->ctx->alloc_init_cleanup::<SymbolTable>();
             dc->set_symbols(tbl);
-            t->scopes.push_back(dc);
+            // A fill's tables are the fill's to freeze: HeaderIndex froze
+            // `t->scopes` once, when the set finished, and never reads it again.
+            if self.fill_target != &null { self.fill_scopes.push_back(dc); }
+            else { t->scopes.push_back(dc); }
         }
         return dc->dc_symbols;
     }
 
     /// Append \p d under \p name in \p dc's table unless already there.
+    /// A fill writes into a frozen HEADER on purpose -- into tables it just
+    /// created (the shell's, a nested record's), never one the set froze.
     fn bind(self, t: *HeaderTarget, dc: *DeclContext, name: DeclName, d: *Decl) {
-        if t->frozen { return; }
+        if t->frozen && (self.fill_target == &null) { return; }
         var tbl = self.table_of(t, dc);
         var cell = tbl->lookup(name);
         if cell != &null {
@@ -313,7 +343,11 @@ class DeclImport {
             }
             case clang::Decl::ClassTemplateSpecialization {
                 var sp = llvm::cast::<clang::ClassTemplateSpecializationDecl>(nd);
-                if !sp->isExplicitSpecialization() { return &null; }       // implicit: the registry's.
+                // Implicit: the registry's. Inside a fill too -- a nested
+                // implicit specialization is reached as a TYPE (`traits<A>`
+                // in a member typedef), gets its own shell from TypeImport,
+                // and is filled on its own first lookup.
+                if !sp->isExplicitSpecialization() { return &null; }
                 out = self._mint_record(t, sp, at, name, parent);
             }
             case clang::Decl::ClassTemplatePartialSpecialization {
@@ -550,7 +584,7 @@ class DeclImport {
     fn define(self, d: *clang::Decl, kd: *Decl, ti: *TypeImport) {
         if (d == &null) || (kd == &null) { return; }
         var t = self.target_of(d);
-        if (t == &null) || t->frozen { return; }
+        if (t == &null) || (t->frozen && (self.fill_target == &null)) { return; }
         self.n_defined += 1;
 
         // Which Kairo decl owns each template depth in scope here: without
@@ -642,6 +676,15 @@ class DeclImport {
     }
 
     // --- records ----------------------------------------------------------------
+
+    /// Fill mode's record step: fields, methods, bases and layout of the
+    /// completed specialization onto the shell. Runs after its members were
+    /// declared and defined -- the order HeaderIndex gives a header's records.
+    fn define_instance(self, spec: *clang::ClassTemplateSpecializationDecl, shell: *Decl, ti: *TypeImport) {
+        if (self.fill_target == &null) || (spec == &null) || (shell == &null) { return; }
+        ti->tpl_owners.clear();       // concrete: no parameter list encloses a specialization.
+        self._define_record(self.fill_target, spec, shell, ti);
+    }
 
     priv fn _define_record_c(self, t: *HeaderTarget, rd: *clang::RecordDecl, kd: *Decl, ti: *TypeImport) {
         var def = rd->getDefinition();

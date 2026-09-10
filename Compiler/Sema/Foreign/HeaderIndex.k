@@ -15,7 +15,9 @@
 ///
 ///   \par Threading
 ///     Driver thread only. Everything it touches (SM, TCM, GlobalDisambig-
-///     Table, the header contexts' arenas) is driver-owned.
+///     Table, the header contexts' arenas) is driver-owned. importer_for /
+///     walk_declare are also ForeignInstantiate's, which serializes its own
+///     callers.
 ///
 ///   Part of the Kairo Project, under the Apache License v2.0 with the
 ///   Kairo Runtime Library Exception.
@@ -83,6 +85,24 @@ class HeaderIndex {
         return it->second;
     }
 
+    /// A DeclImport wired to \p hs and this index's targets. index() builds
+    /// one per set; ForeignInstantiate builds one per fill and switches it to
+    /// fill mode (DeclImport::fill_target).
+    fn importer_for(self, hs: *HeaderSet) -> DeclImport {
+        var di = DeclImport();
+        di._set = hs; di.reg = self._reg; di.ksm = self._sm;
+        di.store = self._g->types(); di.instances = self._g->instances();
+        di.cctx = hs->ast(); di.csm = hs->csm();
+        di.targets = &(self._targets);
+        return di;
+    }
+
+    /// A TypeImport against \p hs's AST. \p kctx interns opaque names; \p fid
+    /// is the home of any registry entry it mints.
+    fn type_importer_for(self, hs: *HeaderSet, kctx: *ASTContext, fid: u32) -> TypeImport {
+        return TypeImport(self._g->types(), self._g->instances(), self._reg, hs->ast(), kctx, fid);
+    }
+
     /// The one entry point. Idempotent per set.
     fn index(self, hs: *HeaderSet) -> bool {
         if hs->indexed { return true; }
@@ -118,20 +138,16 @@ class HeaderIndex {
         }
 
         // 2. import.
-        var di = DeclImport();
-        di._set = hs; di.reg = self._reg; di.ksm = self._sm;
-        di.store = self._g->types(); di.instances = self._g->instances();
-        di.cctx = hs->ast(); di.csm = hs->csm();
-        di.targets = &(self._targets);
+        var di = self.importer_for(hs);
 
         var any_ctx: *ASTContext = &null;
         if fresh.size() > 0 { any_ctx = fresh[0]->ctx; }
         else if hs->files.size() > 0 { any_ctx = self._target(hs->files[0].kfid, hs->files[0].path)->ctx; }
         var home_fid: u32 = (fresh[0]->fid) if (fresh.size() > 0) else (0);
-        var ti = TypeImport(self._g->types(), self._g->instances(), self._reg, hs->ast(), any_ctx, home_fid);
+        var ti = self.type_importer_for(hs, any_ctx, home_fid);
 
         var pairs = vec::<(*void, *Decl)>();                 // (clang::Decl*, Kairo decl) for pass 2.
-        self._walk_declare(hs->ast()->getTranslationUnitDecl(), &di, pairs);
+        self.walk_declare(hs->ast()->getTranslationUnitDecl(), &di, pairs);
         for var i: usize = 0; i < pairs.size(); ++i {
             di.define(reinterpret_cast::<*clang::Decl>(libcxx::get::<0>(pairs[i])), libcxx::get::<1>(pairs[i]), &ti);
         }
@@ -210,20 +226,21 @@ class HeaderIndex {
     /// Pass 1 over a clang DeclContext, recursing into namespaces, records,
     /// enums, linkage specs, templates. Records (clang decl, Kairo decl) for
     /// pass 2 in the same order, so a record is defined after its members
-    /// were declared.
-    priv fn _walk_declare(self, dc: *clang::DeclContext, di: *DeclImport, out: ref!(vec::<(*void, *Decl)>)) {
+    /// were declared. Public for ForeignInstantiate, which walks a completed
+    /// ClassTemplateSpecializationDecl the same way.
+    fn walk_declare(self, dc: *clang::DeclContext, di: *DeclImport, out: ref!(vec::<(*void, *Decl)>)) {
         for d in dc->decls() {
             if d->isImplicit() && (!llvm::isa::<clang::CXXMethodDecl>(d)) { continue; }
             var kind = d->getKind();
 
             // Transparent containers: recurse, no node.
             if (kind == clang::Decl::LinkageSpec) || (kind == clang::Decl::Export) {
-                self._walk_declare(llvm::cast::<clang::DeclContext>(d), di, out);
+                self.walk_declare(llvm::cast::<clang::DeclContext>(d), di, out);
                 continue;
             }
             if kind == clang::Decl::Namespace {
                 var kd = di->declare(d);
-                self._walk_declare(llvm::cast::<clang::DeclContext>(d), di, out);
+                self.walk_declare(llvm::cast::<clang::DeclContext>(d), di, out);
                 continue;
             }
             if (kind == clang::Decl::ClassTemplate) || (kind == clang::Decl::FunctionTemplate)
@@ -237,7 +254,7 @@ class HeaderIndex {
                     // every inline libc++ template (`__i`, `__c`) as a global.
                     var td = llvm::cast::<clang::TemplateDecl>(d)->getTemplatedDecl();
                     var tdc = llvm::dyn_cast::<clang::DeclContext>(td);
-                    if (tdc != &null) && llvm::isa::<clang::RecordDecl>(td) { self._walk_declare(tdc, di, out); }
+                    if (tdc != &null) && llvm::isa::<clang::RecordDecl>(td) { self.walk_declare(tdc, di, out); }
                     // User-written specializations live in the template's spec list, not in any DeclContext walk.
                     var ct = llvm::dyn_cast::<clang::ClassTemplateDecl>(d);
                     if ct != &null {
@@ -246,7 +263,7 @@ class HeaderIndex {
                             var ks = di->declare(sp);
                             if ks == &null { continue; }
                             out.push_back((reinterpret_cast::<*void>(sp), ks));
-                            self._walk_declare(sp, di, out);
+                            self.walk_declare(sp, di, out);
                         }
                         var parts: llvm::SmallVector::<*clang::ClassTemplatePartialSpecializationDecl, 8>;
                         ct->getPartialSpecializations(parts);
@@ -254,7 +271,7 @@ class HeaderIndex {
                             var ks = di->declare(parts[i]);
                             if ks == &null { continue; }
                             out.push_back((reinterpret_cast::<*void>(parts[i]), ks));
-                            self._walk_declare(parts[i], di, out);
+                            self.walk_declare(parts[i], di, out);
                         }
                     }
                 }
@@ -266,7 +283,7 @@ class HeaderIndex {
                 // Anonymous struct/union: its members are the parent's.
                 var rd = llvm::dyn_cast::<clang::RecordDecl>(d);
                 if (rd != &null) && rd->isAnonymousStructOrUnion() {
-                    self._walk_declare(rd, di, out);
+                    self.walk_declare(rd, di, out);
                 }
                 continue;
             }
@@ -278,7 +295,7 @@ class HeaderIndex {
             if (sub != &null) && (llvm::isa::<clang::RecordDecl>(d) || llvm::isa::<clang::EnumDecl>(d)) {
                 // Only the definition has members; a forward decl walks nothing.
                 var tag = llvm::cast::<clang::TagDecl>(d);
-                if tag->isCompleteDefinition() { self._walk_declare(sub, di, out); }
+                if tag->isCompleteDefinition() { self.walk_declare(sub, di, out); }
             }
         }
     }

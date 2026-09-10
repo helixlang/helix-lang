@@ -137,6 +137,7 @@ import Interop::Clang::ClangBackend::*;
 import Interop::Clang::HeaderSet::*;
 import Sema::Foreign::HeaderIndex::*;
 import Sema::Foreign::ForeignRegistry::*;
+import Sema::Foreign::ForeignInstantiate::*;
 import Diagnostic::ClangDiagLookup::*;
 
 ffi "c++" import "llvm/TargetParser/Host.h";
@@ -255,6 +256,7 @@ class CompilerInstance {
     priv var _headers: *HeaderSetCache  = &null; ///< phase-A C++ header parses; owned, destroyed BEFORE _backend
     priv var _hindex:  *HeaderIndex     = &null; ///< header set -> Kairo TUs; owned
     priv var _freg:    *ForeignRegistry = &null; ///< USR -> imported decl, build-wide; owned
+    priv var _finst:   *ForeignInstantiate = &null; ///< fills instances of imported templates from clang; owned
 
     // --- CLI state -------------------------------------------------------
     //   The invocation IS the CLI state. Flag-level queries go through
@@ -372,6 +374,7 @@ class CompilerInstance {
             std::destroy(self._headers);
             self._headers = &null;
         }
+        if self._finst  != &null { std::destroy(self._finst);  self._finst  = &null; }   // borrows _hindex.
         if self._hindex != &null { std::destroy(self._hindex); self._hindex = &null; }
         if self._freg   != &null { std::destroy(self._freg);   self._freg   = &null; }
 
@@ -421,6 +424,7 @@ class CompilerInstance {
     fn backend(self)      -> *ClangBackend            { return self._backend; }
     fn headers(self)      -> *HeaderSetCache          { return self._headers; }
     fn header_index(self) -> *HeaderIndex             { return self._hindex;  }
+    fn foreign_instantiate(self) -> *ForeignInstantiate { return self._finst; }
 
     /// \brief true if \p fid is a C++ header Sema/Foreign imported: a TU whose
     ///        decls came from clang, with no Kairo source behind it.
@@ -917,6 +921,7 @@ class CompilerInstance {
         self._freg    = std::create::<ForeignRegistry>();
         self._hindex  = std::create::<HeaderIndex>(self._sm, self._tcm, self._diag, self._imp,
                                                    &self.invocation(), self._g_scope, self._freg);
+        self._finst   = std::create::<ForeignInstantiate>(self._hindex, self._freg, self._g_scope->instances());
 
         self._pp = std::create::<PreProcessor>(
             self._sm, self._tcm, self._imp, self._pool,
@@ -1736,6 +1741,7 @@ fn FrontendAction::_sema() -> bool {
         if tu == &null { continue; }
         if tu->is_foreign { continue; }   // decls came from clang, already resolved; nothing to run.
         var sem = Sema(ctx, self._global_scope);
+        sem.sc.foreign = self._ci->foreign_instantiate();   // before any pass captures &sem.sc.
         sem.run_to(SemaPhase::Checked);
         ctx->diag_sink.drain_into(self._ci->diag(), ctx->sm);
 
