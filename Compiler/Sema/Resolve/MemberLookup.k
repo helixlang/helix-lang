@@ -280,9 +280,7 @@ class MemberLookup {
         //    first lookup through a fresh instance would miss every member it
         //    was about to get. A failed fill leaves it unfilled, and 2b walks
         //    the pattern exactly as before fills existed.
-        if MemberLookup::filled_by_clang(d) && self._unfilled(d) && (self.sc != &null) && (self.sc->foreign != &null) {
-            self.sc->foreign->fill(d);
-        }
+        MemberLookup::ensure_filled(self.sc, d);
 
         // 1. own table.
         var dc = NameLookup::context_of(d);
@@ -304,7 +302,7 @@ class MemberLookup {
             //     via step 0) has an empty table and an empty base list. The
             //     names it WILL have are the pattern's: walk that instead
             //     (seen dedups).
-            if self._unfilled(d) { self._walk_record(pat, name, out, seen); return; }
+            if MemberLookup::unfilled(d) { self._walk_record(pat, name, out, seen); return; }
         }
 
         // 3. bases and implemented interfaces (default bodies join the set).
@@ -351,13 +349,29 @@ class MemberLookup {
     /// by filled_by_clang (which is true for the instance's whole life): a
     /// filled foreign instance walking its pattern would see the pattern's
     /// dependent spellings -- `size_type` unresolved -- instead of clang's.
-    priv fn _unfilled(self, d: *Decl) -> bool {
+    /// Public because TypeResolve asks the same question of a `::` head.
+    static fn unfilled(d: *Decl) -> bool {
+        if d == &null { return false; }
         if isa::<ClassDecl>(d)    { var n = cast::<ClassDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<StructDecl>(d)    { var n = cast::<StructDecl>(d);    return n->is_instance() && !n->instantiated; }
         if isa::<UnionDecl>(d)     { var n = cast::<UnionDecl>(d);     return n->is_instance() && !n->instantiated; }
         if isa::<EnumDecl>(d)      { var n = cast::<EnumDecl>(d);      return n->is_instance() && !n->instantiated; }
         if isa::<InterfaceDecl>(d) { var n = cast::<InterfaceDecl>(d); return n->is_instance() && !n->instantiated; }
         return false;
+    }
+
+    /// THE fill trigger: if \p d is an unfilled shell of an imported
+    /// template, have clang fill it now. Both readers of a shell's table
+    /// call this before reading it -- member lookup (`c.size`) and
+    /// TypeResolve's `::` step (`traits<alloc>::size_type`) -- so neither
+    /// can miss a member the other would have filled in. A failed fill is
+    /// sticky and leaves \p d unfilled; callers fall back exactly as they
+    /// did before fills existed. True when \p d's own table is readable.
+    static fn ensure_filled(sc: *SemaContext, d: *Decl) -> bool {
+        if !MemberLookup::unfilled(d) { return true; }
+        if !MemberLookup::filled_by_clang(d) { return false; }   // M2's, not clang's.
+        if (sc == &null) || (sc->foreign == &null) { return false; }
+        return sc->foreign->fill(d);
     }
 
     /// True when \p d is an instance whose primary came from a C++ header --
@@ -423,13 +437,25 @@ class MemberLookup {
         }
     }
 
+    /// A C++ reference names its referee, for member access as for ADL: there
+    /// is no "reference to X" type with members of its own, and no reference
+    /// to a reference. Separate from _peel because the member step must NOT
+    /// peel pointers or nullables -- those belong to the separator (`.` vs
+    /// `->`, `?.`) -- while a reference is transparent to every separator.
+    fn peel_ref(self, t: *Type) -> *Type {
+        if t == &null { return t; }
+        if isa::<CXXLValueRefType>(t) { return cast::<CXXLValueRefType>(t)->referee; }
+        if isa::<CXXRValueRefType>(t) { return cast::<CXXRValueRefType>(t)->referee; }
+        return t;
+    }
+
     priv fn _peel(self, t: *Type) -> *Type {
         var c = t;
         while c != &null {
-            if isa::<PointerType>(c)      { c = cast::<PointerType>(c)->pointee;      continue; }
-            if isa::<NullableType>(c)     { c = cast::<NullableType>(c)->inner;       continue; }
-            if isa::<CXXLValueRefType>(c) { c = cast::<CXXLValueRefType>(c)->referee; continue; }
-            if isa::<CXXRValueRefType>(c) { c = cast::<CXXRValueRefType>(c)->referee; continue; }
+            if isa::<PointerType>(c)  { c = cast::<PointerType>(c)->pointee; continue; }
+            if isa::<NullableType>(c) { c = cast::<NullableType>(c)->inner;  continue; }
+            var r = self.peel_ref(c);
+            if r != c { c = r; continue; }
             break;
         }
         return c;

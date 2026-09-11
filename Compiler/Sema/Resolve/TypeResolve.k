@@ -57,6 +57,7 @@
 
 import Sema::SemaContext::*;
 import Sema::Resolve::NameLookup::*;
+import Sema::Resolve::MemberLookup::*;
 import Sema::Resolve::ResolutionState::*;
 import AST::Context::ASTContext::*;
 import AST::Context::DeclContext::*;
@@ -665,8 +666,12 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             }
             // `Self::Inner`: walk from here. Inside `extend Box<i32>` the self
             // decl is an INSTANCE node whose table is empty until M2; its
-            // nested types are on the pattern, so walk that (#12).
+            // nested types are on the pattern, so walk that (#12). An
+            // instance of an IMPORTED template is clang's to fill, and must
+            // be filled before that choice: its pattern's `size_type` is the
+            // dependent spelling, not clang's `unsigned long`.
             head = owner;
+            MemberLookup::ensure_filled(self.sc, owner);
             var pat = self._instantiated_from_of(owner);
             if (pat != &null) && self._is_unfilled_instance(owner) { head = pat; }
         } else {
@@ -689,7 +694,7 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
                     // does inside `class Foo`. `_selfs` already holds the
                     // target (traverse_extension_decl pushed it); for a class
                     // body this is a no-op, the DC chain answered first.
-                    if !r.found() { r = self._lookup_in_selfs(imm); }
+                    if !r.found() { r = self._lookup_in_selfs(imm, self.sc->ctx->get_spelling(tok)); }
                     if !r.found() {
                         var nm = self.sc->ctx->get_spelling(tok);
                         self.sc->diag->report(DiagID::R021E, seg0->name->range.start,
@@ -719,10 +724,28 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
             // into until instantiation. Mark and stop; M2 owns it (hard
             // invariant #5: dependent = deferred, not failed).
             var prev = ct->segments.get(i - 1);
-            if isa::<GenericParamDecl>(cur) || (!prev->generic_args.is_empty()) {
+            if isa::<GenericParamDecl>(cur) {
                 seg->seg_kind = ChainType::SegmentKind::Dependent;
                 went_dependent = true;
                 break;
+            }
+            // `Foo<Args>::Inner` with Foo IMPORTED and every arg concrete:
+            // clang can answer now, so step into the registry instance and
+            // let _scope_of fill it. A Kairo primary stays deferred to M2; so
+            // does an instance clang could not fill (its table is empty and
+            // the pattern's spellings are dependent -- today's behaviour).
+            if !prev->generic_args.is_empty() {
+                var inst = self._foreign_instance_of(ct, cur, prev);
+                if ct->is_poisoned() { return; }   // arity / arg errors, diagnosed inside.
+                if inst != &null {
+                    self._scope_of(inst, seg->range);   // the fill trigger.
+                }
+                if (inst == &null) || MemberLookup::unfilled(inst) {
+                    seg->seg_kind = ChainType::SegmentKind::Dependent;
+                    went_dependent = true;
+                    break;
+                }
+                cur = inst;
             }
 
             var scope = self._scope_of(cur, seg->range);
@@ -790,13 +813,28 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
 
     /// An implicit instantiation M2 has not filled: empty table, empty base
     /// list. Its names live on `instantiated_from` until then.
-    priv fn _is_unfilled_instance(self, d: *Decl) -> bool {
-        if isa::<ClassDecl>(d)     { var x = cast::<ClassDecl>(d);     return x->is_instance() && !x->instantiated; }
-        if isa::<StructDecl>(d)    { var x = cast::<StructDecl>(d);    return x->is_instance() && !x->instantiated; }
-        if isa::<UnionDecl>(d)     { var x = cast::<UnionDecl>(d);     return x->is_instance() && !x->instantiated; }
-        if isa::<EnumDecl>(d)      { var x = cast::<EnumDecl>(d);      return x->is_instance() && !x->instantiated; }
-        if isa::<InterfaceDecl>(d) { var x = cast::<InterfaceDecl>(d); return x->is_instance() && !x->instantiated; }
-        return false;
+    priv fn _is_unfilled_instance(self, d: *Decl) -> bool { return MemberLookup::unfilled(d); }
+
+    /// The registry instance a middle segment `Foo<Args>` names, when Foo is
+    /// an IMPORTED template and every arg is concrete; null otherwise (a
+    /// Kairo primary, or a dependent arg -- both M2's). Arity and arg errors
+    /// are diagnosed here and poison \p ct.
+    priv fn _foreign_instance_of(self, ct: *ChainType, d: *Decl, seg: *ChainType::ChainSegment) -> *Decl {
+        if (d == &null) || isa::<TypeAliasDecl>(d) { return &null; }
+        var canon = NameLookup::representative(d);
+        if !MemberLookup::primary_is_imported(canon) { return &null; }
+        var gps = self._generic_params_of(canon);
+        if gps.size() == 0 { return &null; }
+        if !self._check_arity(canon, gps, seg, ct) { return &null; }
+        var args = vec::<*Type>();
+        if !self._collect_args(seg, ct, canon, gps, &args) { return &null; }
+        for var i: usize = 0; i < args.size(); ++i {
+            if args[i]->is_dependent() || args[i]->is_instantiation_dependent() { return &null; }
+        }
+        var e = self.sc->instances->instance_for(canon, &args, self.sc->ctx->fid, NameLookup::ctx_of(canon));
+        if e == &null { return &null; }
+        seg->resolved_type = self.sc->types->record(e->decl, &args);
+        return e->decl;
     }
 
     /// A cell in TYPE position: functions/vars are not types, and two type
@@ -869,14 +907,23 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
     /// The DeclContext a `::` step looks INTO. Aliases are expanded first
     /// (NameLookup::context_of returns null for them on purpose; expansion is
     /// T's job and this is where it happens).
+    ///
+    /// Every `::` step in type position comes through here -- an alias
+    /// target, a generic argument, a bare `X::Y` in a signature -- so this is
+    /// the one place a foreign shell is filled before its table is read
+    /// (MemberLookup::ensure_filled; a failed fill leaves the table empty and
+    /// the step misses as it always did).
     priv fn _scope_of(self, d: *Decl, at: SourceRange) -> *DeclContext {
         if d == &null { return &null; }
         if isa::<TypeAliasDecl>(d) {
             var c = self._expand_alias(cast::<TypeAliasDecl>(d), at);
             if c == &null { return &null; }
             if !isa::<RecordType>(c) { return &null; }
-            return NameLookup::context_of(cast::<RecordType>(c)->decl);
+            var rd = cast::<RecordType>(c)->decl;
+            MemberLookup::ensure_filled(self.sc, rd);
+            return NameLookup::context_of(rd);
         }
+        MemberLookup::ensure_filled(self.sc, d);
         return NameLookup::context_of(d);
     }
 
@@ -1880,16 +1927,21 @@ class TypeResolution derives RecursiveASTVisitor::<TypeResolution> {
     /// An unfilled instance (`extend Box<i32>` before M2) has an empty table;
     /// its nested types live on the pattern it was instantiated from, so walk
     /// that instead (#12), the same substitution `Self::Inner` makes above.
-    priv fn _lookup_in_selfs(self, imm: u32) -> SemaLookupResult {
+    /// An instance of an IMPORTED template is filled first (`extend
+    /// cont<i32>` then bare `size_type`), and its table lives in the
+    /// header's TU, keyed by that TU's imms -- so the probe carries the
+    /// spelling, as the `::` walk does, rather than trusting index agreement.
+    priv fn _lookup_in_selfs(self, imm: u32, spelling: string) -> SemaLookupResult {
         var n = self._selfs.size();
         for var i: usize = 0; i < n; ++i {
             var d = self._selfs[(n - 1) - i];
             if d == &null { continue; }
+            MemberLookup::ensure_filled(self.sc, d);
             var pat = self._instantiated_from_of(d);
             if (pat != &null) && self._is_unfilled_instance(d) { d = pat; }
             var dc = NameLookup::context_of(d);
             if dc == &null { continue; }
-            var r = self.sc->lookup.in_context(dc, DeclName::ident(imm));
+            var r = self.sc->lookup.in_context(dc, DeclName::ident(imm), spelling);
             if r.found() { return r; }
         }
         return SemaLookupResult::not_found();

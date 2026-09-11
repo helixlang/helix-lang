@@ -406,11 +406,43 @@ its range's TU, and a name interned in `<__fwd/vector.h>` but ranged in
 there (`.size` as `cend`). A fill that cannot run -- an arg with no clang
 spelling (a Kairo-native record, a decl from another set), or a
 specialization clang rejects -- is sticky (`foreign_fill_failed`) and lookup
-walks the pattern, as it did before fills existed. [MISSING] a Kairo
-diagnostic for a failed fill (it logs at Driver stage); a C++ forward shape
-for Kairo-native args (`std::vector<KairoStruct>`); and a fill trigger on
-TypeResolve's `Inst::member` path, which still reads an unfilled shell's
-pattern.
+walks the pattern, as it did before fills existed.
+
+[DONE] The fill trigger is ONE entry point, `MemberLookup::ensure_filled`,
+called by both readers of a shell's table: member lookup (`c.size`) and
+TypeResolve's `::` step (`TypeResolve::_scope_of`), so an alias target, a
+generic argument and a bare `X<A>::Y` in a signature all fill from the same
+place. A `Foo<Args>::Y` whose `Foo` is imported and whose args are concrete
+steps into the registry instance rather than deferring as dependent; it
+defers only when the fill failed (its table is empty and the pattern's
+spellings are dependent). Fills nest (define imports a type that is a path
+into another shell): `ForeignInstantiate::_mu` and the set's `sema_lock` are
+recursive, and a shell already mid-fill on this thread returns false at once.
+
+[MISSING] a Kairo diagnostic for a failed fill (it logs at Driver stage, and
+clang's own error reaches stderr through the set's printer); a C++ forward
+shape for Kairo-native args (`std::vector<KairoStruct>`); a dependent
+default argument loses qualifiers when spelled back (`std::map<i32, i32>`'s
+`allocator<pair<const K, T>>` goes out as `pair<int, int>`, clang's
+static_assert rejects it, the fill fails; `Tests/Sema/FFI/default_arg_const.k`).
+
+**Nested records.** Implicit instantiation of `holder<alloc>` DECLARES
+`holder<alloc>::node` but defines it only when something requires it
+complete, so walk_declare (correctly) declares `node` and walks nothing in
+it. The fill then completes every nested record its OWN walk reached --
+an incomplete CXXRecordDecl instantiated from a member class of the
+specialization -- with `RequireCompleteType`, under the locks the fill
+already holds, and walks it into the same list before the define pass
+(`ForeignInstantiate::_complete_nested`). A completed record's own nested
+records join the list, so `A<T>::B::C` completes to any depth (a visited set
+on clang decls; an ICE if it passes 4096). Records a member SIGNATURE merely
+mentions are not reached and stay on demand -- completing transitively would
+have the first <vector> fill instantiate half of libc++. A record clang
+cannot complete is left memberless and logged, like a failed fill. Each
+nested record is declared under its own USR into the shell's table, so
+`holder<alloc>::node` from any TU is the one decl. Instances of nested
+templates (`outer<alloc>::inner<i32>`) are ordinary registry shells and fill
+on their own trigger.
 
 **Lifetime.** Header TUs live for the build (CompilerInstance::release
 refuses one). A set's clang instance lives until HeaderSetCache::release_all

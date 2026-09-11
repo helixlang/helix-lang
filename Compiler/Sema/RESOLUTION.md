@@ -135,7 +135,10 @@ What T decides:
 - **Heads**: generic frames -> `ltypes` -> `unqualified(cur_dc)`.
 - **`::` segments** step through `context_of(decl)`, alias expanded first,
   spelled for cross-TU probes. `T::Item` and `Foo<T>::Inner` are marked
-  dependent and stopped (#5); M2 owns member-of-instantiation.
+  dependent and stopped (#5); M2 owns member-of-instantiation. The one
+  exception is an IMPORTED `Foo` with concrete args: `Foo<Args>::Inner`
+  steps into the registry instance, which `_scope_of` has clang fill first
+  (`MemberLookup::ensure_filled`, IMPORTS.md §5); only a failed fill defers.
 - **Final decl -> canonical**: GenericParamDecl -> `generic_param(owner,
   index)` on the REPRESENTATIVE; alias -> expand; nominal -> arity -> args
   by position and name -> defaults in the PRIMARY's scope -> #12.

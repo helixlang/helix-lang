@@ -595,8 +595,10 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         }
 
         // Value. Peel the separator's expected wrapper off the canonical.
-        var ty = a.ty;
-        var arrow = (st->access_kind == ChainExpr::AccessKind::Arrow)
+        // A C++ reference first, before any separator rule: it is transparent
+        // to `.` and `->` alike, and `vector&` must answer as `vector`.
+        var ty = self.ml.peel_ref(a.ty);
+        var arrow =(st->access_kind == ChainExpr::AccessKind::Arrow)
                  || (st->access_kind == ChainExpr::AccessKind::QuestionArrow);
         var maybe = (st->access_kind == ChainExpr::AccessKind::QuestionDot)
                  || (st->access_kind == ChainExpr::AccessKind::QuestionArrow);
@@ -1019,6 +1021,12 @@ class ChainBinding derives RecursiveASTVisitor::<ChainBinding> {
         if isa::<RecordType>(t)  { return self._decl_name_str(cast::<RecordType>(t)->decl); }
         if isa::<PointerType>(t) { return f"*{self._type_name_str(cast::<PointerType>(t)->pointee)}"; }
         if isa::<NullableType>(t){ return f"{self._type_name_str(cast::<NullableType>(t)->inner)}?"; }
+        if isa::<CXXLValueRefType>(t) {
+            var lr = cast::<CXXLValueRefType>(t);
+            var cq = ("const ") if lr->is_const else ("");
+            return f"{cq}{self._type_name_str(lr->referee)}&";
+        }
+        if isa::<CXXRValueRefType>(t) { return f"{self._type_name_str(cast::<CXXRValueRefType>(t)->referee)}&&"; }
         if isa::<VectorType>(t)  { return f"[{self._type_name_str(cast::<VectorType>(t)->element)}]"; }
         if isa::<TupleType>(t)   { return "a tuple"; }
         if isa::<MapType>(t)     { return "a map"; }
