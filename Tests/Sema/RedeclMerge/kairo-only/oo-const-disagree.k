@@ -11,7 +11,7 @@
 // EXPECT-ERROR: 5: modifier-disagreement (const)
 
 class Bar {
-    fn foo(self) const -> i32
+    fn foo(const self) -> i32
 }
 
 fn Bar::foo(self) -> i32 { return 1 }
@@ -30,8 +30,8 @@ fn Bar::foo(self) -> i32 { return 1 }
 // AST: ============== AST (tree) for fid 0 ==============
 // AST-NEXT: TranslationUnit '{{.*}}'(fid=0)
 // AST-NEXT: |-ClassDecl Bar
-// AST-NEXT: | `-FunctionDecl  foo(self) -> i32
-// AST-NEXT: |   `-ParamDecl self
+// AST-NEXT: | `-FunctionDecl  foo(const self) -> i32
+// AST-NEXT: |   `-ParamDecl const self
 // AST-NEXT: `-FunctionDecl  foo(self) -> i32
 // AST-NEXT:   |-ParamDecl self
 // AST-NEXT:   `-CompoundStmt (1)
