@@ -122,8 +122,11 @@ class <T> MemberTyping {
             if (st->name != &null) && st->name->is_poisoned() { dyn()->poison_only(n); return &null; }
 
             // separators on a value: `?.`/`?->` peel the nullable, `->` the pointer.
+            // A C++ reference is transparent to every separator, so it goes
+            // first -- the same helper ChainBinding binds with.
             var val = cur;
             if cur_kind == 0 {
+                val = dyn()->ml.peel_ref(val);
                 if (st->access_kind == ChainExpr::AccessKind::QuestionDot)
                 || (st->access_kind == ChainExpr::AccessKind::QuestionArrow) {
                     var inner = dyn()->tu.nullable_inner(val);
