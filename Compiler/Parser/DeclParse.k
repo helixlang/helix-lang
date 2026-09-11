@@ -1153,7 +1153,7 @@ class <T> DeclParse {
             fd->modifiers |= FnModifier::IsFinal;
         }
         // leading `inline` / `eval` land in the same bitset as their trailing
-        // spellings (`fn f() const inline`), so downstream sees one form.
+        // spellings (`fn f() inline`), so downstream sees one form.
         fd->modifiers |= lead->fn_mods;
 
         // optional generics or specialization introducer:
@@ -1275,7 +1275,13 @@ class <T> DeclParse {
         var has_self_param   = false;
         for var i: usize = 0; i < fd->params.size(); ++i {
             if fd->params[i]->unname  { is_type_only_sig = true; }
-            if fd->params[i]->is_self { has_self_param   = true; }
+            if fd->params[i]->is_self {
+                has_self_param = true;
+                // `const self` -> const method. RedeclMerge, DeclImport and
+                // the printer all key on fd->is_const(); keeping that the
+                // single flag means nothing downstream learns a second form.
+                if fd->params[i]->is_const { fd->modifiers |= FnModifier::IsConst; }
+            }
         }
 
         // `self` is a method receiver: legal only inside a type body or on an
@@ -1288,7 +1294,8 @@ class <T> DeclParse {
             ).first(start).emit();
         }
 
-        // function modifiers: const volatile unsafe eval async final panic inline
+        // function modifiers: volatile unsafe eval async final panic inline
+        // (a trailing `const` is diagnosed there; it is spelled `const self`)
         self._parse_fn_modifiers(fd);
 
         // return type
@@ -1426,10 +1433,22 @@ class <T> DeclParse {
             // a type-only member forward declaration (`fn m(self, T)`), so it
             // sets neither saw_named nor saw_unnamed. (Whether `self` is allowed
             // at all here is a placement check in `_parse_function`.)
+            // `const self` is the only spelling of a const method: the
+            // qualifier belongs to the receiver it actually constrains, not
+            // to a trailing slot after `)` (that form is rejected in
+            // `_parse_fn_modifiers`). `_parse_function` lifts it onto
+            // FnModifier::IsConst so Sema keeps one source of truth.
+            var self_const = false;
+            var self_start = dyn()->current_ptr()->range;
+            if dyn()->check(TokenKind::KwConst) && dyn()->check_peek(TokenKind::KwSelf) {
+                self_const = true;
+                dyn()->advance(); // consume `const`
+            }
             if dyn()->check(TokenKind::KwSelf) {
                 var s_tok = dyn()->current();
                 dyn()->advance();
-                var pd = ParamDecl::create_self(dyn()->ctx, s_tok.range, s_tok);
+                var pd = ParamDecl::create_self(dyn()->ctx, self_start | s_tok.range, s_tok);
+                pd->is_const = self_const;
                 pd->index = idx;
                 out->push_back(pd);
                 ++idx;
@@ -1756,7 +1775,7 @@ class <T> DeclParse {
     /// \brief parses trailing function modifiers into fd->modifiers.
     priv fn _parse_fn_modifiers(self, fd: *FunctionDecl) {
         while true {
-            if      dyn()->check(TokenKind::KwConst)    { fd->modifiers |= FnModifier::IsConst;    dyn()->advance(); }
+            if      dyn()->check(TokenKind::KwConst)    { self._reject_trailing_const(fd); }
             else if dyn()->check(TokenKind::KwVolatile) { fd->modifiers |= FnModifier::IsVolatile; dyn()->advance(); }
             else if dyn()->check(TokenKind::KwUnsafe)   { fd->modifiers |= FnModifier::IsUnsafe;   dyn()->advance(); }
             else if dyn()->check(TokenKind::KwEval)     { fd->modifiers |= FnModifier::IsEval;     dyn()->advance(); }
@@ -1766,6 +1785,48 @@ class <T> DeclParse {
             else if dyn()->check(TokenKind::KwInline)   { fd->modifiers |= FnModifier::IsInline;   dyn()->advance(); }
             else { break; }
         }
+    }
+
+    /// \brief diagnoses the C++-style trailing `fn f(self) const` and consumes it.
+    /// \details the const belongs on the receiver: `fn f(const self)`. Recovery
+    ///          still marks the method (and its receiver) const, so a decl
+    ///          paired with a `const self` definition does not cascade into a
+    ///          const-disagreement error on top of this one.
+    priv fn _reject_trailing_const(self, fd: *FunctionDecl) {
+        var c_range = dyn()->current_ptr()->range;
+        dyn()->advance(); // consume `const`
+
+        var recv: *ParamDecl = &null;
+        for var i: usize = 0; i < fd->params.size(); ++i {
+            if fd->params[i]->is_self { recv = fd->params[i]; break; }
+        }
+
+        if recv == &null {
+            dyn()->diag->report(DiagID::S047E, c_range.start,
+                "a trailing 'const' is not valid here; only a method can be const, "
+                "and it is spelled on the receiver as 'const self\x27"
+            ).first(c_range).remove(c_range, "remove the trailing 'const\x27").emit();
+            return;
+        }
+
+        if recv->is_const {
+            dyn()->diag->report(DiagID::S047E, c_range.start,
+                "a trailing 'const' is not valid; the receiver is already 'const self\x27"
+            ).first(c_range).remove(c_range, "remove the trailing 'const\x27").emit();
+            return;
+        }
+
+        var b = dyn()->diag->report(DiagID::S047E, c_range.start,
+            "a const method is spelled 'fn name(const self)', not with a trailing 'const\x27"
+        );
+        // strike the misplaced const in place; the one fix-it moves it onto
+        // the receiver, which is not itself at fault so it gets no label.
+        b.strike(c_range);
+        b.insert(recv->range.start, "const ", "qualify the receiver instead");
+        b.emit();
+
+        recv->is_const = true;
+        fd->modifiers |= FnModifier::IsConst;
     }
 
     priv fn _parse_closure_fn_modifiers(self, fd: *ClosureExpr) {
