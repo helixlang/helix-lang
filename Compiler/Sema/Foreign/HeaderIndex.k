@@ -295,6 +295,9 @@ class HeaderIndex {
             if (sub != &null) && (llvm::isa::<clang::RecordDecl>(d) || llvm::isa::<clang::EnumDecl>(d)) {
                 // Only the definition has members; a forward decl walks nothing.
                 var tag = llvm::cast::<clang::TagDecl>(d);
+                // A nested class of an implicit instantiation is only DECLARED
+                // until something requires it complete; ForeignInstantiate
+                // completes the ones a fill reaches and walks them itself.
                 if tag->isCompleteDefinition() { self.walk_declare(sub, di, out); }
             }
         }

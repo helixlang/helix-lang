@@ -155,7 +155,10 @@ class HeaderSet {
     priv var _printer: opt::<clang::TextDiagnosticPrinter> = &null;
     priv var _diag_opts: clang::DiagnosticOptions;
     priv var _main:    libcxx::string;                ///< the injected buffer; must outlive the parse.
-    priv var _sema_mu: std::Mutex;                    ///< clang::Sema is single-threaded.
+    /// clang::Sema is single-threaded. Recursive because a foreign fill can
+    /// nest: importing one instance's members resolves a type path into
+    /// another instance of the same set, and the outer fill still holds this.
+    priv var _sema_mu: std::RecursiveMutex;
 
     fn HeaderSet(self) {
         self.pch = libcxx::make_shared::<clang::PCHBuffer>();
@@ -181,7 +184,7 @@ class HeaderSet {
     }
     fn alive(self) -> bool { return self._ci != &null; }
     /// Hold this around any clang::Sema call from sema (M2's RequireCompleteType).
-    fn sema_lock(self) -> *std::Mutex { return &(self._sema_mu); }
+    fn sema_lock(self) -> *std::RecursiveMutex { return &(self._sema_mu); }
 
     fn pch_path(self) -> string { return f"/kairo/pch/{self.id}.pch"; }
 

@@ -30,6 +30,14 @@
 ///     Lock order: `_mu`, then the set's sema_lock(); nothing takes them the
 ///     other way round.
 ///
+///     Fills nest. DeclImport::define imports types, a type can be a
+///     qualified path into another unfilled shell, and TypeResolve fills on
+///     that path too. Both locks are therefore RECURSIVE, so a nested fill of
+///     a different shell proceeds on the thread that already holds them; a
+///     nested fill of the SAME shell (its own member naming it back) finds it
+///     in `_active` and returns false at once -- the caller walks the
+///     pattern, as for any unfilled shell, and the outer fill finishes it.
+///
 ///   Part of the Kairo Project, under the Apache License v2.0 with the
 ///   Kairo Runtime Library Exception.
 ///
@@ -64,7 +72,8 @@ import Sema::Foreign::HeaderIndex::*;
 import Interop::Clang::HeaderSet::*;
 
 class ForeignInstantiate {
-    priv var _mu:        std::Mutex;               ///< ONE lock for all fills; see the file header.
+    priv var _mu:        std::RecursiveMutex;      ///< ONE lock for all fills; see the file header.
+    priv var _active:    vec::<*Decl>;             ///< shells mid-fill, outermost first; guarded by `_mu`.
     priv var _hindex:    obs::<HeaderIndex>;
     priv var _reg:       obs::<ForeignRegistry>;
     priv var _instances: obs::<InstantiationRegistry>;
@@ -92,8 +101,16 @@ class ForeignInstantiate {
         var lock = std::LockGuard(self._mu);
         if ForeignInstantiate::_filled(shell) { return true; }
         if ForeignInstantiate::_failed(shell) { return false; }
+        // Re-entered for a shell this thread is already filling: not a
+        // failure (the outer fill will finish it), so no sticky flag.
+        for var i: usize = 0; i < self._active.size(); ++i {
+            if self._active[i] == shell { return false; }
+        }
 
-        if self._fill_locked(shell) {
+        self._active.push_back(shell);
+        var ok = self._fill_locked(shell);
+        self._active.pop_back();
+        if ok {
             self.n_filled += 1;
             return true;
         }
@@ -172,6 +189,7 @@ class ForeignInstantiate {
 
         var pairs = vec::<(*void, *Decl)>();
         self._hindex->walk_declare(spec, &di, pairs);
+        self._complete_nested(csema, cctx, &di, pairs);
         for var i: usize = 0; i < pairs.size(); ++i {
             di.define(reinterpret_cast::<*clang::Decl>(libcxx::get::<0>(pairs[i])), libcxx::get::<1>(pairs[i]), &ti);
         }
@@ -195,6 +213,56 @@ class ForeignInstantiate {
         Logger::info(Logger::Stage::Driver,
             f"ForeignInstantiate: filled {sp}: {di.n_declared} decl(s) declared, {di.n_defined} defined, {ti.n_opaque} opaque type(s)");
         return true;
+    }
+
+    /// Nested records of the specialization. Implicit instantiation of
+    /// `holder<alloc>` instantiates the DECLARATION of `holder<alloc>::node`,
+    /// not its definition (that waits until the type is required complete),
+    /// so walk_declare declares `node` and correctly walks nothing inside it:
+    /// `node` bound as a type with no fields or methods. Complete each such
+    /// record the walk reached, then walk it, appending to \p pairs --
+    /// so a record completed here yields ITS nested records to the same loop
+    /// (`A<T>::B::C`), and everything is declared before the define pass.
+    ///
+    /// Only records inside this specialization's own DeclContext walk: a
+    /// type a member SIGNATURE mentions is not reached here and stays on
+    /// demand (the ensure_filled trigger). Completing transitively would have
+    /// the first <vector> fill instantiate half of libc++.
+    ///
+    /// Runs inside _fill_locked, under `_mu` and the set's sema_lock already:
+    /// no lock of its own, so no second ordering. A record clang cannot
+    /// complete is skipped (memberless, logged), as for the outer fill.
+    priv fn _complete_nested(self, csema: *clang::Sema, cctx: *clang::ASTContext,
+                             di: *DeclImport, pairs: ref!(vec::<(*void, *Decl)>)) {
+        var seen = set::<u64>();
+        var diags = &(csema->getDiagnostics());
+        for var i: usize = 0; i < pairs.size(); ++i {
+            var d  = reinterpret_cast::<*clang::Decl>(libcxx::get::<0>(pairs[i]));
+            var rd = llvm::dyn_cast::<clang::CXXRecordDecl>(d);
+            if rd == &null { continue; }
+            if rd->isCompleteDefinition() { continue; }
+            // A member class of the instantiation, not a forward declaration
+            // the header left incomplete on purpose.
+            if rd->getInstantiatedFromMemberClass() == &null { continue; }
+            var key = reinterpret_cast::<u64>(rd);
+            if seen.contains(key) { continue; }
+            seen.insert(key);
+            // Each completion only adds records nested in the one completed,
+            // so this terminates on any finite header; the cap turns a clang
+            // or walk bug that re-offers records forever into an ICE, not a hang.
+            ICE_IF((seen.size() > 4096), "ForeignInstantiate: nested-record completion did not converge");
+
+            var before = diags->getNumErrors();
+            var ty = clang::QualType(cctx->getCanonicalTagType(rd));
+            var incomplete = csema->RequireCompleteType(rd->getLocation(), ty, clang::diag::err_incomplete_type);
+            var def = rd->getDefinition();
+            if incomplete || (diags->getNumErrors() > before) || (def == &null) {
+                Logger::warn(Logger::Stage::Driver,
+                    f"ForeignInstantiate: nested {std::nstring_to_string(rd->getQualifiedNameAsString())} not completed; left without members");
+                continue;
+            }
+            self._hindex->walk_declare(def, di, pairs);
+        }
     }
 
     // === per-kind flag access ===============================================
