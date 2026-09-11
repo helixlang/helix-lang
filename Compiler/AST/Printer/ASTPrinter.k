@@ -1183,7 +1183,10 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
     // -- FunctionDecl -------------------------------------------------------
 
     fn _fn_modifiers(self, fd: *FunctionDecl) {
-        if fd->is_const()  { self.p.paint(Color::Keyword, " const");  }
+        // a Kairo const method prints as `const self` in the parameter list;
+        // only a const fn with no const receiver (an imported C++ method
+        // whose receiver is implicit) still needs the flag shown here.
+        if fd->is_const() && (!self._has_const_self(fd)) { self.p.paint(Color::Keyword, " const"); }
         if (static_cast::<u16>(fd->modifiers) & static_cast::<u16>(FnModifier::IsVolatile)) != 0 {
             self.p.paint(Color::Keyword, " volatile");
         }
@@ -1193,6 +1196,14 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
         if fd->is_final()  { self.p.paint(Color::Keyword, " final");  }
         if fd->is_panic()  { self.p.paint(Color::Keyword, " panic");  }
         if fd->is_inline() { self.p.paint(Color::Keyword, " inline"); }
+    }
+
+    fn _has_const_self(self, fd: *FunctionDecl) -> bool {
+        for var i: usize = 0; i < fd->params.size(); ++i {
+            var p = fd->params[i];
+            if (p != &null) && p->is_self && p->is_const { return true; }
+        }
+        return false;
     }
 
     fn _param_list(self, params: FrozenList::<*ParamDecl>, is_variadic: bool) {
@@ -1294,6 +1305,7 @@ class AstDumper derives RecursiveASTVisitor::<AstDumper> {
 
     fn _d_param(self, pd: *ParamDecl) {
         if pd->is_self {
+            if pd->is_const { self.p.paint(Color::Keyword, "const "); }
             self.p.paint(Color::Keyword, "self");
             return;
         }

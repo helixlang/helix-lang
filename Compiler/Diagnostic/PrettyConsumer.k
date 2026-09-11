@@ -421,34 +421,6 @@ class PrettyDiagConsumer derives DiagConsumer {
             span_text[static_cast::<usize>(j + 1)] = key_text;
         }
 
-        // Per-column severity map (for overlap coloring on the caret row)
-        var max_col: usize = 0;
-        for var s: usize = 0; s < spans.size(); ++s {
-            if spans[s].end_col > max_col { max_col = spans[s].end_col; }
-        }
-
-        var col_sev:   vec::<DiagSeverity>;
-        var col_style: vec::<DiagLabel::Style>;
-        col_sev.resize(max_col + 1, DiagSeverity::Ignored);
-        col_style.resize(max_col + 1, DiagLabel::Style::Primary);
-
-        for var s: usize = 0; s < spans.size(); ++s {
-            var span = spans[s];
-            for var col: usize = span.start_col; col < span.end_col; ++col {
-                if self.severity_priority(span.sev) < self.severity_priority(col_sev[col]) {
-                    col_sev[col]   = span.sev;
-                    col_style[col] = span.style;
-                }
-            }
-        }
-
-        var pipe         = ( f"{BOLD}{WHITE}|{RESET}" ) if ( color ) else ( "|" );
-        var line_col_esc = ( f"{BOLD}{WHITE}"        ) if ( color ) else ( ""  );
-        var reset_esc    = ( RESET                   ) if ( color ) else ( ""  );
-
-        // Gutter aligned precisely to left_pad
-        var conn_gutter = f"{string(' ', left_pad)} {pipe} ";
-
         // Find a fix-it anchored on the primary line. If present, the fix is
         // rendered IN PLACE: the primary source line shows the edited text
         // (removed span struck red, inserted text green, rest syntax-
@@ -483,7 +455,48 @@ class PrettyDiagConsumer derives DiagConsumer {
             if f_end_col     < fix_start_col      { f_end_col     = fix_start_col;      }
             fix_mid_len = f_end_col - fix_start_col;
             fix_ins_len = primary_fix.replacement.length();
+
+            // The fixed line keeps the removed text (struck) AND adds the
+            // inserted text, so every column past the edit moves right by
+            // the insert width. Shift labels there, or a label after an
+            // insert (`fn f(self) const` -> strike on const) lands under
+            // the wrong token.
+            var edit_end = fix_start_col + fix_mid_len;
+            for var s: usize = 0; s < spans.size(); ++s {
+                if spans[s].start_col >= edit_end {
+                    spans[s].start_col += fix_ins_len;
+                    spans[s].end_col   += fix_ins_len;
+                }
+            }
         }
+
+        // Per-column severity map (for overlap coloring on the caret row)
+        var max_col: usize = 0;
+        for var s: usize = 0; s < spans.size(); ++s {
+            if spans[s].end_col > max_col { max_col = spans[s].end_col; }
+        }
+
+        var col_sev:   vec::<DiagSeverity>;
+        var col_style: vec::<DiagLabel::Style>;
+        col_sev.resize(max_col + 1, DiagSeverity::Ignored);
+        col_style.resize(max_col + 1, DiagLabel::Style::Primary);
+
+        for var s: usize = 0; s < spans.size(); ++s {
+            var span = spans[s];
+            for var col: usize = span.start_col; col < span.end_col; ++col {
+                if self.severity_priority(span.sev) < self.severity_priority(col_sev[col]) {
+                    col_sev[col]   = span.sev;
+                    col_style[col] = span.style;
+                }
+            }
+        }
+
+        var pipe         = ( f"{BOLD}{WHITE}|{RESET}" ) if ( color ) else ( "|" );
+        var line_col_esc = ( f"{BOLD}{WHITE}"        ) if ( color ) else ( ""  );
+        var reset_esc    = ( RESET                   ) if ( color ) else ( ""  );
+
+        // Gutter aligned precisely to left_pad
+        var conn_gutter = f"{string(' ', left_pad)} {pipe} ";
 
         for var ln: u32 = first_line; ln <= last_line; ++ln {
             var text    = sm->get_line_text(group.key.file_id, ln);

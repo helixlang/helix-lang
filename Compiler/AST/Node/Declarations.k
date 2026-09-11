@@ -288,7 +288,7 @@ class ParamDecl derives Decl {
     pub var type_:       *Type;            ///< declared type (never inferred for params).
     pub var default_val: *Expr = &null;    ///< default value expr; null if none.
     pub var is_self:     bool = false;     ///< true for the `self` parameter.
-    pub var is_const:    bool = false;     ///< true for the `const` parameter.
+    pub var is_const:    bool = false;     ///< true for a `const` parameter; on `const self` it also marks the method FnModifier::IsConst.
     pub var index:       u32 = 0;          ///< position in the parameter list.
     pub var unname:      bool = false;     ///< true for the `unnamed` parameter.
     pub var has_default: bool = false;     ///< imported C++ param with a default arg; no Kairo expr to carry.
