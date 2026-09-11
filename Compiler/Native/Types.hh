@@ -426,6 +426,13 @@ using Thread = libcxx::thread;
 using Mutex = libcxx::mutex;
 
 ///
+/// \brief Alias for a mutex the owning thread may re-lock.
+///
+/// \see libcxx::recursive_mutex
+///
+using RecursiveMutex = libcxx::recursive_mutex;
+
+///
 /// \brief Alias for shared mutex
 ///
 /// \see libcxx::shared_mutex
